@@ -1,0 +1,92 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+"""Shared helpers for SEGS detector node outputs."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import torch
+
+from ..domain.segs import BoundingBox, CropRegion, NativeSegs, Segment
+from ..masking.segs_mask_ops import crop_image, crop_mask, validate_single_image
+
+
+@dataclass(frozen=True)
+class CombinedSegsResult:
+    """Return one combined SEGS payload and its full-image mask."""
+
+    segs: NativeSegs
+    mask: torch.Tensor
+
+
+def build_combined_segs_result(
+    image: object,
+    segs: NativeSegs,
+) -> CombinedSegsResult:
+    """Build one combined SEGS payload and a standard ComfyUI mask."""
+
+    image_tensor = validate_single_image(image, "SEGS detector")
+    header, segments = segs
+    height, width = header
+    combined_mask = combined_mask_from_segs(segs)
+    mask_output = combined_mask.unsqueeze(0).to(dtype=torch.float32, device="cpu")
+    if not segments or not torch.any(combined_mask > 0):
+        return CombinedSegsResult(segs=(header, ()), mask=mask_output)
+
+    y_coords, x_coords = torch.where(combined_mask > 0)
+    left = int(torch.min(x_coords).item())
+    top = int(torch.min(y_coords).item())
+    right = min(width, int(torch.max(x_coords).item()) + 1)
+    bottom = min(height, int(torch.max(y_coords).item()) + 1)
+    if right <= left or bottom <= top:
+        return CombinedSegsResult(segs=(header, ()), mask=mask_output)
+
+    crop_region = CropRegion(left, top, right, bottom)
+    cropped_mask = crop_mask(combined_mask, crop_region).detach().clone()
+    combined_segment = Segment(
+        cropped_image=crop_image(image_tensor, crop_region).detach().clone(),
+        cropped_mask=cropped_mask,
+        confidence=max(segment.confidence for segment in segments),
+        crop_region=crop_region,
+        bbox=BoundingBox(left, top, right, bottom),
+        label="combined",
+    )
+    return CombinedSegsResult(segs=(header, (combined_segment,)), mask=mask_output)
+
+
+def combined_mask_from_segs(segs: NativeSegs) -> torch.Tensor:
+    """Combine cropped segment masks into one full-image HW mask."""
+
+    header, segments = segs
+    height, width = header
+    mask = torch.zeros((height, width), dtype=torch.float32)
+    for segment in segments:
+        cropped_mask = coerce_cropped_mask(segment)
+        region = segment.crop_region
+        existing = mask[region.top : region.bottom, region.left : region.right]
+        mask[region.top : region.bottom, region.left : region.right] = torch.maximum(
+            existing,
+            cropped_mask.float().cpu(),
+        )
+    return mask.clamp(0.0, 1.0)
+
+
+def coerce_cropped_mask(segment: Segment) -> torch.Tensor:
+    """Return a crop-local HW mask tensor for a segment."""
+
+    if isinstance(segment.cropped_mask, torch.Tensor):
+        cropped_mask = segment.cropped_mask.float()
+    else:
+        cropped_mask = torch.as_tensor(segment.cropped_mask, dtype=torch.float32)
+    if cropped_mask.ndim == 3 and int(cropped_mask.shape[0]) == 1:
+        cropped_mask = cropped_mask.squeeze(0)
+    if cropped_mask.ndim != 2:
+        raise ValueError("Segment cropped_mask must be HW shaped.")
+    expected_shape = (segment.crop_region.height, segment.crop_region.width)
+    actual_shape = (int(cropped_mask.shape[0]), int(cropped_mask.shape[1]))
+    if actual_shape != expected_shape:
+        raise ValueError("Segment cropped_mask must match its crop region.")
+    return cropped_mask.clamp(0.0, 1.0)

@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simple-syrup"
+description = "Workflow-focused ComfyUI extensions for image generation."
+version = "0.1.0"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Environment :: GPU :: NVIDIA CUDA",
+]
+
+[project.urls]
+Repository = "https://github.com/Artificial-Sweetener/SimpleSyrup"
+"Bug Tracker" = "https://github.com/Artificial-Sweetener/SimpleSyrup/issues"
+
+[tool.comfy]
+PublisherId = "artificialsweetener"
+DisplayName = "SimpleSyrup"
+Icon = ""
+includes = []
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+include = ["simple_syrup*"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+extend-exclude = [
+    "simple_syrup/third_party/groundingdino_runtime",
+    "simple_syrup/third_party/sam_hq_runtime",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "ANN"]
+ignore = ["ANN401"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+strict_equality = true
+explicit_package_bases = true
+exclude = [
+    "simple_syrup/third_party/groundingdino_runtime",
+    "simple_syrup/third_party/sam_hq_runtime",
+]
+
+[[tool.mypy.overrides]]
+module = ["comfy.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = [".", "../.."]
+testpaths = ["tests"]

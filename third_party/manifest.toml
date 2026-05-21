@@ -1,0 +1,131 @@
+[[component]]
+name = "SAM-HQ and MobileSAM runtime"
+license = "Apache-2.0"
+license_file = "third_party/licenses/sam-hq.LICENSE.txt"
+source = "https://github.com/SysCV/sam-hq"
+revision = "local-layerstyle-compatible-runtime"
+source_paths = [
+  "sam-hq/segment_anything/build_sam_hq.py",
+  "sam-hq/segment_anything/predictor.py",
+  "sam-hq/segment_anything/automatic.py",
+  "sam-hq/segment_anything/modeling",
+]
+vendored_files = [
+  "simple_syrup/third_party/sam_hq_runtime/__init__.py",
+  "simple_syrup/third_party/sam_hq_runtime/automatic.py",
+  "simple_syrup/third_party/sam_hq_runtime/build_sam_hq.py",
+  "simple_syrup/third_party/sam_hq_runtime/predictor.py",
+  "simple_syrup/third_party/sam_hq_runtime/modeling/__init__.py",
+  "simple_syrup/third_party/sam_hq_runtime/modeling/image_encoder.py",
+  "simple_syrup/third_party/sam_hq_runtime/modeling/mask_decoder_hq.py",
+  "simple_syrup/third_party/sam_hq_runtime/modeling/tiny_vit.py",
+]
+
+[[component]]
+name = "GroundingDINO runtime"
+license = "Apache-2.0"
+license_file = "third_party/licenses/groundingdino.LICENSE.txt"
+source = "https://github.com/IDEA-Research/GroundingDINO"
+revision = "local-layerstyle-compatible-runtime"
+source_paths = [
+  "groundingdino/datasets/transforms.py",
+  "groundingdino/models",
+  "groundingdino/util",
+]
+vendored_files = [
+  "simple_syrup/third_party/groundingdino_runtime/__init__.py",
+  "simple_syrup/third_party/groundingdino_runtime/datasets/__init__.py",
+  "simple_syrup/third_party/groundingdino_runtime/datasets/transforms.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/__init__.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/registry.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/GroundingDINO/__init__.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/GroundingDINO/bertwarper.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/GroundingDINO/fuse_modules.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/GroundingDINO/groundingdino.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/GroundingDINO/ms_deform_attn.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/GroundingDINO/transformer_vanilla.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/GroundingDINO/transformer.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/GroundingDINO/utils.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/GroundingDINO/backbone/__init__.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/GroundingDINO/backbone/backbone.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/GroundingDINO/backbone/position_encoding.py",
+  "simple_syrup/third_party/groundingdino_runtime/models/GroundingDINO/backbone/swin_transformer.py",
+  "simple_syrup/third_party/groundingdino_runtime/util/__init__.py",
+  "simple_syrup/third_party/groundingdino_runtime/util/box_ops.py",
+  "simple_syrup/third_party/groundingdino_runtime/util/get_tokenlizer.py",
+  "simple_syrup/third_party/groundingdino_runtime/util/inference.py",
+  "simple_syrup/third_party/groundingdino_runtime/util/misc.py",
+  "simple_syrup/third_party/groundingdino_runtime/util/slconfig.py",
+  "simple_syrup/third_party/groundingdino_runtime/util/slio.py",
+  "simple_syrup/third_party/groundingdino_runtime/util/utils.py",
+]
+
+[[component]]
+name = "RES4LYF beta57 scheduler preset"
+license = "AGPL-3.0"
+license_file = "third_party/licenses/res4lyf.LICENSE.txt"
+source = "https://github.com/ClownsharkBatwing/RES4LYF"
+revision = "1c9bf61"
+source_paths = [
+  "sigmas.py",
+  "res4lyf.py",
+  "README.md",
+]
+vendored_files = [
+  "simple_syrup/runtime/sampling_schedulers.py",
+]
+
+[[component]]
+name = "AUTOMATIC1111 Euler a sampler integration"
+license = "AGPL-3.0"
+license_file = "third_party/licenses/automatic1111.LICENSE.txt"
+source = "https://github.com/AUTOMATIC1111/stable-diffusion-webui"
+revision = "0120768f"
+source_paths = [
+  "modules/sd_samplers_kdiffusion.py",
+  "modules/sd_samplers_common.py",
+  "modules/sd_schedulers.py",
+  "modules/rng.py",
+]
+vendored_files = [
+  "simple_syrup/runtime/a1111_sampling.py",
+  "simple_syrup/runtime/sampling_samplers.py",
+  "simple_syrup/runtime/sampling_schedulers.py",
+]
+
+[[component]]
+name = "k-diffusion Euler ancestral sampler"
+license = "MIT"
+license_file = "third_party/licenses/k-diffusion.LICENSE.txt"
+source = "https://github.com/crowsonkb/k-diffusion"
+revision = "ab527a9"
+source_paths = [
+  "k_diffusion/sampling.py",
+]
+vendored_files = [
+  "simple_syrup/runtime/a1111_sampling.py",
+]
+
+[[component]]
+name = "Mixture of Diffusers and MultiDiffusion tiled diffusion behavior"
+license = "CC-BY-NC-SA-4.0"
+license_file = "third_party/licenses/multidiffusion-upscaler.LICENSE.txt"
+source = "https://github.com/pkuliyi2015/multidiffusion-upscaler-for-automatic1111"
+revision = "local-2024-09-25"
+source_paths = [
+  "tile_methods/abstractdiffusion.py",
+  "tile_methods/mixtureofdiffusers.py",
+  "tile_methods/multidiffusion.py",
+  "tile_utils/utils.py",
+  "scripts/tilediffusion.py",
+]
+vendored_files = [
+  "simple_syrup/domain/regional_detailing.py",
+  "simple_syrup/domain/tiled_diffusion.py",
+  "simple_syrup/masking/regional_detailing_masks.py",
+  "simple_syrup/runtime/mixture_of_diffusers_sampling.py",
+  "simple_syrup/runtime/multidiffusion_sampling.py",
+  "simple_syrup/runtime/regional_multidiffusion_sampling.py",
+  "simple_syrup/runtime/tiled_sampling.py",
+  "simple_syrup/services/detail_segs_as_regions_service.py",
+]
