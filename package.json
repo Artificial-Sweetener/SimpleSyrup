@@ -1,0 +1,31 @@
+{
+  "name": "simple-syrup-comfyui",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "lint:web": "eslint web/src web/tests",
+    "typecheck:web": "tsc --noEmit",
+    "test:web": "vitest run",
+    "build:web": "esbuild web/src/main.ts --bundle --format=esm --target=es2022 --outfile=web/dist/simple-syrup.js --external:../../../scripts/app.js",
+    "check:web": "npm run lint:web && npm run typecheck:web && npm run test:web && npm run build:web",
+    "release": "semantic-release"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/release-notes-generator": "^14.1.1",
+    "@types/node": "^25.6.0",
+    "esbuild": "^0.27.0",
+    "eslint": "^9.39.1",
+    "jsdom": "^27.2.0",
+    "semantic-release": "^25.0.3",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vitest": "^4.0.8"
+  }
+}
