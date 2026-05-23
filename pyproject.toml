@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "SimpleSyrup"
 description = "Workflow-focused ComfyUI extensions for image generation."
-version = "1.0.0"
+version = "1.1.0"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
