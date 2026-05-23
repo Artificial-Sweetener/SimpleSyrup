@@ -11,6 +11,7 @@ from collections import namedtuple
 import pytest
 
 from simple_syrup.domain.segs import (
+    KEEP_BY_OPTIONS,
     SORT_ORDER_OPTIONS,
     BoundingBox,
     CropRegion,
@@ -18,6 +19,7 @@ from simple_syrup.domain.segs import (
     coerce_segment,
     coerce_segs,
     coerce_segs_group,
+    limit_segs,
     sort_segs,
     to_impact_compatible_segs,
     to_impact_compatible_segs_group,
@@ -170,6 +172,112 @@ def test_sort_order_options_are_plain_english_and_ordered() -> None:
         "highest confidence first",
         "lowest confidence first",
     )
+
+
+def test_keep_by_options_are_plain_english_and_ordered() -> None:
+    """SEGS limiting options match the detector node combo contract."""
+
+    assert KEEP_BY_OPTIONS == ("highest confidence", "largest size")
+
+
+def test_limit_segs_zero_keeps_all_segments() -> None:
+    """Keep-only zero preserves all detected regions."""
+
+    first = _segment("first", CropRegion(0, 0, 2, 2), 0.2)
+    second = _segment("second", CropRegion(2, 2, 5, 5), 0.9)
+
+    _header, segments = limit_segs(
+        ((16, 16), (first, second)),
+        keep_only=0,
+        keep_by="highest confidence",
+    )
+
+    assert segments == (first, second)
+
+
+def test_limit_segs_keeps_highest_confidence_segments() -> None:
+    """Confidence limiting keeps the strongest detections."""
+
+    lower = _segment("lower", CropRegion(0, 0, 2, 2), 0.2)
+    higher = _segment("higher", CropRegion(2, 2, 4, 4), 0.9)
+    middle = _segment("middle", CropRegion(4, 4, 6, 6), 0.5)
+
+    _header, segments = limit_segs(
+        ((16, 16), (lower, higher, middle)),
+        keep_only=2,
+        keep_by="highest confidence",
+    )
+
+    assert [segment.label for segment in segments] == ["higher", "middle"]
+
+
+def test_limit_segs_keeps_largest_size_segments() -> None:
+    """Size limiting keeps the largest crop regions."""
+
+    small = _segment("small", CropRegion(0, 0, 2, 2), 0.9)
+    large = _segment("large", CropRegion(2, 2, 8, 8), 0.2)
+    medium = _segment("medium", CropRegion(8, 8, 12, 11), 0.5)
+
+    _header, segments = limit_segs(
+        ((16, 16), (small, large, medium)),
+        keep_only=2,
+        keep_by="largest size",
+    )
+
+    assert [segment.label for segment in segments] == ["large", "medium"]
+
+
+def test_limit_segs_restores_original_order_after_selection() -> None:
+    """Limiting chooses by rank but leaves final ordering to sort_order."""
+
+    first = _segment("first", CropRegion(0, 0, 2, 2), 0.8)
+    second = _segment("second", CropRegion(2, 2, 4, 4), 0.1)
+    third = _segment("third", CropRegion(4, 4, 6, 6), 0.7)
+
+    _header, segments = limit_segs(
+        ((16, 16), (first, second, third)),
+        keep_only=2,
+        keep_by="highest confidence",
+    )
+
+    assert [segment.label for segment in segments] == ["first", "third"]
+
+
+def test_limit_segs_keeps_all_when_limit_exceeds_segment_count() -> None:
+    """Oversized keep-only values keep every available segment."""
+
+    first = _segment("first", CropRegion(0, 0, 2, 2), 0.2)
+    second = _segment("second", CropRegion(2, 2, 5, 5), 0.9)
+
+    _header, segments = limit_segs(
+        ((16, 16), (first, second)),
+        keep_only=5,
+        keep_by="largest size",
+    )
+
+    assert segments == (first, second)
+
+
+def test_limit_segs_rejects_negative_keep_only() -> None:
+    """Negative keep-only values fail instead of changing selection semantics."""
+
+    with pytest.raises(ValueError, match="keep_only"):
+        limit_segs(
+            ((16, 16), (_segment("first", CropRegion(0, 0, 2, 2), 0.2),)),
+            keep_only=-1,
+            keep_by="highest confidence",
+        )
+
+
+def test_limit_segs_rejects_unknown_keep_by() -> None:
+    """Unknown keep-by options fail instead of silently changing behavior."""
+
+    with pytest.raises(ValueError, match="Unknown SEGS keep_by option"):
+        limit_segs(
+            ((16, 16), (_segment("first", CropRegion(0, 0, 2, 2), 0.2),)),
+            keep_only=1,
+            keep_by="smallest size",
+        )
 
 
 @pytest.mark.parametrize(
