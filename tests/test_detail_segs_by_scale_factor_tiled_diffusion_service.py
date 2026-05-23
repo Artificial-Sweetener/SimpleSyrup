@@ -152,7 +152,7 @@ def test_tiled_detailer_forwards_detail_preview_context() -> None:
 
 
 def test_noise_mask_true_attaches_latent_mask() -> None:
-    """Noise-mask mode attaches a latent mask before tiled sampling."""
+    """Noise-mask mode attaches the crop-local mask before tiled sampling."""
 
     sampler = _FakeTiledSampler()
     service = _service(sampler)
@@ -161,6 +161,54 @@ def test_noise_mask_true_attaches_latent_mask() -> None:
 
     noise_mask = sampler.sample_calls[0]["latent_image"]["noise_mask"]
     assert noise_mask.shape == (1, 4, 4)
+
+
+def test_tiled_paste_mask_uses_gaussian_feathered_crop_mask() -> None:
+    """Final tiled compositing uses a softened crop-local detailer mask."""
+
+    sampler = _FakeTiledSampler()
+    service = _service(sampler)
+    mask = torch.zeros((4, 4), dtype=torch.float32)
+    mask[1:3, 1:3] = 1.0
+
+    result = service.detail(
+        _image(),
+        _segs(_segment(cropped_mask=mask)),
+        "model",
+        "vae",
+        [],
+        [],
+        **(_settings() | {"scale_factor": 1.0, "feather": 1}),
+    )
+
+    crop = result.image[:, 2:6, 2:6, 0]
+    assert 0.0 < float(crop[0, 0, 1]) < 1.0
+    assert float(crop[0, 1, 1]) > float(crop[0, 0, 1])
+    assert float(crop[0, 3, 3]) < float(crop[0, 1, 1])
+
+
+def test_tiled_noise_mask_feather_keeps_sampled_crop_geometry() -> None:
+    """Tiled denoise masks keep original crop geometry for ComfyUI resizing."""
+
+    sampler = _FakeTiledSampler()
+    service = _service(sampler)
+    mask = torch.zeros((4, 4), dtype=torch.float32)
+    mask[1:3, 1:3] = 1.0
+
+    service.detail(
+        _image(),
+        _segs(_segment(cropped_mask=mask)),
+        "model",
+        "vae",
+        [],
+        [],
+        **(_settings() | {"noise_mask_feather": 1}),
+    )
+
+    noise_mask = sampler.sample_calls[0]["latent_image"]["noise_mask"]
+    assert noise_mask.shape == (1, 4, 4)
+    assert 0.0 < float(noise_mask[0, 0, 1]) < 1.0
+    assert float(noise_mask[0, 1, 1]) > float(noise_mask[0, 0, 1])
 
 
 def test_tiled_detail_sampler_delegates_to_shared_sampling_service() -> None:
@@ -398,12 +446,12 @@ def _segs(*segments: Segment) -> NativeSegs:
     return (8, 8), tuple(segments)
 
 
-def _segment() -> Segment:
+def _segment(cropped_mask: object | None = None) -> Segment:
     """Return one test segment with a cropped mask."""
 
     return Segment(
         cropped_image=None,
-        cropped_mask=torch.ones((4, 4)),
+        cropped_mask=cropped_mask if cropped_mask is not None else torch.ones((4, 4)),
         confidence=1.0,
         crop_region=CropRegion(2, 2, 6, 6),
         bbox=BoundingBox(3, 3, 5, 5),

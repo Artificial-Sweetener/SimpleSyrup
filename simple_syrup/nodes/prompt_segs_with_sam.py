@@ -45,9 +45,9 @@ class PromptSEGSWithSAM:
     )
     SEARCH_ALIASES = ["sam", "groundingdino", "prompt", "segs"]
 
-    combined_builder: ClassVar[Callable[[object, NativeSegs], CombinedSegsResult]] = (
-        build_combined_segs_result
-    )
+    combined_builder: ClassVar[
+        Callable[[object, NativeSegs, float], CombinedSegsResult]
+    ] = build_combined_segs_result
 
     @classmethod
     def INPUT_TYPES(cls) -> dict[str, dict[str, Any]]:
@@ -333,7 +333,7 @@ class PromptSEGSWithSAM:
                 crop_factor=crop_factor,
                 sort_order=sort_order,
             )
-            combined = type(self).combined_builder(single_image, segs)
+            combined = type(self).combined_builder(single_image, segs, crop_factor)
             output_segs = combined.segs if combine_segs else segs
             segs_outputs.append(to_impact_compatible_segs(output_segs))
             mask_outputs.append(combined.mask)

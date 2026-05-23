@@ -80,16 +80,19 @@ def normalize_mask(mask: torch.Tensor, height: int, width: int) -> torch.Tensor:
 
 
 def dilate_mask(mask: torch.Tensor, dilation: int) -> torch.Tensor:
-    """Morph an HW mask by a signed pixel radius."""
+    """Morph an HW mask by a signed kernel-size factor."""
 
     if dilation == 0:
         return mask.float().clamp(0.0, 1.0)
-    radius = abs(dilation)
-    kernel_size = radius * 2 + 1
+    kernel_size = abs(dilation)
+    if kernel_size < 1:
+        return mask.float().clamp(0.0, 1.0)
+    pad_before = kernel_size // 2
+    pad_after = kernel_size - 1 - pad_before
     padded = F.pad(
         mask.float().unsqueeze(0).unsqueeze(0),
-        (radius, radius, radius, radius),
-        value=0.0,
+        (pad_before, pad_after, pad_before, pad_after),
+        value=0.0 if dilation > 0 else 1.0,
     )
     if dilation > 0:
         return (
@@ -138,19 +141,42 @@ def crop_region_for_bbox(
         return CropRegion(0, 0, image_width, image_height)
     if crop_factor < 1.0:
         raise ValueError("crop_factor must be 0 or greater than or equal to 1.0.")
-    center_x = (bbox.left + bbox.right) / 2.0
-    center_y = (bbox.top + bbox.bottom) / 2.0
     crop_width = bbox.width * crop_factor
     crop_height = bbox.height * crop_factor
-    left = max(0, int(round(center_x - crop_width / 2.0)))
-    top = max(0, int(round(center_y - crop_height / 2.0)))
-    right = min(image_width, int(round(center_x + crop_width / 2.0)))
-    bottom = min(image_height, int(round(center_y + crop_height / 2.0)))
-    if right <= left:
-        right = min(image_width, left + 1)
-    if bottom <= top:
-        bottom = min(image_height, top + 1)
+    center_x = bbox.left + bbox.width / 2.0
+    center_y = bbox.top + bbox.height / 2.0
+    left, right = _normalize_region(
+        image_width,
+        int(center_x - crop_width / 2.0),
+        crop_width,
+    )
+    top, bottom = _normalize_region(
+        image_height,
+        int(center_y - crop_height / 2.0),
+        crop_height,
+    )
     return CropRegion(left, top, right, bottom)
+
+
+def _normalize_region(limit: int, start: int, size: float) -> tuple[int, int]:
+    """Shift a crop into bounds while preserving requested size when possible."""
+
+    new_start: float
+    new_end: float
+    if start < 0:
+        new_start = 0
+        new_end = min(limit, size)
+    elif start + size > limit:
+        new_start = max(0, limit - size)
+        new_end = limit
+    else:
+        new_start = start
+        new_end = min(limit, start + size)
+    left = int(new_start)
+    right = int(new_end)
+    if right <= left:
+        right = min(limit, left + 1)
+    return left, right
 
 
 def crop_image(image: torch.Tensor, region: CropRegion) -> torch.Tensor:

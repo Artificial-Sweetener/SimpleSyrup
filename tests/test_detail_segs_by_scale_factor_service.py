@@ -309,7 +309,7 @@ def test_downscale_factors_sample_at_original_crop_size() -> None:
 
 
 def test_noise_mask_true_attaches_latent_mask() -> None:
-    """Noise-mask mode passes a latent mask to sampling."""
+    """Noise-mask mode passes the crop-local mask to sampling."""
 
     sampler = _FakeSampler()
     service = _service(sampler)
@@ -361,6 +361,55 @@ def test_non_tensor_cropped_mask_is_used_as_crop() -> None:
     assert sampler.sample_calls[0].noise_mask_shape == (1, 4, 4)
 
 
+def test_paste_mask_uses_gaussian_feathered_crop_mask() -> None:
+    """Final compositing uses a softened crop-local detailer mask."""
+
+    sampler = _FakeSampler()
+    service = _service(sampler)
+    mask = torch.zeros((4, 4), dtype=torch.float32)
+    mask[1:3, 1:3] = 1.0
+
+    result = service.detail(
+        _image(),
+        _segs(_segment(cropped_mask=mask)),
+        object(),
+        object(),
+        [],
+        [],
+        **(_settings() | {"scale_factor": 1.0, "feather": 1}),
+    )
+
+    crop = result.image[:, 2:6, 2:6, 0]
+    assert 0.0 < float(crop[0, 0, 1]) < 1.0
+    assert float(crop[0, 1, 1]) > float(crop[0, 0, 1])
+    assert float(crop[0, 3, 3]) < float(crop[0, 1, 1])
+
+
+def test_noise_mask_feather_is_applied_before_latent_resize() -> None:
+    """Noise-mask feathering keeps original crop geometry for ComfyUI resizing."""
+
+    sampler = _FakeSampler()
+    service = _service(sampler)
+    mask = torch.zeros((4, 4), dtype=torch.float32)
+    mask[1:3, 1:3] = 1.0
+
+    service.detail(
+        _image(),
+        _segs(_segment(cropped_mask=mask)),
+        object(),
+        object(),
+        [],
+        [],
+        **(_settings() | {"noise_mask_feather": 1}),
+    )
+
+    noise_mask = sampler.sample_calls[0].noise_mask
+    assert noise_mask is not None
+    assert noise_mask.shape == (1, 4, 4)
+    assert 0.0 < float(noise_mask[0, 0, 1]) < 1.0
+    assert float(noise_mask[0, 1, 1]) > float(noise_mask[0, 0, 1])
+
+
 def test_noise_mask_feather_applies_model_patch() -> None:
     """Feathered noise masks request differential diffusion patching."""
 
@@ -404,6 +453,7 @@ class _SampleCall:
         self,
         seed: int,
         noise_mask_shape: tuple[int, ...] | None,
+        noise_mask: torch.Tensor | None,
         positive: Any,
         negative: Any,
         preview_context: DetailPreviewContext | None,
@@ -412,6 +462,7 @@ class _SampleCall:
 
         self.seed = seed
         self.noise_mask_shape = noise_mask_shape
+        self.noise_mask = noise_mask
         self.positive = positive
         self.negative = negative
         self.preview_context = preview_context
@@ -475,7 +526,16 @@ class _FakeSampler:
             else None
         )
         self.sample_calls.append(
-            _SampleCall(seed, noise_mask_shape, positive, negative, preview_context)
+            _SampleCall(
+                seed,
+                noise_mask_shape,
+                noise_mask.detach().clone()
+                if isinstance(noise_mask, torch.Tensor)
+                else None,
+                positive,
+                negative,
+                preview_context,
+            )
         )
         return latent_image
 
