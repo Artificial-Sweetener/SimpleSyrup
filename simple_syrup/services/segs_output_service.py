@@ -10,8 +10,13 @@ from dataclasses import dataclass
 
 import torch
 
-from ..domain.segs import BoundingBox, CropRegion, NativeSegs, Segment
-from ..masking.segs_mask_ops import crop_image, crop_mask, validate_single_image
+from ..domain.segs import BoundingBox, NativeSegs, Segment
+from ..masking.segs_mask_ops import (
+    crop_image,
+    crop_mask,
+    crop_region_for_bbox,
+    validate_single_image,
+)
 
 
 @dataclass(frozen=True)
@@ -25,6 +30,7 @@ class CombinedSegsResult:
 def build_combined_segs_result(
     image: object,
     segs: NativeSegs,
+    crop_factor: float,
 ) -> CombinedSegsResult:
     """Build one combined SEGS payload and a standard ComfyUI mask."""
 
@@ -37,21 +43,27 @@ def build_combined_segs_result(
         return CombinedSegsResult(segs=(header, ()), mask=mask_output)
 
     y_coords, x_coords = torch.where(combined_mask > 0)
-    left = int(torch.min(x_coords).item())
-    top = int(torch.min(y_coords).item())
-    right = min(width, int(torch.max(x_coords).item()) + 1)
-    bottom = min(height, int(torch.max(y_coords).item()) + 1)
-    if right <= left or bottom <= top:
+    bbox_left = int(torch.min(x_coords).item())
+    bbox_top = int(torch.min(y_coords).item())
+    bbox_right = min(width, int(torch.max(x_coords).item()) + 1)
+    bbox_bottom = min(height, int(torch.max(y_coords).item()) + 1)
+    if bbox_right <= bbox_left or bbox_bottom <= bbox_top:
         return CombinedSegsResult(segs=(header, ()), mask=mask_output)
 
-    crop_region = CropRegion(left, top, right, bottom)
+    bbox = BoundingBox(bbox_left, bbox_top, bbox_right, bbox_bottom)
+    crop_region = crop_region_for_bbox(
+        bbox,
+        image_height=height,
+        image_width=width,
+        crop_factor=crop_factor,
+    )
     cropped_mask = crop_mask(combined_mask, crop_region).detach().clone()
     combined_segment = Segment(
         cropped_image=crop_image(image_tensor, crop_region).detach().clone(),
         cropped_mask=cropped_mask,
         confidence=max(segment.confidence for segment in segments),
         crop_region=crop_region,
-        bbox=BoundingBox(left, top, right, bottom),
+        bbox=bbox,
         label="combined",
     )
     return CombinedSegsResult(segs=(header, (combined_segment,)), mask=mask_output)

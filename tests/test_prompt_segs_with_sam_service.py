@@ -255,7 +255,7 @@ def test_service_applies_mask_dilation() -> None:
         service,
         positive_prompt="face",
         size_threshold=1,
-        mask_dilation=1,
+        mask_dilation=3,
         crop_factor=1.0,
     )
 

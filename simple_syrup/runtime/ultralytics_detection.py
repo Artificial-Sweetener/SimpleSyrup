@@ -144,7 +144,41 @@ def _result_masks(
         tensor = tensor.unsqueeze(0)
     if tensor.ndim != 3:
         raise ValueError("Ultralytics masks must be shaped as BHW.")
-    return [normalize_mask(mask, image_height, image_width) for mask in tensor]
+    return [
+        normalize_mask(
+            _remove_aspect_padding(mask, image_height, image_width),
+            image_height,
+            image_width,
+        )
+        for mask in tensor
+    ]
+
+
+def _remove_aspect_padding(
+    mask: torch.Tensor,
+    image_height: int,
+    image_width: int,
+) -> torch.Tensor:
+    """Remove Ultralytics mask padding before resizing to image geometry."""
+
+    mask_height = int(mask.shape[0])
+    mask_width = int(mask.shape[1])
+    mask_ratio = mask_height / mask_width
+    image_ratio = image_height / image_width
+    if mask_ratio == image_ratio:
+        return mask
+    if mask_ratio > image_ratio:
+        height_gap = int((mask_ratio - image_ratio) * mask_height)
+        if height_gap <= 0 or height_gap * 2 >= mask_height:
+            return mask
+        return mask[height_gap : mask_height - height_gap, :]
+
+    width_ratio = mask_width / mask_height
+    image_width_ratio = image_width / image_height
+    width_gap = int((width_ratio - image_width_ratio) * mask_width)
+    if width_gap <= 0 or width_gap * 2 >= mask_width:
+        return mask
+    return mask[:, width_gap : mask_width - width_gap]
 
 
 def _result_names(result: object, fallback: dict[int, str]) -> dict[int, str]:
