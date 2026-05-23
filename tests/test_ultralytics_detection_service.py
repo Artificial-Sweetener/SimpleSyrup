@@ -13,7 +13,10 @@ import pytest
 import torch
 
 from simple_syrup.domain.segs import BoundingBox, CropRegion, NativeSegs, Segment
-from simple_syrup.runtime.ultralytics_detection import UltralyticsDetection
+from simple_syrup.runtime.ultralytics_detection import (
+    UltralyticsDetection,
+    parse_ultralytics_result,
+)
 from simple_syrup.runtime.ultralytics_loader import UltralyticsDetectorModel
 from simple_syrup.services.segs_detection_service import (
     DetectionRunner,
@@ -33,6 +36,7 @@ def test_bbox_prediction_creates_rectangular_mask_segs() -> None:
     assert len(segments) == 1
     assert cast(torch.Tensor, segments[0].cropped_mask).sum().item() == 9.0
     assert segments[0].crop_region == (2, 2, 5, 5)
+    assert torch.all(cast(torch.Tensor, segments[0].cropped_mask) == 1.0)
 
 
 def test_segmentation_prediction_uses_mask_shape() -> None:
@@ -70,7 +74,7 @@ def test_drop_size_filters_tiny_detections() -> None:
     assert segments == ()
 
 
-def test_crop_factor_expands_and_clamps_region() -> None:
+def test_crop_factor_expands_region() -> None:
     """Crop factor expands around the bbox without leaving image bounds."""
 
     service = SegsDetectionService(detection_runner=_runner(_bbox_detection()))
@@ -78,6 +82,21 @@ def test_crop_factor_expands_and_clamps_region() -> None:
     _header, segments = service.detect(_image(), _model(False), 0.5, 0, 3.0, 1)
 
     assert segments[0].crop_region == (0, 0, 8, 8)
+    cropped_mask = cast(torch.Tensor, segments[0].cropped_mask)
+    assert cropped_mask.sum().item() == 9.0
+    assert torch.count_nonzero(cropped_mask == 0.0).item() > 0
+
+
+def test_crop_factor_shifts_region_at_image_edges() -> None:
+    """Edge crops preserve requested context by shifting back into the image."""
+
+    detection = UltralyticsDetection(BoundingBox(0, 2, 2, 4), 0.9, "face", None)
+    service = SegsDetectionService(detection_runner=_runner(detection))
+
+    _header, segments = service.detect(_image(), _model(False), 0.5, 0, 3.0, 1)
+
+    assert segments[0].crop_region == CropRegion(0, 0, 6, 6)
+    assert cast(torch.Tensor, segments[0].cropped_mask).shape == (6, 6)
 
 
 def test_crop_factor_zero_uses_full_image_region() -> None:
@@ -101,23 +120,45 @@ def test_fractional_crop_factor_below_one_still_fails() -> None:
         service.detect(_image(), _model(False), 0.5, 0, 0.5, 1)
 
 
-def test_dilation_changes_mask_extent() -> None:
-    """Dilation expands rectangular mask coverage."""
+def test_dilation_factor_uses_kernel_size() -> None:
+    """Positive dilation uses the factor as the morphology kernel size."""
 
-    service = SegsDetectionService(detection_runner=_runner(_bbox_detection()))
+    detection = UltralyticsDetection(BoundingBox(2, 2, 4, 4), 0.9, "face", None)
+    service = SegsDetectionService(detection_runner=_runner(detection))
 
-    _header, segments = service.detect(_image(), _model(False), 0.5, 1, 1.0, 1)
+    _header, segments = service.detect(_image(), _model(False), 0.5, 2, 3.0, 1)
 
-    assert cast(torch.Tensor, segments[0].cropped_mask).sum().item() == 9.0
+    full_mask = torch.zeros((8, 8), dtype=torch.float32)
+    region = segments[0].crop_region
+    full_mask[region.top : region.bottom, region.left : region.right] = cast(
+        torch.Tensor, segments[0].cropped_mask
+    )
+
+    assert torch.equal(
+        full_mask,
+        torch.tensor(
+            [
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 1, 1, 1, 0, 0, 0],
+                [0, 0, 1, 1, 1, 0, 0, 0],
+                [0, 0, 1, 1, 1, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+            ],
+            dtype=torch.float32,
+        ),
+    )
 
 
-def test_negative_dilation_erodes_mask_extent() -> None:
-    """Negative dilation erodes the detected mask."""
+def test_negative_dilation_factor_uses_kernel_size() -> None:
+    """Negative dilation erodes with the factor as the morphology kernel size."""
 
     detection = UltralyticsDetection(BoundingBox(1, 1, 7, 7), 0.9, "face", None)
     service = SegsDetectionService(detection_runner=_runner(detection))
 
-    _header, segments = service.detect(_image(), _model(False), 0.5, -1, 1.0, 1)
+    _header, segments = service.detect(_image(), _model(False), 0.5, -3, 1.0, 1)
 
     assert cast(torch.Tensor, segments[0].cropped_mask).sum().item() == 16.0
 
@@ -175,10 +216,37 @@ def test_post_dilation_changes_cropped_mask_after_crop() -> None:
         0,
         3.0,
         1,
-        post_dilation=-1,
+        post_dilation=-3,
     )
 
     assert cast(torch.Tensor, segments[0].cropped_mask).sum().item() == 1.0
+
+
+def test_ultralytics_segmentation_masks_drop_aspect_padding_before_resize() -> None:
+    """Segmentation masks remove model-shape padding before image normalization."""
+
+    mask = torch.zeros((1, 6, 5), dtype=torch.float32)
+    mask[:, 1:5, :] = 1.0
+    result = _UltralyticsResult(
+        boxes=_Boxes(
+            xyxy=torch.tensor([[0.0, 0.0, 4.0, 4.0]]),
+            conf=torch.tensor([0.9]),
+            cls=torch.tensor([0.0]),
+        ),
+        masks=_Masks(mask),
+    )
+
+    detections = parse_ultralytics_result(
+        result,
+        image_height=4,
+        image_width=4,
+        class_names={0: "face"},
+        prefer_segmentation=True,
+    )
+
+    assert len(detections) == 1
+    assert detections[0].mask is not None
+    assert torch.all(detections[0].mask == 1.0)
 
 
 def test_simple_detector_refines_bbox_segs_with_segmentation_mask() -> None:
@@ -248,7 +316,7 @@ def test_empty_detections_return_empty_segs() -> None:
 def test_empty_segs_build_empty_combined_outputs() -> None:
     """Empty SEGS produce empty combined SEGS and a zero mask."""
 
-    result = build_combined_segs_result(_image(), ((8, 8), ()))
+    result = build_combined_segs_result(_image(), ((8, 8), ()), crop_factor=1.0)
 
     assert result.segs == ((8, 8), ())
     assert result.mask.shape == (1, 8, 8)
@@ -257,7 +325,7 @@ def test_empty_segs_build_empty_combined_outputs() -> None:
 
 
 def test_combined_result_unions_all_segment_masks() -> None:
-    """Combined SEGS contain one tight segment for all source masks."""
+    """Combined SEGS contain one unioned segment for all source masks."""
 
     image = torch.arange(1 * 8 * 8 * 3, dtype=torch.float32).reshape((1, 8, 8, 3))
     image = image / image.max()
@@ -268,7 +336,7 @@ def test_combined_result_unions_all_segment_masks() -> None:
         [[2.0, 2.0, 2.0], [2.0, 2.0, 2.0]],
     )
 
-    result = build_combined_segs_result(image, _segs(first, second))
+    result = build_combined_segs_result(image, _segs(first, second), crop_factor=1.0)
     _header, segments = result.segs
 
     assert result.mask.shape == (1, 8, 8)
@@ -284,13 +352,49 @@ def test_combined_result_unions_all_segment_masks() -> None:
     )
 
 
+def test_combined_result_applies_crop_factor_after_combining() -> None:
+    """Combined SEGS expand one unioned target for downstream detailers."""
+
+    image = torch.arange(1 * 8 * 8 * 3, dtype=torch.float32).reshape((1, 8, 8, 3))
+    image = image / image.max()
+    first_mask = torch.zeros((2, 2), dtype=torch.float32)
+    first_mask[0, 0] = 1.0
+    second_mask = torch.zeros((2, 2), dtype=torch.float32)
+    second_mask[1, 1] = 1.0
+    first = Segment(
+        cropped_image=None,
+        cropped_mask=first_mask,
+        confidence=0.8,
+        crop_region=CropRegion(2, 2, 4, 4),
+        bbox=BoundingBox(2, 2, 3, 3),
+        label="face",
+    )
+    second = Segment(
+        cropped_image=None,
+        cropped_mask=second_mask,
+        confidence=0.9,
+        crop_region=CropRegion(4, 4, 6, 6),
+        bbox=BoundingBox(5, 5, 6, 6),
+        label="face",
+    )
+
+    result = build_combined_segs_result(image, _segs(first, second), crop_factor=2.0)
+    _header, segments = result.segs
+
+    assert len(segments) == 1
+    assert segments[0].crop_region == CropRegion(0, 0, 8, 8)
+    assert segments[0].bbox == BoundingBox(2, 2, 6, 6)
+    assert cast(torch.Tensor, segments[0].cropped_mask).shape == (8, 8)
+    assert torch.equal(cast(torch.Tensor, segments[0].cropped_image), image)
+
+
 def test_combined_mask_uses_max_for_overlaps() -> None:
     """Overlapping source masks combine by max instead of addition."""
 
     first = _segment(CropRegion(2, 2, 4, 4), 0.4, torch.full((2, 2), 0.7))
     second = _segment(CropRegion(2, 2, 4, 4), 0.8, torch.full((2, 2), 0.8))
 
-    result = build_combined_segs_result(_image(), _segs(first, second))
+    result = build_combined_segs_result(_image(), _segs(first, second), crop_factor=1.0)
 
     assert result.mask[0, 2, 2].item() == pytest.approx(0.8)
     assert result.mask.sum().item() == pytest.approx(3.2)
@@ -302,7 +406,7 @@ def test_combined_outputs_reject_mismatched_cropped_mask_shape() -> None:
     segment = _segment(CropRegion(1, 1, 3, 3), 1.0, torch.ones((3, 3)))
 
     with pytest.raises(ValueError, match="cropped_mask must match"):
-        build_combined_segs_result(_image(), _segs(segment))
+        build_combined_segs_result(_image(), _segs(segment), crop_factor=1.0)
 
 
 def test_batch_image_input_fails_clearly() -> None:
@@ -386,6 +490,42 @@ class _SequentialRunner:
         del detector_model, image
         self.calls.append((threshold, prefer_segmentation))
         return self._responses.pop(0)
+
+
+class _Boxes:
+    """Fake Ultralytics boxes object for parser tests."""
+
+    def __init__(
+        self,
+        xyxy: torch.Tensor,
+        conf: torch.Tensor,
+        cls: torch.Tensor,
+    ) -> None:
+        """Store tensor-like Ultralytics box fields."""
+
+        self.xyxy = xyxy
+        self.conf = conf
+        self.cls = cls
+
+
+class _Masks:
+    """Fake Ultralytics masks object for parser tests."""
+
+    def __init__(self, data: torch.Tensor) -> None:
+        """Store tensor-like Ultralytics mask data."""
+
+        self.data = data
+
+
+class _UltralyticsResult:
+    """Fake Ultralytics result object for parser tests."""
+
+    def __init__(self, boxes: _Boxes, masks: _Masks) -> None:
+        """Store result-like fields."""
+
+        self.boxes = boxes
+        self.masks = masks
+        self.names = {0: "face"}
 
 
 def _image() -> torch.Tensor:

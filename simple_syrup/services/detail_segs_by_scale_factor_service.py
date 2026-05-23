@@ -15,10 +15,9 @@ from ..domain.conditioning_batch import select_conditioning
 from ..domain.detail_geometry import DetailScalePlan, build_detail_scale_plan
 from ..domain.segs import Segment, coerce_segs
 from ..image.crop_composite import composite_crop
+from ..masking.detailer_masks import gaussian_feather_mask
 from ..masking.segs_mask_ops import (
     crop_image,
-    feather_mask,
-    resize_mask,
     validate_single_image,
 )
 from ..runtime.detail_previews import DetailPreviewContext
@@ -232,10 +231,9 @@ class DetailSEGSByScaleFactorService:
             plan.width,
             upscale_method,
         )
-        scaled_mask = resize_mask(mask_crop, plan.height, plan.width)
         latent = self._sampler.encode(vae, scaled_crop, tiled_encode)
         if noise_mask:
-            latent = self._with_noise_mask(latent, scaled_mask, noise_mask_feather)
+            latent = self._with_noise_mask(latent, mask_crop, noise_mask_feather)
         sampled = self._sampler.sample(
             model=model,
             seed=seed,
@@ -259,7 +257,9 @@ class DetailSEGSByScaleFactorService:
             segment.crop_region.height,
             segment.crop_region.width,
         )
-        paste_mask = feather_mask(mask_crop, feather).to(device=working_image.device)
+        paste_mask = gaussian_feather_mask(mask_crop, feather).to(
+            device=working_image.device
+        )
         return composite_crop(
             image=working_image,
             crop=resized_detail,
@@ -273,16 +273,14 @@ class DetailSEGSByScaleFactorService:
         mask: torch.Tensor,
         noise_mask_feather: int,
     ) -> Latent:
-        """Attach a latent-sized denoise mask to a latent dictionary."""
+        """Attach a crop-space denoise mask to a latent dictionary."""
 
         samples = latent.get("samples")
         if not isinstance(samples, torch.Tensor):
             raise ValueError("latent samples must be a torch tensor.")
-        latent_height = int(samples.shape[-2])
-        latent_width = int(samples.shape[-1])
-        latent_mask = resize_mask(mask, latent_height, latent_width)
+        latent_mask = mask
         if noise_mask_feather > 0:
-            latent_mask = feather_mask(latent_mask, noise_mask_feather)
+            latent_mask = gaussian_feather_mask(latent_mask, noise_mask_feather)
         output = latent.copy()
         output["noise_mask"] = latent_mask.unsqueeze(0).to(
             device=samples.device,

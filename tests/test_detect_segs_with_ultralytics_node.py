@@ -379,14 +379,18 @@ class _FakeCombinedBuilder:
 
         self.call_count = 0
         self.seen_labels: list[list[str]] = []
+        self.seen_crop_factors: list[float] = []
 
-    def __call__(self, image: object, segs: NativeSegs) -> CombinedSegsResult:
+    def __call__(
+        self, image: object, segs: NativeSegs, crop_factor: float
+    ) -> CombinedSegsResult:
         """Return deterministic combined outputs and record the call."""
 
         del image
         self.call_count += 1
         header, segments = segs
         self.seen_labels.append([segment.label for segment in segments])
+        self.seen_crop_factors.append(crop_factor)
         return CombinedSegsResult(
             segs=(header, (_segment("combined", CropRegion(0, 0, 4, 4)),)),
             mask=torch.ones((1, header[0], header[1]), dtype=torch.float32),
@@ -401,10 +405,12 @@ class _FakeBatchCombinedBuilder:
 
         self.call_count = 0
 
-    def __call__(self, image: object, segs: NativeSegs) -> CombinedSegsResult:
+    def __call__(
+        self, image: object, segs: NativeSegs, crop_factor: float
+    ) -> CombinedSegsResult:
         """Return a combined segment tied to the source image label."""
 
-        del image
+        del image, crop_factor
         self.call_count += 1
         header, segments = segs
         label = f"combined-{segments[0].label}" if segments else "combined"

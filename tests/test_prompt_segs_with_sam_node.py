@@ -256,12 +256,14 @@ class _FixedCombinedBuilder:
         self,
         source_image: object,
         source_segs: tuple[tuple[int, int], tuple[Segment, ...]],
+        crop_factor: float,
     ) -> CombinedSegsResult:
         """Return the fixed combined result after checking call arguments."""
 
         self.call_count += 1
         assert torch.equal(cast(torch.Tensor, source_image), self._expected_image)
         assert source_segs is self._expected_segs
+        assert crop_factor == 3.0
         return self._combined
 
 
@@ -277,11 +279,13 @@ class _FakeBatchCombinedBuilder:
         self,
         source_image: object,
         source_segs: tuple[tuple[int, int], tuple[Segment, ...]],
+        crop_factor: float,
     ) -> CombinedSegsResult:
         """Return a combined result for one image slice."""
 
         self.call_count += 1
         assert cast(torch.Tensor, source_image).shape == (1, 3, 3, 3)
+        assert crop_factor == 3.0
         segment_label = source_segs[1][0].label
         return CombinedSegsResult(
             segs=_segs(
