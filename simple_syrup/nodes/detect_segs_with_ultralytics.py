@@ -12,8 +12,10 @@ from typing import Any, ClassVar
 import torch
 
 from ..domain.segs import (
+    KEEP_BY_OPTIONS,
     SORT_ORDER_OPTIONS,
     NativeSegs,
+    limit_segs,
     sort_segs,
     to_impact_compatible_segs,
 )
@@ -91,6 +93,29 @@ class DetectSEGSWithUltralytics:
                         "tooltip": (
                             "Discard regions whose detected box is smaller than this "
                             "many pixels wide or tall."
+                        ),
+                    },
+                ),
+                "keep_only": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 4096,
+                        "step": 1,
+                        "tooltip": (
+                            "Keep only this many detected regions after threshold "
+                            "filtering. Use 0 to keep all regions."
+                        ),
+                    },
+                ),
+                "keep_by": (
+                    KEEP_BY_OPTIONS,
+                    {
+                        "default": "highest confidence",
+                        "tooltip": (
+                            "Choose how regions are ranked when Keep Only is "
+                            "greater than 0."
                         ),
                     },
                 ),
@@ -178,6 +203,8 @@ class DetectSEGSWithUltralytics:
         detector_model: UltralyticsDetectorModel,
         confidence_threshold: float,
         size_threshold: int,
+        keep_only: int,
+        keep_by: str,
         bbox_dilation: int,
         sub_dilation: int,
         post_dilation: int,
@@ -204,6 +231,7 @@ class DetectSEGSWithUltralytics:
                 sub_dilation=sub_dilation,
                 post_dilation=post_dilation,
             )
+            segs = limit_segs(segs, keep_only, keep_by)
             segs = sort_segs(segs, sort_order)
             combined = type(self).combined_builder(single_image, segs, crop_factor)
             output_segs = combined.segs if combine_segs else segs

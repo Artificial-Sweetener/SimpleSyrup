@@ -14,7 +14,6 @@ from ..domain.segs import (
     BoundingBox,
     NativeSegs,
     Segment,
-    sort_segs,
 )
 from ..masking.mask_ops import MaskRefinementSettings, refine_prompt_mask
 from ..masking.segs_mask_ops import (
@@ -53,7 +52,6 @@ class PromptSegsSettings:
     bbox_dilation: int
     mask_dilation: int
     crop_factor: float
-    sort_order: str
     refinement: MaskRefinementSettings
 
 
@@ -94,9 +92,8 @@ class PromptSEGSWithSAMService:
         mask_refinement_max_size: int,
         execution_device: str,
         crop_factor: float,
-        sort_order: str,
     ) -> NativeSegs:
-        """Return sorted native SEGS for a text-prompted SAM detection."""
+        """Return native SEGS for a text-prompted SAM detection."""
 
         image_tensor = validate_single_image(image, "Prompt SEGS w/ SAM")
         settings = self._validate_settings(
@@ -115,7 +112,6 @@ class PromptSEGSWithSAMService:
             mask_refinement_max_size=mask_refinement_max_size,
             execution_device=execution_device,
             crop_factor=crop_factor,
-            sort_order=sort_order,
         )
 
         sample = image_tensor[0]
@@ -176,7 +172,7 @@ class PromptSEGSWithSAMService:
                 )
             )
 
-        return sort_segs(((height, width), tuple(segments)), settings.sort_order)
+        return (height, width), tuple(segments)
 
     def _prompt_regions(
         self,
@@ -307,7 +303,6 @@ class PromptSEGSWithSAMService:
         mask_refinement_max_size: int,
         execution_device: str,
         crop_factor: float,
-        sort_order: str,
     ) -> PromptSegsSettings:
         """Validate public node settings and return normalized values."""
 
@@ -356,7 +351,6 @@ class PromptSEGSWithSAMService:
             bbox_dilation=int(bbox_dilation),
             mask_dilation=int(mask_dilation),
             crop_factor=float(crop_factor),
-            sort_order=sort_order,
             refinement=refinement,
         )
 

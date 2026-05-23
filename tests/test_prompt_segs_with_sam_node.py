@@ -54,6 +54,8 @@ def test_prompt_segs_with_sam_node_declares_expected_inputs() -> None:
         "negative_prompt",
         "confidence_threshold",
         "size_threshold",
+        "keep_only",
+        "keep_by",
         "bbox_dilation",
         "mask_dilation",
         "detail_method",
@@ -79,6 +81,18 @@ def test_prompt_segs_with_sam_node_declares_expected_inputs() -> None:
     assert required["positive_prompt"][1]["default"] == ""
     assert required["positive_prompt"][1]["tooltip"] == (
         "Text describing the regions to detect."
+    )
+    assert required["keep_only"][1]["default"] == 0
+    assert required["keep_only"][1]["min"] == 0
+    assert required["keep_only"][1]["max"] == 4096
+    assert required["keep_only"][1]["tooltip"] == (
+        "Keep only this many detected regions after threshold filtering. Use 0 "
+        "to keep all regions."
+    )
+    assert required["keep_by"][0] == ("highest confidence", "largest size")
+    assert required["keep_by"][1]["default"] == "highest confidence"
+    assert required["keep_by"][1]["tooltip"] == (
+        "Choose how regions are ranked when Keep Only is greater than 0."
     )
     assert required["detail_method"][0] == ["GuidedFilter", "PyMatting", "VITMatte"]
     assert required["sort_order"][0] == SORT_ORDER_OPTIONS
@@ -155,6 +169,91 @@ def test_prompt_segs_with_sam_node_returns_unioned_segs_when_combine_enabled() -
     assert torch.equal(cast(torch.Tensor, result[1]), combined.mask)
 
 
+def test_prompt_segs_with_sam_node_keeps_only_highest_confidence_seg() -> None:
+    """Keep Only can retain just the strongest prompted region."""
+
+    image = make_image_tensor(batch_size=1, height=8, width=8)
+    segs = _ranking_segs()
+    expected_limited = _segs(_segment("small-high", CropRegion(0, 0, 2, 2), 0.95))
+    combined = CombinedSegsResult(
+        segs=_segs(_segment("combined", CropRegion(0, 0, 8, 8), 1.0)),
+        mask=torch.ones((1, 8, 8), dtype=torch.float32),
+    )
+    builder = _FixedCombinedBuilder(image, expected_limited, combined)
+
+    result = _prompt_with_fakes(
+        service=_FakePromptService(segs),
+        builder=builder,
+        image=image,
+        combine_segs=False,
+        keep_only=1,
+        keep_by="highest confidence",
+    )
+
+    segs_list = cast(list[tuple[object, list[Segment]]], result[0])
+    _header, segments = segs_list[0]
+    assert [segment.label for segment in segments] == ["small-high"]
+    assert builder.seen_labels == [["small-high"]]
+
+
+def test_prompt_segs_with_sam_node_keeps_largest_segs_then_sorts_output() -> None:
+    """Size limiting happens before final sort_order output ordering."""
+
+    image = make_image_tensor(batch_size=1, height=8, width=8)
+    segs = _ranking_segs()
+    expected_limited = _segs(
+        _segment("medium", CropRegion(2, 0, 5, 3), 0.5),
+        _segment("large-low", CropRegion(4, 0, 8, 4), 0.1),
+    )
+    combined = CombinedSegsResult(
+        segs=_segs(_segment("combined", CropRegion(0, 0, 8, 8), 1.0)),
+        mask=torch.ones((1, 8, 8), dtype=torch.float32),
+    )
+    builder = _FixedCombinedBuilder(image, expected_limited, combined)
+
+    result = _prompt_with_fakes(
+        service=_FakePromptService(segs),
+        builder=builder,
+        image=image,
+        combine_segs=False,
+        keep_only=2,
+        keep_by="largest size",
+        sort_order="left to right",
+    )
+
+    segs_list = cast(list[tuple[object, list[Segment]]], result[0])
+    _header, segments = segs_list[0]
+    assert [segment.label for segment in segments] == ["medium", "large-low"]
+    assert builder.seen_labels == [["medium", "large-low"]]
+
+
+def test_prompt_segs_with_sam_node_combines_only_limited_segs() -> None:
+    """Unioned prompted outputs are built from the selected SEGS only."""
+
+    image = make_image_tensor(batch_size=1, height=8, width=8)
+    segs = _ranking_segs()
+    expected_limited = _segs(_segment("small-high", CropRegion(0, 0, 2, 2), 0.95))
+    combined = CombinedSegsResult(
+        segs=_segs(_segment("combined", CropRegion(0, 0, 8, 8), 1.0)),
+        mask=torch.ones((1, 8, 8), dtype=torch.float32),
+    )
+    builder = _FixedCombinedBuilder(image, expected_limited, combined)
+
+    result = _prompt_with_fakes(
+        service=_FakePromptService(segs),
+        builder=builder,
+        image=image,
+        combine_segs=True,
+        keep_only=1,
+        keep_by="highest confidence",
+    )
+
+    segs_list = cast(list[tuple[object, list[Segment]]], result[0])
+    _header, segments = segs_list[0]
+    assert [segment.label for segment in segments] == ["combined"]
+    assert builder.seen_labels == [["small-high"]]
+
+
 def test_prompt_segs_with_sam_node_processes_image_batches_with_individual_segs() -> (
     None
 ):
@@ -178,6 +277,31 @@ def test_prompt_segs_with_sam_node_processes_image_batches_with_individual_segs(
         "image-0",
         "image-1",
     ]
+    assert cast(torch.Tensor, result[1]).shape == (2, 3, 3)
+
+
+def test_prompt_segs_with_sam_node_limits_each_batch_image_independently() -> None:
+    """Keep Only is applied separately to each prompted one-image SEGS payload."""
+
+    image = make_image_tensor(batch_size=2, height=3, width=3)
+    service = _FakeBatchRankingPromptService()
+    builder = _FakeBatchCombinedBuilder()
+
+    result = _prompt_with_fakes(
+        service=service,
+        builder=builder,
+        image=image,
+        combine_segs=False,
+        keep_only=1,
+        keep_by="highest confidence",
+    )
+
+    segs_list = cast(list[tuple[object, list[Segment]]], result[0])
+    assert [segments[0].label for _header, segments in segs_list] == [
+        "image-0-high",
+        "image-1-high",
+    ]
+    assert builder.call_count == 2
     assert cast(torch.Tensor, result[1]).shape == (2, 3, 3)
 
 
@@ -236,6 +360,26 @@ class _FakeBatchPromptService:
         return _segs(_segment(label, CropRegion(0, 0, 2, 2), 0.9))
 
 
+class _FakeBatchRankingPromptService:
+    """Service double that returns rankable SEGS for each image."""
+
+    def __init__(self) -> None:
+        """Create an empty call counter."""
+
+        self.call_count = 0
+
+    def prompt(self, **kwargs: object) -> tuple[tuple[int, int], tuple[Segment, ...]]:
+        """Return high and low confidence prompted regions for one image."""
+
+        assert cast(torch.Tensor, kwargs["image"]).shape == (1, 3, 3, 3)
+        label_prefix = f"image-{self.call_count}"
+        self.call_count += 1
+        return _segs(
+            _segment(f"{label_prefix}-low", CropRegion(0, 0, 2, 2), 0.1),
+            _segment(f"{label_prefix}-high", CropRegion(1, 1, 2, 2), 0.9),
+        )
+
+
 class _FixedCombinedBuilder:
     """Combined-result builder double with input assertions."""
 
@@ -251,6 +395,7 @@ class _FixedCombinedBuilder:
         self._expected_segs = expected_segs
         self._combined = combined
         self.call_count = 0
+        self.seen_labels: list[list[str]] = []
 
     def __call__(
         self,
@@ -262,7 +407,11 @@ class _FixedCombinedBuilder:
 
         self.call_count += 1
         assert torch.equal(cast(torch.Tensor, source_image), self._expected_image)
-        assert source_segs is self._expected_segs
+        self.seen_labels.append([segment.label for segment in source_segs[1]])
+        assert source_segs[0] == self._expected_segs[0]
+        assert self.seen_labels[-1] == [
+            segment.label for segment in self._expected_segs[1]
+        ]
         assert crop_factor == 3.0
         return self._combined
 
@@ -305,6 +454,9 @@ def _prompt_with_fakes(
     image: torch.Tensor,
     combine_segs: bool,
     vitmatte_model: object | None = None,
+    keep_only: int = 0,
+    keep_by: str = "highest confidence",
+    sort_order: str = "largest to smallest",
 ) -> tuple[object, object]:
     """Run the prompt node with temporary service and builder doubles."""
 
@@ -322,6 +474,8 @@ def _prompt_with_fakes(
             negative_prompt="",
             confidence_threshold=0.3,
             size_threshold=10,
+            keep_only=keep_only,
+            keep_by=keep_by,
             bbox_dilation=0,
             mask_dilation=0,
             detail_method="GuidedFilter",
@@ -333,7 +487,7 @@ def _prompt_with_fakes(
             mask_refinement_max_size=2048,
             execution_device="cpu",
             crop_factor=3.0,
-            sort_order="largest to smallest",
+            sort_order=sort_order,
             combine_segs=combine_segs,
             vitmatte_model=vitmatte_model,
         )
@@ -346,6 +500,19 @@ def _segs(*segments: Segment) -> tuple[tuple[int, int], tuple[Segment, ...]]:
     """Create native SEGS for tests."""
 
     return (3, 3), tuple(segments)
+
+
+def _ranking_segs() -> tuple[tuple[int, int], tuple[Segment, ...]]:
+    """Create rankable native SEGS for limiting tests."""
+
+    return (
+        (3, 3),
+        (
+            _segment("small-high", CropRegion(0, 0, 2, 2), 0.95),
+            _segment("large-low", CropRegion(4, 0, 8, 4), 0.1),
+            _segment("medium", CropRegion(2, 0, 5, 3), 0.5),
+        ),
+    )
 
 
 def _segment(label: str, crop_region: CropRegion, confidence: float) -> Segment:

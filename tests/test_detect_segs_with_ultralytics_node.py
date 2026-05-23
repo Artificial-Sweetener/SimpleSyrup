@@ -54,6 +54,8 @@ def test_detect_segs_with_ultralytics_node_contract(
         "detector_model",
         "confidence_threshold",
         "size_threshold",
+        "keep_only",
+        "keep_by",
         "bbox_dilation",
         "sub_dilation",
         "post_dilation",
@@ -63,6 +65,21 @@ def test_detect_segs_with_ultralytics_node_contract(
     ]
     assert inputs["required"]["bbox_dilation"][1]["min"] == -512
     assert inputs["required"]["size_threshold"][1]["default"] == 10
+    assert inputs["required"]["keep_only"][1]["default"] == 0
+    assert inputs["required"]["keep_only"][1]["min"] == 0
+    assert inputs["required"]["keep_only"][1]["max"] == 4096
+    assert inputs["required"]["keep_only"][1]["tooltip"] == (
+        "Keep only this many detected regions after threshold filtering. Use 0 "
+        "to keep all regions."
+    )
+    assert inputs["required"]["keep_by"][0] == (
+        "highest confidence",
+        "largest size",
+    )
+    assert inputs["required"]["keep_by"][1]["default"] == "highest confidence"
+    assert inputs["required"]["keep_by"][1]["tooltip"] == (
+        "Choose how regions are ranked when Keep Only is greater than 0."
+    )
     assert inputs["required"]["post_dilation"][1]["default"] == 0
     assert inputs["required"]["crop_factor"][1]["min"] == 0.0
     assert inputs["required"]["sort_order"][0] == SORT_ORDER_OPTIONS
@@ -142,6 +159,8 @@ def test_detect_segs_with_ultralytics_node_uses_story_input_order(
         _model(),
         0.7,
         12,
+        0,
+        "highest confidence",
         -2,
         3,
         -1,
@@ -170,6 +189,8 @@ def test_detector_node_sorts_segs_before_outputs(
         0.7,
         1,
         0,
+        "highest confidence",
+        0,
         0,
         0,
         1.0,
@@ -181,6 +202,108 @@ def test_detector_node_sorts_segs_before_outputs(
     _header, segments = segs_list[0]
     assert [segment.label for segment in segments] == ["large", "small"]
     assert builder.seen_labels == [["large", "small"]]
+
+
+def test_detector_node_keeps_only_highest_confidence_seg(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep Only can retain just the strongest detection."""
+
+    builder = _FakeCombinedBuilder()
+    monkeypatch.setattr(
+        DetectSEGSWithUltralytics,
+        "service_class",
+        _FakeRankingSegsService,
+    )
+    monkeypatch.setattr(DetectSEGSWithUltralytics, "combined_builder", builder)
+
+    segs, _mask = DetectSEGSWithUltralytics().detect(
+        torch.zeros((1, 8, 8, 3)),
+        _model(),
+        0.7,
+        1,
+        1,
+        "highest confidence",
+        0,
+        0,
+        0,
+        1.0,
+        "largest to smallest",
+        False,
+    )
+
+    segs_list = cast(list[tuple[object, list[Segment]]], segs)
+    _header, segments = segs_list[0]
+    assert [segment.label for segment in segments] == ["small-high"]
+    assert builder.seen_labels == [["small-high"]]
+
+
+def test_detector_node_keeps_largest_segs_then_sorts_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Size limiting happens before final sort_order output ordering."""
+
+    builder = _FakeCombinedBuilder()
+    monkeypatch.setattr(
+        DetectSEGSWithUltralytics,
+        "service_class",
+        _FakeRankingSegsService,
+    )
+    monkeypatch.setattr(DetectSEGSWithUltralytics, "combined_builder", builder)
+
+    segs, _mask = DetectSEGSWithUltralytics().detect(
+        torch.zeros((1, 8, 8, 3)),
+        _model(),
+        0.7,
+        1,
+        2,
+        "largest size",
+        0,
+        0,
+        0,
+        1.0,
+        "left to right",
+        False,
+    )
+
+    segs_list = cast(list[tuple[object, list[Segment]]], segs)
+    _header, segments = segs_list[0]
+    assert [segment.label for segment in segments] == ["medium", "large-low"]
+    assert builder.seen_labels == [["medium", "large-low"]]
+
+
+def test_detector_node_combines_only_limited_segs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unioned outputs are built from the selected SEGS only."""
+
+    builder = _FakeCombinedBuilder()
+    monkeypatch.setattr(
+        DetectSEGSWithUltralytics,
+        "service_class",
+        _FakeRankingSegsService,
+    )
+    monkeypatch.setattr(DetectSEGSWithUltralytics, "combined_builder", builder)
+
+    segs, _mask = DetectSEGSWithUltralytics().detect(
+        torch.zeros((1, 8, 8, 3)),
+        _model(),
+        0.7,
+        1,
+        1,
+        "highest confidence",
+        0,
+        0,
+        0,
+        1.0,
+        "largest to smallest",
+        True,
+    )
+
+    segs_list = cast(list[tuple[object, list[Segment]]], segs)
+    _header, segments = segs_list[0]
+    assert [segment.label for segment in segments] == ["combined"]
+    assert builder.seen_labels == [["small-high"]]
 
 
 def test_detector_node_processes_image_batches_with_individual_segs(
@@ -204,6 +327,8 @@ def test_detector_node_processes_image_batches_with_individual_segs(
         0.5,
         1,
         0,
+        "highest confidence",
+        0,
         0,
         0,
         1.0,
@@ -218,6 +343,43 @@ def test_detector_node_processes_image_batches_with_individual_segs(
         "image-1",
     ]
     assert [header for header, _segments in segs_list] == [(8, 8), (8, 8)]
+    assert builder.call_count == 2
+    assert cast(torch.Tensor, mask).shape == (2, 8, 8)
+
+
+def test_detector_node_limits_each_batch_image_independently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep Only is applied separately to each one-image SEGS payload."""
+
+    builder = _FakeBatchCombinedBuilder()
+    monkeypatch.setattr(
+        DetectSEGSWithUltralytics,
+        "service_class",
+        _FakeBatchRankingSegsService,
+    )
+    monkeypatch.setattr(DetectSEGSWithUltralytics, "combined_builder", builder)
+
+    segs, mask = DetectSEGSWithUltralytics().detect(
+        torch.zeros((2, 8, 8, 3), dtype=torch.float32),
+        _model(),
+        0.5,
+        1,
+        1,
+        "highest confidence",
+        0,
+        0,
+        0,
+        1.0,
+        "largest to smallest",
+        False,
+    )
+
+    segs_list = cast(list[tuple[object, list[Segment]]], segs)
+    assert [segments[0].label for _header, segments in segs_list] == [
+        "image-0-high",
+        "image-1-high",
+    ]
     assert builder.call_count == 2
     assert cast(torch.Tensor, mask).shape == (2, 8, 8)
 
@@ -240,6 +402,8 @@ def test_detector_node_processes_image_batches_with_unioned_segs(
         _model(),
         0.5,
         1,
+        0,
+        "highest confidence",
         0,
         0,
         0,
@@ -313,6 +477,35 @@ class _FakeUnsortedSegsService:
         )
 
 
+class _FakeRankingSegsService:
+    """Fake SEGS service that returns rankable segments."""
+
+    def detect_simple(
+        self,
+        image: object,
+        detector_model: UltralyticsDetectorModel,
+        bbox_threshold: float,
+        bbox_dilation: int,
+        crop_factor: float,
+        drop_size: int,
+        sub_threshold: float,
+        sub_dilation: int,
+        post_dilation: int = 0,
+    ) -> NativeSegs:
+        """Return segments with different confidence and size values."""
+
+        del image, detector_model, bbox_threshold, bbox_dilation, crop_factor
+        del drop_size, sub_threshold, sub_dilation, post_dilation
+        return (
+            (8, 8),
+            (
+                _segment("small-high", CropRegion(0, 0, 2, 2), confidence=0.95),
+                _segment("large-low", CropRegion(4, 0, 8, 4), confidence=0.1),
+                _segment("medium", CropRegion(2, 0, 5, 3), confidence=0.5),
+            ),
+        )
+
+
 class _FakeBatchSegsService:
     """Fake SEGS service that returns one labeled segment per image call."""
 
@@ -341,6 +534,42 @@ class _FakeBatchSegsService:
         label = f"image-{self._call_count}"
         self._call_count += 1
         return (8, 8), (_segment(label, CropRegion(0, 0, 2, 2)),)
+
+
+class _FakeBatchRankingSegsService:
+    """Fake SEGS service that returns rankable segments per image."""
+
+    def __init__(self) -> None:
+        """Create an empty image-call counter."""
+
+        self._call_count = 0
+
+    def detect_simple(
+        self,
+        image: object,
+        detector_model: UltralyticsDetectorModel,
+        bbox_threshold: float,
+        bbox_dilation: int,
+        crop_factor: float,
+        drop_size: int,
+        sub_threshold: float,
+        sub_dilation: int,
+        post_dilation: int = 0,
+    ) -> NativeSegs:
+        """Return high and low confidence detections for one image slice."""
+
+        del detector_model, bbox_threshold, bbox_dilation, crop_factor
+        del drop_size, sub_threshold, sub_dilation, post_dilation
+        assert cast(torch.Tensor, image).shape == (1, 8, 8, 3)
+        label_prefix = f"image-{self._call_count}"
+        self._call_count += 1
+        return (
+            (8, 8),
+            (
+                _segment(f"{label_prefix}-low", CropRegion(0, 0, 4, 4), 0.1),
+                _segment(f"{label_prefix}-high", CropRegion(4, 4, 6, 6), 0.9),
+            ),
+        )
 
 
 class _FakeStoryOrderSegsService:
@@ -428,6 +657,8 @@ def _detect(combine_segs: bool) -> tuple[object, object]:
         _model(),
         0.5,
         1,
+        0,
+        "highest confidence",
         0,
         2,
         -1,

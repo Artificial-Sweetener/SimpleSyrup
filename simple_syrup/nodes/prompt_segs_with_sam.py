@@ -12,8 +12,11 @@ from typing import Any, ClassVar
 import torch
 
 from ..domain.segs import (
+    KEEP_BY_OPTIONS,
     SORT_ORDER_OPTIONS,
     NativeSegs,
+    limit_segs,
+    sort_segs,
     to_impact_compatible_segs,
 )
 from ..masking.mask_ops import DETAIL_METHODS
@@ -117,6 +120,29 @@ class PromptSEGSWithSAM:
                         "tooltip": (
                             "Discard final regions whose mask bounds are smaller "
                             "than this many pixels wide or tall."
+                        ),
+                    },
+                ),
+                "keep_only": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 4096,
+                        "step": 1,
+                        "tooltip": (
+                            "Keep only this many detected regions after threshold "
+                            "filtering. Use 0 to keep all regions."
+                        ),
+                    },
+                ),
+                "keep_by": (
+                    KEEP_BY_OPTIONS,
+                    {
+                        "default": "highest confidence",
+                        "tooltip": (
+                            "Choose how regions are ranked when Keep Only is "
+                            "greater than 0."
                         ),
                     },
                 ),
@@ -289,6 +315,8 @@ class PromptSEGSWithSAM:
         negative_prompt: str,
         confidence_threshold: float,
         size_threshold: int,
+        keep_only: int,
+        keep_by: str,
         bbox_dilation: int,
         mask_dilation: int,
         detail_method: str,
@@ -331,8 +359,9 @@ class PromptSEGSWithSAM:
                 mask_refinement_max_size=mask_refinement_max_size,
                 execution_device=execution_device,
                 crop_factor=crop_factor,
-                sort_order=sort_order,
             )
+            segs = limit_segs(segs, keep_only, keep_by)
+            segs = sort_segs(segs, sort_order)
             combined = type(self).combined_builder(single_image, segs, crop_factor)
             output_segs = combined.segs if combine_segs else segs
             segs_outputs.append(to_impact_compatible_segs(output_segs))

@@ -301,8 +301,8 @@ def test_service_vitmatte_refinement_receives_max_size() -> None:
     assert refiner.calls == [512]
 
 
-def test_service_sorts_final_segs() -> None:
-    """Final SEGS use the requested shared sorting policy."""
+def test_service_preserves_detection_order_for_node_sorting() -> None:
+    """Final SEGS remain unsorted so the node owns output ordering."""
 
     detector = RecordingDetector(
         {
@@ -321,10 +321,9 @@ def test_service_sorts_final_segs() -> None:
         service,
         positive_prompt="face",
         size_threshold=1,
-        sort_order="highest confidence first",
     )
 
-    assert [segment.confidence for segment in segs[1]] == [0.9, 0.5]
+    assert [segment.confidence for segment in segs[1]] == [0.5, 0.9]
 
 
 def _service(
@@ -358,7 +357,6 @@ def _prompt(
     mask_refinement_max_size: int = 2048,
     execution_device: str = "cpu",
     crop_factor: float = 1.0,
-    sort_order: str = "largest to smallest",
 ) -> NativeSegs:
     """Call the service with common test options."""
 
@@ -382,7 +380,6 @@ def _prompt(
         mask_refinement_max_size=mask_refinement_max_size,
         execution_device=execution_device,
         crop_factor=crop_factor,
-        sort_order=sort_order,
     )
 
 
