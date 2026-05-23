@@ -137,6 +137,28 @@ def test_decoded_output_is_composited_only_inside_union_mask() -> None:
     assert torch.all(result.image[:, :, 4:, :] == 0.0)
 
 
+def test_regional_composite_uses_gaussian_feathered_union_mask() -> None:
+    """Final regional compositing uses a softened full-image union mask."""
+
+    sampler = _FakeRegionalSampler()
+    service = _service(sampler)
+
+    result = service.detail(
+        _image(),
+        _segs(_segment(CropRegion(0, 0, 4, 4))),
+        "model",
+        "vae",
+        "global positive",
+        "negative",
+        ConditioningBatch(("regional positive",)),
+        **(_settings() | {"feather": 1}),
+    )
+
+    assert float(result.image[0, 1, 1, 0]) > float(result.image[0, 3, 2, 0])
+    assert 0.0 < float(result.image[0, 3, 2, 0]) < 1.0
+    assert float(result.image[0, 5, 5, 0]) < float(result.image[0, 3, 2, 0])
+
+
 def test_scale_factor_resizes_working_canvas_and_preserves_outside_mask() -> None:
     """Scaled regional detailing keeps original pixels outside the union mask."""
 

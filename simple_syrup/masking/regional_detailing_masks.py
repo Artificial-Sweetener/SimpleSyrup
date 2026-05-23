@@ -21,6 +21,7 @@ from ..domain.regional_detailing import (
     SegmentConditioningPair,
 )
 from ..domain.segs import CropRegion
+from .detailer_masks import gaussian_feather_mask
 from .segs_mask_ops import feather_mask, resize_mask
 
 OPERATION = "Detail SEGS as Regions"
@@ -153,7 +154,7 @@ def union_masks(masks: tuple[torch.Tensor, ...]) -> torch.Tensor:
 def feather_image_mask(mask: torch.Tensor, feather: int) -> torch.Tensor:
     """Feather an image-space mask while preserving the HW contract."""
 
-    return feather_mask(mask, feather)
+    return gaussian_feather_mask(mask, feather)
 
 
 def proportional_latent_box(
