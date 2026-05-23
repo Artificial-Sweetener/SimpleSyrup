@@ -98,6 +98,10 @@ SORT_ORDER_OPTIONS: tuple[str, ...] = (
     "highest confidence first",
     "lowest confidence first",
 )
+KEEP_BY_OPTIONS: tuple[str, ...] = (
+    "highest confidence",
+    "largest size",
+)
 
 
 def coerce_segs(value: object) -> NativeSegs:
@@ -180,6 +184,28 @@ def to_impact_compatible_segs_group(segs_group: NativeSegsGroup) -> list[ImpactS
     return [to_impact_compatible_segs(segs) for segs in segs_group]
 
 
+def limit_segs(segs: NativeSegs, keep_only: int, keep_by: str) -> NativeSegs:
+    """Return SEGS limited by a user-facing ranking policy."""
+
+    header, segments = coerce_segs(segs)
+    if keep_only < 0:
+        raise ValueError("keep_only must be greater than or equal to 0.")
+    if keep_by not in KEEP_BY_OPTIONS:
+        raise ValueError(f"Unknown SEGS keep_by option: '{keep_by}'.")
+    if keep_only == 0 or len(segments) <= keep_only:
+        return header, segments
+
+    indexed_segments = tuple(enumerate(segments))
+    ranked = sorted(
+        indexed_segments,
+        key=lambda item: _keep_key(item[1], item[0], keep_by),
+    )
+    selected_indexes = {index for index, _segment in ranked[:keep_only]}
+    return header, tuple(
+        segment for index, segment in indexed_segments if index in selected_indexes
+    )
+
+
 def sort_segs(segs: NativeSegs, sort_order: str) -> NativeSegs:
     """Return native SEGS sorted by a plain-English policy."""
 
@@ -233,6 +259,17 @@ def _sort_key(segment: Segment, index: int, sort_order: str) -> SortKey:
     else:
         raise ValueError(f"Unknown SEGS sort order: '{sort_order}'.")
     return primary, confidence_desc, region.top, region.left, index
+
+
+def _keep_key(segment: Segment, index: int, keep_by: str) -> tuple[float, int]:
+    """Build a deterministic selection key for one segment."""
+
+    if keep_by == "highest confidence":
+        return -float(segment.confidence), index
+    if keep_by == "largest size":
+        region = segment.crop_region
+        return -float(region.width * region.height), index
+    raise ValueError(f"Unknown SEGS keep_by option: '{keep_by}'.")
 
 
 def _coerce_header(value: object) -> SegsHeader:

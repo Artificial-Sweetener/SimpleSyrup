@@ -71,7 +71,6 @@ def test_prompt_service_accepts_impact_style_sam_model() -> None:
         mask_refinement_max_size=4,
         execution_device="cpu",
         crop_factor=1.0,
-        sort_order="largest to smallest",
     )
 
     assert len(result[1]) == 1
@@ -106,5 +105,4 @@ def test_prompt_service_rejects_invalid_dino_model() -> None:
             mask_refinement_max_size=4,
             execution_device="cpu",
             crop_factor=1.0,
-            sort_order="largest to smallest",
         )
