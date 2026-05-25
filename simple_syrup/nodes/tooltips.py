@@ -23,6 +23,27 @@ MODEL_OUTPUT = "Loaded diffusion model for downstream MODEL inputs."
 CLIP_OUTPUT = "Loaded text encoder for downstream CLIP inputs."
 VAE_OUTPUT = "Loaded VAE used to encode images to latents and decode latents to images."
 
+VAE_OPTIONS_USE_TILING = (
+    "Use ComfyUI's tiled VAE node. Disabled uses normal ComfyUI VAE behavior, "
+    "including its automatic tiled retry after out-of-memory."
+)
+VAE_OPTIONS_ENCODE_PIXELS = "Image to encode into latent space."
+VAE_OPTIONS_DECODE_SAMPLES = "Latent samples to decode into an image."
+VAE_OPTIONS_VAE = "VAE used for the selected encode or decode operation."
+VAE_OPTIONS_TILE_SIZE = (
+    "Tile size in pixels. Larger tiles are faster but use more memory."
+)
+VAE_OPTIONS_OVERLAP = (
+    "Overlap between tiles in pixels. Larger overlaps reduce seams but do more work."
+)
+VAE_OPTIONS_ENCODE_TEMPORAL_SIZE = "For video VAEs, number of frames to encode at once."
+VAE_OPTIONS_DECODE_TEMPORAL_SIZE = "For video VAEs, number of frames to decode at once."
+VAE_OPTIONS_TEMPORAL_OVERLAP = (
+    "For video VAEs, number of overlapping frames between temporal tiles."
+)
+VAE_OPTIONS_LATENT_OUTPUT = "Latent produced by ComfyUI's selected VAE encode node."
+VAE_OPTIONS_IMAGE_OUTPUT = "Image produced by ComfyUI's selected VAE decode node."
+
 SAM_MODEL_OUTPUT = "Loaded SAM model for prompt-based mask and SEGS creation."
 GROUNDING_DINO_MODEL_OUTPUT = (
     "Loaded GroundingDINO model for finding prompt-matched boxes in images."

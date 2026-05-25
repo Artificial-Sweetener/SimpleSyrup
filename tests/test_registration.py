@@ -476,6 +476,29 @@ def test_provenance_latent_nodes_are_registered() -> None:
     assert "UpscaleLatentFromImage" in nodes_package.__all__
 
 
+def test_vae_options_nodes_are_registered() -> None:
+    """VAE options nodes map to their classes and display names."""
+
+    package = importlib.import_module("SimpleSyrup")
+    nodes_package = importlib.import_module("SimpleSyrup.simple_syrup.nodes")
+
+    encode = package.NODE_CLASS_MAPPINGS["SimpleSyrup.VAEEncodeOptions"]
+    decode = package.NODE_CLASS_MAPPINGS["SimpleSyrup.VAEDecodeOptions"]
+
+    assert encode.__name__ == "VAEEncodeOptions"
+    assert decode.__name__ == "VAEDecodeOptions"
+    assert (
+        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.VAEEncodeOptions"]
+        == "VAE Encode (Options)"
+    )
+    assert (
+        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.VAEDecodeOptions"]
+        == "VAE Decode (Options)"
+    )
+    assert "VAEEncodeOptions" in nodes_package.__all__
+    assert "VAEDecodeOptions" in nodes_package.__all__
+
+
 def test_registration_import_does_not_require_torchlanc() -> None:
     """Importing registration does not eagerly import TorchLanc."""
 
@@ -504,6 +527,8 @@ def test_v3_entrypoint_registers_tile_and_prompt_control_batch_nodes(
         "TileAndTagSEGSV3",
         "SimpleLoadCheckpointV3",
         "ScaleFactorV3",
+        "VAEDecodeOptionsV3",
+        "VAEEncodeOptionsV3",
         "EncodePromptBatchWithPromptControl",
     ]
     assert "prompt_control.nodes_lazy" not in sys.modules
@@ -527,5 +552,7 @@ def test_v3_entrypoint_keeps_tile_node_when_prompt_control_unavailable(
         "TileAndTagSEGSV3",
         "SimpleLoadCheckpointV3",
         "ScaleFactorV3",
+        "VAEDecodeOptionsV3",
+        "VAEEncodeOptionsV3",
     ]
     assert "prompt_control.nodes_lazy" not in sys.modules

@@ -15,6 +15,8 @@ def get_nodes() -> list[type[object]]:
     from .scale_factor import ScaleFactorV3
     from .simple_load_checkpoint import SimpleLoadCheckpointV3
     from .tile_and_tag_segs import TileAndTagSEGSV3
+    from .vae_decode_options import VAEDecodeOptionsV3
+    from .vae_encode_options import VAEEncodeOptionsV3
     from .wd14_tagger_loader import WD14TaggerLoaderV3
 
     if not prompt_control_is_available():
@@ -23,6 +25,8 @@ def get_nodes() -> list[type[object]]:
             TileAndTagSEGSV3,
             SimpleLoadCheckpointV3,
             ScaleFactorV3,
+            VAEDecodeOptionsV3,
+            VAEEncodeOptionsV3,
         ]
 
     from .encode_prompt_batch_with_prompt_control import (
@@ -34,6 +38,8 @@ def get_nodes() -> list[type[object]]:
         TileAndTagSEGSV3,
         SimpleLoadCheckpointV3,
         ScaleFactorV3,
+        VAEDecodeOptionsV3,
+        VAEEncodeOptionsV3,
         EncodePromptBatchWithPromptControl,
     ]
 
