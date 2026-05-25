@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.1.0...v1.2.0) (2026-05-25)
+
+
+### Features
+
+* **nodes:** add VAE options and clone-safe diffusion ([6ff2dc8](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/6ff2dc8c24a6f7ddde3182b81bcbe6aad65427f4))
+
 # [1.1.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.0.0...v1.1.0) (2026-05-23)
 
 
