@@ -25,6 +25,7 @@ from ..domain.tiled_diffusion import (
 from ..shared.logging import get_logger
 from . import sampling_samplers, sampling_schedulers
 from .detail_previews import DetailPreviewContext, prepare_detail_preview_callback
+from .differential_diffusion import install_differential_diffusion
 from .tiled_sampling import (
     ApplyModel,
     Latent,
@@ -60,6 +61,7 @@ def sample_multidiffusion(
     latent_tile_overlap: int,
     latent_tile_batch_size: int,
     preview_context: DetailPreviewContext | None = None,
+    differential_diffusion: bool = False,
 ) -> Latent:
     """Sample a latent with a cloned model patched for MultiDiffusion."""
 
@@ -106,6 +108,7 @@ def sample_multidiffusion(
         tile_height=latent_tile_height,
         overlap=latent_tile_overlap,
         tile_batch_size=latent_tile_batch_size,
+        differential_diffusion=differential_diffusion,
     )
 
     batch_inds = latent_image["batch_index"] if "batch_index" in latent_image else None
@@ -162,6 +165,7 @@ def clone_model_with_multidiffusion(
     tile_height: int,
     overlap: int,
     tile_batch_size: int,
+    differential_diffusion: bool = False,
 ) -> tuple[Any, TiledDiffusionPlan]:
     """Return a model clone patched with a pre-CFG MultiDiffusion wrapper."""
 
@@ -174,6 +178,8 @@ def clone_model_with_multidiffusion(
         tile_batch_size=tile_batch_size,
     )
     cloned_model = model.clone()
+    if differential_diffusion:
+        install_differential_diffusion(cloned_model)
     old_wrapper = cloned_model.model_options.get("model_function_wrapper")
     if old_wrapper is not None and not callable(old_wrapper):
         raise ValueError("Existing model_function_wrapper is not callable.")

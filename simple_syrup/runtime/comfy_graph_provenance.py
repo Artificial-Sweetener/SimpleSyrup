@@ -18,6 +18,12 @@ from ..domain.graph_provenance import (
 
 MAX_PROVENANCE_HOPS = 128
 PASSTHROUGH_ATTRIBUTE = "GRAPH_PASSTHROUGH_OUTPUTS"
+VAE_DECODE_SOURCE_CLASS_TYPES = frozenset(
+    {
+        "VAEDecode",
+        "SimpleSyrup.VAEDecodeOptions",
+    }
+)
 
 PromptNode = Mapping[str, Any]
 PromptGraph = Mapping[str, Any]
@@ -67,8 +73,8 @@ def trace_vae_decode_provenance(
                 class_type=class_type,
             )
 
-        if class_type == "VAEDecode":
-            return _trace_vae_decode(node_id, output_slot, inputs)
+        if class_type in VAE_DECODE_SOURCE_CLASS_TYPES:
+            return _trace_vae_decode(node_id, output_slot, inputs, class_type)
 
         class_def = node_registry.get(class_type)
         if class_def is None:
@@ -135,15 +141,16 @@ def _trace_vae_decode(
     node_id: str,
     output_slot: int,
     inputs: Mapping[str, Any],
+    class_type: str,
 ) -> ProvenanceTrace:
-    """Resolve the latent and VAE links from a `VAEDecode` prompt node."""
+    """Resolve latent and VAE links from a trusted VAE decode prompt node."""
 
     image_output = (node_id, output_slot)
     if output_slot != 0:
         return BrokenProvenance(
             "VAEDecode output is not the image output",
             node_id=node_id,
-            class_type="VAEDecode",
+            class_type=class_type,
         )
 
     samples_link = parse_graph_link(inputs.get("samples"))
@@ -151,7 +158,7 @@ def _trace_vae_decode(
         return BrokenProvenance(
             "VAEDecode samples input is not a graph link",
             node_id=node_id,
-            class_type="VAEDecode",
+            class_type=class_type,
         )
 
     return VaeDecodeProvenance(
