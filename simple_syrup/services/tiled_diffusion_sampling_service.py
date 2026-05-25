@@ -37,6 +37,7 @@ class TiledDiffusionSamplingService:
         latent_tile_overlap: int,
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
+        differential_diffusion: bool = False,
     ) -> Latent:
         """Sample a latent with the selected tiled diffusion method."""
 
@@ -58,6 +59,7 @@ class TiledDiffusionSamplingService:
                 latent_tile_overlap=latent_tile_overlap,
                 latent_tile_batch_size=latent_tile_batch_size,
                 preview_context=preview_context,
+                differential_diffusion=differential_diffusion,
             )
         return mixture_of_diffusers_sampling.sample_mixture_of_diffusers(
             model=model,
@@ -75,4 +77,5 @@ class TiledDiffusionSamplingService:
             latent_tile_overlap=latent_tile_overlap,
             latent_tile_batch_size=latent_tile_batch_size,
             preview_context=preview_context,
+            differential_diffusion=differential_diffusion,
         )

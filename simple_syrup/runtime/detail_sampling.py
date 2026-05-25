@@ -13,6 +13,7 @@ import torch
 
 from . import sampling_samplers, sampling_schedulers
 from .detail_previews import DetailPreviewContext, prepare_detail_preview_callback
+from .differential_diffusion import clone_with_differential_diffusion
 
 Latent: TypeAlias = dict[str, Any]
 
@@ -108,21 +109,7 @@ class DetailSampler:
     def apply_differential_diffusion(self, model: Any) -> Any:
         """Patch a model for feathered denoise masks when ComfyUI supports it."""
 
-        options = getattr(model, "model_options", {})
-        if (
-            isinstance(options, dict)
-            and options.get("denoise_mask_function") is not None
-        ):
-            return model
-
-        module = import_module("comfy_extras.nodes_differential_diffusion")
-        node = module.DifferentialDiffusion
-        output = node.execute(model, 1.0)
-        if hasattr(output, "result"):
-            return output.result[0]
-        if isinstance(output, tuple):
-            return output[0]
-        return output[0]
+        return clone_with_differential_diffusion(model)
 
 
 def _nodes() -> Any:

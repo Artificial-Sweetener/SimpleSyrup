@@ -22,6 +22,7 @@ from ..domain.regional_detailing import LatentRegion
 from ..shared.logging import get_logger
 from . import sampling_samplers, sampling_schedulers
 from .detail_previews import DetailPreviewContext, prepare_detail_preview_callback
+from .differential_diffusion import install_differential_diffusion
 from .tiled_sampling import (
     Latent,
     reject_unsupported_conditioning,
@@ -62,6 +63,7 @@ def sample_regional_multidiffusion(
     denoise: float,
     global_prompt_weight: float,
     preview_context: DetailPreviewContext | None = None,
+    differential_diffusion: bool = False,
 ) -> Latent:
     """Sample a latent with regional MultiDiffusion prompt blending."""
 
@@ -109,6 +111,7 @@ def sample_regional_multidiffusion(
         latent_ndim=latent_samples.ndim,
         regions=regions,
         global_prompt_weight=global_prompt_weight,
+        differential_diffusion=differential_diffusion,
     )
 
     batch_inds = latent_image["batch_index"] if "batch_index" in latent_image else None
@@ -163,6 +166,7 @@ def clone_model_with_regional_multidiffusion(
     latent_ndim: int,
     regions: tuple[LatentRegion, ...],
     global_prompt_weight: float = 0.0,
+    differential_diffusion: bool = False,
 ) -> tuple[Any, RegionalMultiDiffusionSummary]:
     """Return a model clone patched with regional calc-cond-batch blending."""
 
@@ -177,6 +181,8 @@ def clone_model_with_regional_multidiffusion(
         regions=regions,
     )
     cloned_model = model.clone()
+    if differential_diffusion:
+        install_differential_diffusion(cloned_model)
     old_wrapper = cloned_model.model_options.get("sampler_calc_cond_batch_function")
     if old_wrapper is not None and not callable(old_wrapper):
         raise ValueError("Existing sampler_calc_cond_batch_function is not callable.")

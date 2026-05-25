@@ -129,6 +129,35 @@ def test_service_forwards_sampling_arguments_unchanged(
     }
 
 
+def test_service_forwards_differential_diffusion_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dispatcher preserves differential-denoise-mask composition requests."""
+
+    calls: dict[str, Any] = {}
+
+    def fake_multidiffusion(**kwargs: Any) -> dict[str, Any]:
+        """Record forwarded arguments."""
+
+        calls.update(kwargs)
+        return {"samples": torch.ones((1, 4, 4, 4))}
+
+    monkeypatch.setattr(
+        "simple_syrup.services.tiled_diffusion_sampling_service."
+        "multidiffusion_sampling.sample_multidiffusion",
+        fake_multidiffusion,
+    )
+
+    TiledDiffusionSamplingService().sample(
+        **(
+            _sample_kwargs(diffusion_mode="multidiffusion")
+            | {"differential_diffusion": True}
+        )
+    )
+
+    assert calls["differential_diffusion"] is True
+
+
 def test_invalid_mode_fails_before_runtime_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -181,4 +210,5 @@ def _sample_kwargs(
         "latent_tile_overlap": 24,
         "latent_tile_batch_size": 3,
         "preview_context": preview_context,
+        "differential_diffusion": False,
     }

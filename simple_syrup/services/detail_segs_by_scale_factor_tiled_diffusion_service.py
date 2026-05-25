@@ -52,6 +52,7 @@ class TiledDiffusionLatentSamplingBoundary(Protocol):
         latent_tile_overlap: int,
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
+        differential_diffusion: bool = False,
     ) -> Latent:
         """Sample a latent using the selected tiled diffusion mode."""
 
@@ -84,11 +85,9 @@ class TiledDetailSamplingBoundary(Protocol):
         latent_tile_overlap: int,
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
+        differential_diffusion: bool = False,
     ) -> Latent:
         """Sample one latent crop with the requested tiled diffusion mode."""
-
-    def apply_differential_diffusion(self, model: Any) -> Any:
-        """Return a model patched for feathered denoise masks."""
 
 
 class TiledDetailResizeBoundary(Protocol):
@@ -163,6 +162,7 @@ class TiledDetailSampler:
         latent_tile_overlap: int,
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
+        differential_diffusion: bool = False,
     ) -> Latent:
         """Sample one latent crop with the selected tiled diffusion runtime."""
 
@@ -183,12 +183,8 @@ class TiledDetailSampler:
             latent_tile_overlap=latent_tile_overlap,
             latent_tile_batch_size=latent_tile_batch_size,
             preview_context=preview_context,
+            differential_diffusion=differential_diffusion,
         )
-
-    def apply_differential_diffusion(self, model: Any) -> Any:
-        """Patch a model for feathered denoise masks when ComfyUI supports it."""
-
-        return self._detail_sampler.apply_differential_diffusion(model)
 
 
 class DetailSEGSByScaleFactorTiledDiffusionService:
@@ -251,9 +247,7 @@ class DetailSEGSByScaleFactorTiledDiffusionService:
             return TiledDetailerResult(image=image_tensor.clone())
 
         working_image = image_tensor.clone()
-        sampling_model = model
-        if noise_mask and noise_mask_feather > 0:
-            sampling_model = self._sampler.apply_differential_diffusion(model)
+        differential_diffusion = noise_mask and noise_mask_feather > 0
 
         for index, segment in enumerate(segments):
             plan = build_detail_scale_plan(
@@ -278,7 +272,7 @@ class DetailSEGSByScaleFactorTiledDiffusionService:
                 working_image=working_image,
                 segment=segment,
                 plan=plan,
-                model=sampling_model,
+                model=model,
                 vae=vae,
                 positive=select_conditioning(positive, index),
                 negative=select_conditioning(negative, index),
@@ -299,6 +293,7 @@ class DetailSEGSByScaleFactorTiledDiffusionService:
                 latent_tile_height=latent_tile_height,
                 latent_tile_overlap=latent_tile_overlap,
                 latent_tile_batch_size=latent_tile_batch_size,
+                differential_diffusion=differential_diffusion,
             )
 
         LOGGER.info(
@@ -346,6 +341,7 @@ class DetailSEGSByScaleFactorTiledDiffusionService:
         latent_tile_height: int,
         latent_tile_overlap: int,
         latent_tile_batch_size: int,
+        differential_diffusion: bool,
     ) -> torch.Tensor:
         """Detail one segment with tiled diffusion and return the updated image."""
 
@@ -380,6 +376,7 @@ class DetailSEGSByScaleFactorTiledDiffusionService:
             latent_tile_height=latent_tile_height,
             latent_tile_overlap=latent_tile_overlap,
             latent_tile_batch_size=latent_tile_batch_size,
+            differential_diffusion=differential_diffusion,
             preview_context=DetailPreviewContext(
                 image=working_image,
                 work_region=segment.crop_region,
