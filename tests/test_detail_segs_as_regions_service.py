@@ -297,8 +297,8 @@ def test_noise_mask_false_omits_latent_mask_but_composites_pixels() -> None:
     assert torch.all(result.image[:, 4:, :, :] == 0.0)
 
 
-def test_noise_mask_feather_applies_differential_diffusion() -> None:
-    """Feathered denoise masks request differential diffusion patching."""
+def test_noise_mask_feather_requests_single_clone_differential_diffusion() -> None:
+    """Feathered denoise masks are composed inside the regional runtime clone."""
 
     sampler = _FakeRegionalSampler()
     service = _service(sampler)
@@ -314,8 +314,9 @@ def test_noise_mask_feather_applies_differential_diffusion() -> None:
         **(_settings() | {"noise_mask": True, "noise_mask_feather": 2}),
     )
 
-    assert sampler.patch_count == 1
-    assert sampler.sample_calls[0]["model"] == "patched model"
+    assert sampler.patch_count == 0
+    assert sampler.sample_calls[0]["model"] == "model"
+    assert sampler.sample_calls[0]["differential_diffusion"] is True
 
 
 def test_encode_decode_and_sampler_controls_are_forwarded() -> None:
@@ -479,6 +480,7 @@ class _FakeRegionalSampler:
         denoise: float,
         global_prompt_weight: float,
         preview_context: DetailPreviewContext | None = None,
+        differential_diffusion: bool = False,
     ) -> Latent:
         """Record regional sample options and return the latent unchanged."""
 
@@ -497,6 +499,7 @@ class _FakeRegionalSampler:
                 "denoise": denoise,
                 "global_prompt_weight": global_prompt_weight,
                 "preview_context": preview_context,
+                "differential_diffusion": differential_diffusion,
             }
         )
         return latent_image

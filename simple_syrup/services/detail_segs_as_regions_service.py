@@ -64,11 +64,9 @@ class RegionalDetailSamplingBoundary(Protocol):
         denoise: float,
         global_prompt_weight: float,
         preview_context: DetailPreviewContext | None = None,
+        differential_diffusion: bool = False,
     ) -> Latent:
         """Sample one full latent with paired regional conditioning."""
-
-    def apply_differential_diffusion(self, model: Any) -> Any:
-        """Return a model patched for feathered denoise masks."""
 
 
 class RegionalDetailResizeBoundary(Protocol):
@@ -133,6 +131,7 @@ class RegionalDetailSampler:
         denoise: float,
         global_prompt_weight: float,
         preview_context: DetailPreviewContext | None = None,
+        differential_diffusion: bool = False,
     ) -> Latent:
         """Sample one full latent with regional MultiDiffusion."""
 
@@ -150,12 +149,8 @@ class RegionalDetailSampler:
             denoise=denoise,
             global_prompt_weight=global_prompt_weight,
             preview_context=preview_context,
+            differential_diffusion=differential_diffusion,
         )
-
-    def apply_differential_diffusion(self, model: Any) -> Any:
-        """Patch a model for feathered denoise masks when ComfyUI supports it."""
-
-        return self._detail_sampler.apply_differential_diffusion(model)
 
 
 class DetailSEGSAsRegionsService:
@@ -273,12 +268,10 @@ class DetailSEGSAsRegionsService:
         latent_for_sampling = (
             self._with_noise_mask(latent, latent_regions) if noise_mask else latent
         )
-        sampling_model = model
-        if noise_mask and noise_mask_feather > 0:
-            sampling_model = self._sampler.apply_differential_diffusion(model)
+        differential_diffusion = noise_mask and noise_mask_feather > 0
 
         sampled = self._sampler.sample_regions(
-            model=sampling_model,
+            model=model,
             seed=seed,
             steps=steps,
             cfg=cfg,
@@ -296,6 +289,7 @@ class DetailSEGSAsRegionsService:
                 work_mask=image_union_mask,
                 sampled_region=CropRegion(0, 0, image_width, image_height),
             ),
+            differential_diffusion=differential_diffusion,
         )
         decoded = self._sampler.decode(vae, sampled, tiled_decode)
         if decoded.shape[1:3] != image_tensor.shape[1:3]:

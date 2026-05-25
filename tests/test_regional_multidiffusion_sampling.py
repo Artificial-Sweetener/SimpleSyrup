@@ -94,6 +94,7 @@ class FakeModel:
     def __init__(
         self,
         model_options: dict[str, Any] | None = None,
+        parent: FakeModel | None = None,
     ) -> None:
         """Create a fake model patcher."""
 
@@ -101,17 +102,25 @@ class FakeModel:
         self.model_options = {} if model_options is None else model_options
         self.calc_wrapper: Any = None
         self.model_sampling = object()
+        self.parent = parent
+        self.clone_count = 0
 
     def clone(self) -> FakeModel:
         """Return a cloned model with copied options."""
 
-        return FakeModel(self.model_options.copy())
+        self.clone_count += 1
+        return FakeModel(self.model_options.copy(), parent=self)
 
     def set_model_sampler_calc_cond_batch_function(self, wrapper: object) -> None:
         """Capture the installed calc-cond-batch wrapper."""
 
         self.calc_wrapper = wrapper
         self.model_options["sampler_calc_cond_batch_function"] = wrapper
+
+    def set_model_denoise_mask_function(self, denoise_mask_function: object) -> None:
+        """Capture the installed denoise-mask function."""
+
+        self.model_options["denoise_mask_function"] = denoise_mask_function
 
     def get_model_object(self, name: str) -> object:
         """Return the requested fake model object."""
@@ -151,6 +160,31 @@ def test_clone_model_installs_regional_calc_cond_batch_wrapper() -> None:
         regional_multidiffusion_sampling.RegionalMultiDiffusionCalcCondBatch,
     )
     assert summary.region_count == 1
+
+
+def test_clone_model_composes_differential_on_same_clone() -> None:
+    """Differential diffusion is installed without cloning a temporary parent."""
+
+    model = FakeModel()
+
+    wrapped_model, _summary = (
+        regional_multidiffusion_sampling.clone_model_with_regional_multidiffusion(
+            model,
+            latent_width=8,
+            latent_height=4,
+            latent_ndim=4,
+            regions=(_region(0, 0, 4, 4, "positive", latent_width=8),),
+            differential_diffusion=True,
+        )
+    )
+
+    assert model.clone_count == 1
+    assert wrapped_model.parent is model
+    assert callable(wrapped_model.model_options["denoise_mask_function"])
+    assert isinstance(
+        wrapped_model.calc_wrapper,
+        regional_multidiffusion_sampling.RegionalMultiDiffusionCalcCondBatch,
+    )
 
 
 def test_clone_model_rejects_non_callable_existing_calc_wrapper() -> None:

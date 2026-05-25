@@ -211,6 +211,29 @@ def test_tiled_noise_mask_feather_keeps_sampled_crop_geometry() -> None:
     assert float(noise_mask[0, 1, 1]) > float(noise_mask[0, 0, 1])
 
 
+def test_tiled_noise_mask_feather_requests_single_clone_differential_diffusion() -> (
+    None
+):
+    """Feathered denoise masks are composed inside the tiled runtime clone."""
+
+    sampler = _FakeTiledSampler()
+    service = _service(sampler)
+
+    service.detail(
+        _image(),
+        _segs(_segment()),
+        "model",
+        "vae",
+        [],
+        [],
+        **(_settings() | {"noise_mask": True, "noise_mask_feather": 2}),
+    )
+
+    assert sampler.patch_count == 0
+    assert sampler.sample_calls[0]["model"] == "model"
+    assert sampler.sample_calls[0]["differential_diffusion"] is True
+
+
 def test_tiled_detail_sampler_delegates_to_shared_sampling_service() -> None:
     """The detailer adapter uses the shared tiled diffusion dispatch service."""
 
@@ -241,6 +264,7 @@ def test_tiled_detail_sampler_delegates_to_shared_sampling_service() -> None:
         latent_tile_overlap=12,
         latent_tile_batch_size=3,
         preview_context=preview_context,
+        differential_diffusion=True,
     )
 
     assert result is latent
@@ -248,6 +272,7 @@ def test_tiled_detail_sampler_delegates_to_shared_sampling_service() -> None:
     assert call["diffusion_mode"] == "mixture_of_diffusers"
     assert call["latent_image"] is latent
     assert call["preview_context"] is preview_context
+    assert call["differential_diffusion"] is True
 
 
 class _FakeTiledSamplingService:
@@ -277,6 +302,7 @@ class _FakeTiledSamplingService:
         latent_tile_overlap: int,
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
+        differential_diffusion: bool = False,
     ) -> Latent:
         """Record tiled sampling arguments and return the latent unchanged."""
 
@@ -298,6 +324,7 @@ class _FakeTiledSamplingService:
                 "latent_tile_overlap": latent_tile_overlap,
                 "latent_tile_batch_size": latent_tile_batch_size,
                 "preview_context": preview_context,
+                "differential_diffusion": differential_diffusion,
             }
         )
         return latent_image
@@ -356,6 +383,7 @@ class _FakeTiledSampler:
         latent_tile_overlap: int,
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
+        differential_diffusion: bool = False,
     ) -> Latent:
         """Record tiled sample options and return the latent unchanged."""
 
@@ -377,6 +405,7 @@ class _FakeTiledSampler:
                 "latent_tile_overlap": latent_tile_overlap,
                 "latent_tile_batch_size": latent_tile_batch_size,
                 "preview_context": preview_context,
+                "differential_diffusion": differential_diffusion,
             }
         )
         return latent_image

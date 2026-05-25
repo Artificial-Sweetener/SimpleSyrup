@@ -32,6 +32,7 @@ from .seed import Seed
 from .simple_load_anima import SimpleLoadAnima
 from .simple_load_checkpoint import SimpleLoadCheckpoint
 from .tile_and_tag_segs import TileAndTagSEGS
+from .vae_options import VAEDecodeOptions, VAEEncodeOptions
 from .vitmatte_model_loader import ViTMatteModelLoader
 from .wd14_tagger_loader import WD14TaggerLoader
 
@@ -49,6 +50,8 @@ NODE_CLASS_MAPPINGS = {
     "SimpleSyrup.PromptSEGSWithSAM": PromptSEGSWithSAM,
     "SimpleSyrup.SimpleVAEEncode": SimpleVAEEncode,
     "SimpleSyrup.UpscaleLatentFromImage": UpscaleLatentFromImage,
+    "SimpleSyrup.VAEDecodeOptions": VAEDecodeOptions,
+    "SimpleSyrup.VAEEncodeOptions": VAEEncodeOptions,
     "SimpleSyrup.ResizeImageToTarget": ResizeImageToTarget,
     "SimpleSyrup.DetailSEGSAsRegions": DetailSEGSAsRegions,
     "SimpleSyrup.DetailSEGSByScaleFactor": DetailSEGSByScaleFactor,
@@ -84,6 +87,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SimpleSyrup.PromptSEGSWithSAM": "Prompt SEGS w/ SAM",
     "SimpleSyrup.SimpleVAEEncode": "Simple VAE Encode",
     "SimpleSyrup.UpscaleLatentFromImage": "Upscale Latent From Image",
+    "SimpleSyrup.VAEDecodeOptions": "VAE Decode (Options)",
+    "SimpleSyrup.VAEEncodeOptions": "VAE Encode (Options)",
     "SimpleSyrup.ResizeImageToTarget": "Resize Image to Target",
     "SimpleSyrup.DetailSEGSAsRegions": "Detail SEGS as Regions",
     "SimpleSyrup.DetailSEGSByScaleFactor": "Detail SEGS by Scale Factor",
@@ -132,6 +137,8 @@ __all__ = [
     "SimpleVAEEncode",
     "TileAndTagSEGS",
     "UpscaleLatentFromImage",
+    "VAEDecodeOptions",
+    "VAEEncodeOptions",
     "ViTMatteModelLoader",
     "WD14TaggerLoader",
 ]

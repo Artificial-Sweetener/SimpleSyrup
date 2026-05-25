@@ -91,6 +91,7 @@ class FakeModel:
     def __init__(
         self,
         model_options: dict[str, Any] | None = None,
+        parent: FakeModel | None = None,
     ) -> None:
         """Create a fake model patcher."""
 
@@ -98,17 +99,25 @@ class FakeModel:
         self.model_options = {} if model_options is None else model_options
         self.wrapper: Any = None
         self.model_sampling = object()
+        self.parent = parent
+        self.clone_count = 0
 
     def clone(self) -> FakeModel:
         """Return a cloned model with copied options."""
 
-        return FakeModel(self.model_options.copy())
+        self.clone_count += 1
+        return FakeModel(self.model_options.copy(), parent=self)
 
     def set_model_unet_function_wrapper(self, wrapper: object) -> None:
         """Capture the installed model function wrapper."""
 
         self.wrapper = wrapper
         self.model_options["model_function_wrapper"] = wrapper
+
+    def set_model_denoise_mask_function(self, denoise_mask_function: object) -> None:
+        """Capture the installed denoise-mask function."""
+
+        self.model_options["denoise_mask_function"] = denoise_mask_function
 
     def get_model_object(self, name: str) -> object:
         """Return the requested fake model object."""
@@ -148,6 +157,31 @@ def test_clone_model_with_multidiffusion_installs_wrapper() -> None:
         multidiffusion_sampling.MultiDiffusionModelWrapper,
     )
     assert plan.tile_batch_size == 2
+
+
+def test_clone_model_with_multidiffusion_composes_differential_on_same_clone() -> None:
+    """Differential diffusion is installed without cloning a temporary parent."""
+
+    model = FakeModel()
+
+    wrapped_model, _plan = multidiffusion_sampling.clone_model_with_multidiffusion(
+        model,
+        latent_width=8,
+        latent_height=4,
+        tile_width=4,
+        tile_height=4,
+        overlap=0,
+        tile_batch_size=2,
+        differential_diffusion=True,
+    )
+
+    assert model.clone_count == 1
+    assert wrapped_model.parent is model
+    assert callable(wrapped_model.model_options["denoise_mask_function"])
+    assert isinstance(
+        wrapped_model.wrapper,
+        multidiffusion_sampling.MultiDiffusionModelWrapper,
+    )
 
 
 def test_clone_model_rejects_non_callable_existing_wrapper() -> None:

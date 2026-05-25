@@ -47,6 +47,33 @@ def test_direct_vae_decode_resolves_samples_and_vae_links() -> None:
     assert result.vae_link == ("loader", 2)
 
 
+def test_vae_decode_options_resolves_samples_and_vae_links() -> None:
+    """VAE Decode (Options) output resolves to the source latent and VAE."""
+
+    prompt = {
+        "decode": {
+            "class_type": "SimpleSyrup.VAEDecodeOptions",
+            "inputs": {
+                "use_tiling": True,
+                "samples": ["latent", 0],
+                "vae": ["loader", 2],
+                "tile_size": 512,
+                "overlap": 64,
+                "temporal_size": 64,
+                "temporal_overlap": 8,
+            },
+        }
+    }
+
+    result = trace_vae_decode_provenance(prompt, ["decode", 0], {})
+
+    assert isinstance(result, VaeDecodeProvenance)
+    assert result.decode_node_id == "decode"
+    assert result.image_output == ("decode", 0)
+    assert result.samples_link == ("latent", 0)
+    assert result.vae_link == ("loader", 2)
+
+
 def test_transparent_node_resolves_to_upstream_vae_decode() -> None:
     """A declared pass-through node is traversed to its source link."""
 
@@ -137,6 +164,25 @@ def test_vae_decode_non_image_output_breaks_provenance() -> None:
     assert result.reason == "VAEDecode output is not the image output"
 
 
+def test_vae_decode_options_non_image_output_breaks_provenance() -> None:
+    """Only VAE Decode (Options) output slot 0 is trusted as image provenance."""
+
+    result = trace_vae_decode_provenance(
+        {
+            "decode": {
+                "class_type": "SimpleSyrup.VAEDecodeOptions",
+                "inputs": {"samples": ["latent", 0], "vae": ["loader", 2]},
+            }
+        },
+        ["decode", 1],
+        {},
+    )
+
+    assert isinstance(result, BrokenProvenance)
+    assert result.reason == "VAEDecode output is not the image output"
+    assert result.class_type == "SimpleSyrup.VAEDecodeOptions"
+
+
 def test_missing_samples_link_breaks_provenance() -> None:
     """VAEDecode without a graph-linked samples input cannot supply provenance."""
 
@@ -148,6 +194,25 @@ def test_missing_samples_link_breaks_provenance() -> None:
 
     assert isinstance(result, BrokenProvenance)
     assert result.reason == "VAEDecode samples input is not a graph link"
+
+
+def test_vae_decode_options_missing_samples_link_breaks_provenance() -> None:
+    """VAE Decode (Options) requires a graph-linked samples input."""
+
+    result = trace_vae_decode_provenance(
+        {
+            "decode": {
+                "class_type": "SimpleSyrup.VAEDecodeOptions",
+                "inputs": {"samples": "latent"},
+            }
+        },
+        ["decode", 0],
+        {},
+    )
+
+    assert isinstance(result, BrokenProvenance)
+    assert result.reason == "VAEDecode samples input is not a graph link"
+    assert result.class_type == "SimpleSyrup.VAEDecodeOptions"
 
 
 def test_missing_node_breaks_provenance() -> None:
