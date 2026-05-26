@@ -19,9 +19,9 @@ class PromptEncodeStyleAndNormalization:
     """Build STYLE tags from encode-style and normalization selections."""
 
     RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("style_tag",)
+    RETURN_NAMES = ("encode_style",)
     OUTPUT_TOOLTIPS = (
-        "Prompt Control STYLE tag text with the selected normalization behavior.",
+        "Prompt Control encode style text with the selected normalization behavior.",
     )
     FUNCTION = "build"
     CATEGORY = "SimpleSyrup/Prompt"

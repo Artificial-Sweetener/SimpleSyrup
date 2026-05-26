@@ -12,6 +12,7 @@ from typing import Any
 
 import torch
 
+from simple_syrup.domain.conditioning_batch import ConditioningBatch
 from simple_syrup.nodes.ksampler_extras import KSamplerExtras
 from simple_syrup.runtime import sampling_samplers, sampling_schedulers
 
@@ -63,6 +64,8 @@ def test_input_types_match_simple_ksampler_contract() -> None:
         "latent_image",
         "denoise",
     )
+    assert required["positive"][0] == "CONDITIONING,CONDITIONING_BATCH"
+    assert required["negative"][0] == "CONDITIONING,CONDITIONING_BATCH"
 
 
 def test_node_metadata_matches_contract() -> None:
@@ -289,3 +292,107 @@ def test_sample_delegates_to_runtime_helpers(
     assert calls["sample_custom"]["sampler"] is sampler
     assert calls["sample_custom"]["sigmas"] is fixed_sigmas
     assert calls["sample_custom"]["disable_pbar"] is True
+
+
+def test_sample_selects_conditioning_batch_per_latent_item(
+    monkeypatch: Any,
+) -> None:
+    """Conditioning batches are selected before calling Comfy sampling."""
+
+    calls: list[dict[str, Any]] = []
+    model = FakeModel()
+    sampler = FakeSampler()
+    latent_samples = torch.arange(2 * 4 * 2 * 2, dtype=torch.float32).reshape(
+        (2, 4, 2, 2)
+    )
+    fixed_noise = torch.full_like(latent_samples, 2.0)
+    fixed_sigmas = torch.tensor([1.0, 0.0], dtype=torch.float32)
+    noise_mask = torch.ones((2, 1, 2, 2), dtype=torch.float32)
+    latent_image: dict[str, Any] = {
+        "samples": latent_samples,
+        "batch_index": [4, 9],
+        "noise_mask": noise_mask,
+    }
+
+    monkeypatch.setattr(
+        sampling_samplers,
+        "resolve_sampler",
+        lambda sampler_name: sampler,
+    )
+    monkeypatch.setattr(
+        sampling_schedulers,
+        "calculate_sigmas",
+        lambda **kwargs: fixed_sigmas,
+    )
+    monkeypatch.setattr(
+        comfy_sample,
+        "fix_empty_latent_channels",
+        lambda model, samples, downscale_ratio_spacial: samples,
+    )
+    monkeypatch.setattr(
+        comfy_sample,
+        "prepare_noise",
+        lambda samples, seed, batch_inds: fixed_noise,
+    )
+    monkeypatch.setattr(
+        latent_preview,
+        "prepare_callback",
+        lambda received_model, steps: "callback",
+    )
+
+    def fake_sample_custom(
+        received_model: FakeModel,
+        noise: torch.Tensor,
+        cfg: float,
+        received_sampler: FakeSampler,
+        sigmas: torch.Tensor,
+        positive: object,
+        negative: object,
+        latent_image: torch.Tensor,
+        noise_mask: torch.Tensor | None,
+        callback: str,
+        disable_pbar: bool,
+        seed: int,
+    ) -> torch.Tensor:
+        """Record one per-item sample call and return a marked tensor."""
+
+        del received_model, cfg, received_sampler, sigmas, callback, disable_pbar, seed
+        calls.append(
+            {
+                "noise": noise,
+                "positive": positive,
+                "negative": negative,
+                "latent_image": latent_image,
+                "noise_mask": noise_mask,
+            }
+        )
+        return torch.full_like(latent_image, float(len(calls)))
+
+    monkeypatch.setattr(comfy_sample, "sample_custom", fake_sample_custom)
+    monkeypatch.setattr(comfy_utils, "PROGRESS_BAR_ENABLED", False)
+
+    (output,) = KSamplerExtras().sample(
+        model=model,
+        seed=123,
+        steps=2,
+        cfg=7.5,
+        sampler_name="lcm",
+        scheduler="GITS",
+        positive=ConditioningBatch(("positive-0", "positive-1")),
+        negative=ConditioningBatch(("negative-last",)),
+        latent_image=latent_image,
+        denoise=0.8,
+    )
+
+    assert len(calls) == 2
+    assert calls[0]["positive"] == "positive-0"
+    assert calls[1]["positive"] == "positive-1"
+    assert calls[0]["negative"] == "negative-last"
+    assert calls[1]["negative"] == "negative-last"
+    assert torch.equal(calls[0]["noise"], fixed_noise[0:1])
+    assert torch.equal(calls[1]["noise"], fixed_noise[1:2])
+    assert torch.equal(calls[0]["noise_mask"], noise_mask[0:1])
+    assert torch.equal(calls[1]["noise_mask"], noise_mask[1:2])
+    assert output["samples"].shape == latent_samples.shape
+    assert torch.equal(output["samples"][0], torch.full((4, 2, 2), 1.0))
+    assert torch.equal(output["samples"][1], torch.full((4, 2, 2), 2.0))

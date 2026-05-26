@@ -18,6 +18,9 @@ from simple_syrup.nodes_v3.encode_prompt_batch_with_prompt_control import (
     EncodePromptBatchWithPromptControl,
 )
 from simple_syrup.nodes_v3.scale_factor import ScaleFactorV3
+from simple_syrup.nodes_v3.schedule_and_encode_prompts_with_prompt_control import (
+    ScheduleAndEncodePromptsWithPromptControl,
+)
 from simple_syrup.nodes_v3.simple_load_checkpoint import SimpleLoadCheckpointV3
 from simple_syrup.nodes_v3.tile_and_tag_segs import TileAndTagSEGSV3
 from simple_syrup.nodes_v3.vae_decode_options import VAEDecodeOptionsV3
@@ -122,6 +125,7 @@ def test_legacy_named_outputs_provide_tooltips() -> None:
         VAEEncodeOptionsV3,
         WD14TaggerLoaderV3,
         EncodePromptBatchWithPromptControl,
+        ScheduleAndEncodePromptsWithPromptControl,
     ],
 )
 def test_v3_nodes_provide_tooltip_metadata(

@@ -50,6 +50,8 @@ def test_input_types_match_tiled_diffusion_contract(
         "mixture_of_diffusers",
     ]
     assert required["diffusion_mode"][1]["default"] == "multidiffusion"
+    assert required["positive"][0] == "CONDITIONING,CONDITIONING_BATCH"
+    assert required["negative"][0] == "CONDITIONING,CONDITIONING_BATCH"
     assert required["latent_tile_width"][1]["default"] == 128
     assert required["latent_tile_width"][1]["max"] == 512
     assert required["latent_tile_height"][1]["default"] == 128
