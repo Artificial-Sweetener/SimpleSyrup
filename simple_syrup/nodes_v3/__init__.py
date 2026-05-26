@@ -32,6 +32,9 @@ def get_nodes() -> list[type[object]]:
     from .encode_prompt_batch_with_prompt_control import (
         EncodePromptBatchWithPromptControl,
     )
+    from .schedule_and_encode_prompts_with_prompt_control import (
+        ScheduleAndEncodePromptsWithPromptControl,
+    )
 
     return [
         WD14TaggerLoaderV3,
@@ -41,6 +44,7 @@ def get_nodes() -> list[type[object]]:
         VAEDecodeOptionsV3,
         VAEEncodeOptionsV3,
         EncodePromptBatchWithPromptControl,
+        ScheduleAndEncodePromptsWithPromptControl,
     ]
 
 

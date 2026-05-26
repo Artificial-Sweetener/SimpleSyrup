@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from ..runtime.prompt_control_availability import prompt_control_is_available
 from .conditioning_batch_pack import ConditioningBatchAppend, ConditioningBatchStart
 from .detail_segs_as_regions import DetailSEGSAsRegions
 from .detail_segs_by_scale_factor import DetailSEGSByScaleFactor
@@ -35,6 +36,8 @@ from .tile_and_tag_segs import TileAndTagSEGS
 from .vae_options import VAEDecodeOptions, VAEEncodeOptions
 from .vitmatte_model_loader import ViTMatteModelLoader
 from .wd14_tagger_loader import WD14TaggerLoader
+
+_PROMPT_CONTROL_EXPORTS: list[str] = []
 
 NODE_CLASS_MAPPINGS = {
     "SimpleSyrup.ConditioningBatchAppend": ConditioningBatchAppend,
@@ -108,6 +111,19 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SimpleSyrup.WD14TaggerLoader": "Load WD14 Tagger",
 }
 
+if prompt_control_is_available():
+    from .schedule_and_encode_prompts_with_prompt_control import (
+        ScheduleAndEncodePromptsWithPromptControl,
+    )
+
+    NODE_CLASS_MAPPINGS["SimpleSyrup.ScheduleAndEncodePromptsWithPromptControl"] = (
+        ScheduleAndEncodePromptsWithPromptControl
+    )
+    NODE_DISPLAY_NAME_MAPPINGS[
+        "SimpleSyrup.ScheduleAndEncodePromptsWithPromptControl"
+    ] = "Schedule & Encode Prompts"
+    _PROMPT_CONTROL_EXPORTS.append("ScheduleAndEncodePromptsWithPromptControl")
+
 __all__ = [
     "ConditioningBatchAppend",
     "ConditioningBatchStart",
@@ -130,6 +146,7 @@ __all__ = [
     "PromptSEGSWithSAM",
     "ResizeImageToTarget",
     "SAMModelLoader",
+    *_PROMPT_CONTROL_EXPORTS,
     "ScaleFactor",
     "Seed",
     "SimpleLoadAnima",

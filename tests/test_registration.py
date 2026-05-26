@@ -15,6 +15,8 @@ from types import ModuleType
 
 import pytest
 
+from simple_syrup.runtime.prompt_control_availability import prompt_control_is_available
+
 
 def test_package_exports_node_mappings() -> None:
     """Root package import exposes ComfyUI mapping dictionaries."""
@@ -187,6 +189,28 @@ def test_prompt_control_encode_style_clean_break_id_is_removed() -> None:
     assert (
         "SimpleSyrup.PromptControlEncodeStyle" not in package.NODE_DISPLAY_NAME_MAPPINGS
     )
+
+
+def test_prompt_control_schedule_node_is_legacy_registered_when_available() -> None:
+    """Prompt-Control schedule node is exported through legacy mappings."""
+
+    if not prompt_control_is_available():
+        pytest.skip("Prompt-Control is not installed in this test environment.")
+
+    package = importlib.import_module("SimpleSyrup")
+    nodes_module = importlib.import_module("SimpleSyrup.simple_syrup.nodes")
+
+    registered = package.NODE_CLASS_MAPPINGS[
+        "SimpleSyrup.ScheduleAndEncodePromptsWithPromptControl"
+    ]
+    assert registered.__name__ == "ScheduleAndEncodePromptsWithPromptControl"
+    assert (
+        package.NODE_DISPLAY_NAME_MAPPINGS[
+            "SimpleSyrup.ScheduleAndEncodePromptsWithPromptControl"
+        ]
+        == "Schedule & Encode Prompts"
+    )
+    assert "ScheduleAndEncodePromptsWithPromptControl" in nodes_module.__all__
 
 
 def test_prompt_segs_with_sam_node_is_registered() -> None:
@@ -530,6 +554,7 @@ def test_v3_entrypoint_registers_tile_and_prompt_control_batch_nodes(
         "VAEDecodeOptionsV3",
         "VAEEncodeOptionsV3",
         "EncodePromptBatchWithPromptControl",
+        "ScheduleAndEncodePromptsWithPromptControl",
     ]
     assert "prompt_control.nodes_lazy" not in sys.modules
 

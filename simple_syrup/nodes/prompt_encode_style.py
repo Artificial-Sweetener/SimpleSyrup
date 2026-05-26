@@ -15,8 +15,8 @@ class PromptEncodeStyle:
     """Build Prompt Control STYLE tags from encode-style selections."""
 
     RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("style_tag",)
-    OUTPUT_TOOLTIPS = ("Prompt Control STYLE tag text for prompt encoding workflows.",)
+    RETURN_NAMES = ("encode_style",)
+    OUTPUT_TOOLTIPS = ("Prompt Control encode style text for prompt workflows.",)
     FUNCTION = "build"
     CATEGORY = "SimpleSyrup/Prompt"
     DESCRIPTION = "Builds a Prompt Control STYLE tag from an encode-style selection."

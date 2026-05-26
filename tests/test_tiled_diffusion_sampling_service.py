@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 import torch
 
+from simple_syrup.domain.conditioning_batch import ConditioningBatch
 from simple_syrup.services.tiled_diffusion_sampling_service import (
     TiledDiffusionSamplingService,
 )
@@ -156,6 +157,63 @@ def test_service_forwards_differential_diffusion_request(
     )
 
     assert calls["differential_diffusion"] is True
+
+
+def test_service_selects_conditioning_batch_per_latent_item(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Batch conditioning is selected before tiled runtime dispatch."""
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_multidiffusion(**kwargs: Any) -> dict[str, Any]:
+        """Record per-item runtime arguments and return marked samples."""
+
+        calls.append(kwargs)
+        return {
+            "samples": torch.full_like(
+                kwargs["latent_image"]["samples"],
+                float(len(calls)),
+            )
+        }
+
+    monkeypatch.setattr(
+        "simple_syrup.services.tiled_diffusion_sampling_service."
+        "multidiffusion_sampling.sample_multidiffusion",
+        fake_multidiffusion,
+    )
+
+    latent_samples = torch.zeros((2, 4, 4, 4))
+    noise_mask = torch.ones((2, 1, 4, 4))
+    result = TiledDiffusionSamplingService().sample(
+        **(
+            _sample_kwargs(diffusion_mode="multidiffusion")
+            | {
+                "positive": ConditioningBatch(("positive-0", "positive-1")),
+                "negative": ConditioningBatch(("negative-last",)),
+                "latent_image": {
+                    "samples": latent_samples,
+                    "batch_index": [7, 11],
+                    "noise_mask": noise_mask,
+                    "downscale_ratio_spacial": 2,
+                },
+            }
+        )
+    )
+
+    assert len(calls) == 2
+    assert calls[0]["positive"] == "positive-0"
+    assert calls[1]["positive"] == "positive-1"
+    assert calls[0]["negative"] == "negative-last"
+    assert calls[1]["negative"] == "negative-last"
+    assert calls[0]["latent_image"]["batch_index"] == [7]
+    assert calls[1]["latent_image"]["batch_index"] == [11]
+    assert torch.equal(calls[0]["latent_image"]["noise_mask"], noise_mask[0:1])
+    assert torch.equal(calls[1]["latent_image"]["noise_mask"], noise_mask[1:2])
+    assert "downscale_ratio_spacial" not in result
+    assert result["samples"].shape == latent_samples.shape
+    assert torch.equal(result["samples"][0], torch.full((4, 4, 4), 1.0))
+    assert torch.equal(result["samples"][1], torch.full((4, 4, 4), 2.0))
 
 
 def test_invalid_mode_fails_before_runtime_call(
