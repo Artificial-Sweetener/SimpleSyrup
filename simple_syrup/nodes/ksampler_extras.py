@@ -9,6 +9,9 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any
 
+import torch
+
+from ..domain.conditioning_batch import ConditioningBatch, select_conditioning
 from ..runtime import sampling_samplers, sampling_schedulers
 from . import tooltips
 
@@ -74,11 +77,11 @@ class KSamplerExtras:
                     {"tooltip": tooltips.SCHEDULER},
                 ),
                 "positive": (
-                    "CONDITIONING",
+                    "CONDITIONING,CONDITIONING_BATCH",
                     {"tooltip": tooltips.POSITIVE_CONDITIONING},
                 ),
                 "negative": (
-                    "CONDITIONING",
+                    "CONDITIONING,CONDITIONING_BATCH",
                     {"tooltip": tooltips.NEGATIVE_CONDITIONING},
                 ),
                 "latent_image": ("LATENT", {"tooltip": tooltips.LATENT_IMAGE}),
@@ -138,20 +141,37 @@ class KSamplerExtras:
 
         callback = latent_preview.prepare_callback(model, steps)
         disable_pbar = not comfy_utils.PROGRESS_BAR_ENABLED
-        samples = comfy_sample.sample_custom(
-            model,
-            noise,
-            cfg,
-            sampler,
-            sigmas,
-            positive,
-            negative,
-            latent_samples,
-            noise_mask=noise_mask,
-            callback=callback,
-            disable_pbar=disable_pbar,
-            seed=seed,
-        )
+        if _uses_conditioning_batch(positive, negative):
+            samples = _sample_conditioning_batch(
+                comfy_sample=comfy_sample,
+                model=model,
+                noise=noise,
+                cfg=cfg,
+                sampler=sampler,
+                sigmas=sigmas,
+                positive=positive,
+                negative=negative,
+                latent_samples=latent_samples,
+                noise_mask=noise_mask,
+                callback=callback,
+                disable_pbar=disable_pbar,
+                seed=seed,
+            )
+        else:
+            samples = comfy_sample.sample_custom(
+                model,
+                noise,
+                cfg,
+                sampler,
+                sigmas,
+                positive,
+                negative,
+                latent_samples,
+                noise_mask=noise_mask,
+                callback=callback,
+                disable_pbar=disable_pbar,
+                seed=seed,
+            )
 
         output = latent_image.copy()
         output.pop("downscale_ratio_spacial", None)
@@ -165,6 +185,68 @@ def _comfy_sample() -> Any:
     import comfy.sample
 
     return comfy.sample
+
+
+def _uses_conditioning_batch(positive: Any, negative: Any) -> bool:
+    """Return whether either conditioning input needs per-item selection."""
+
+    return isinstance(positive, ConditioningBatch) or isinstance(
+        negative,
+        ConditioningBatch,
+    )
+
+
+def _sample_conditioning_batch(
+    *,
+    comfy_sample: Any,
+    model: Any,
+    noise: torch.Tensor,
+    cfg: float,
+    sampler: Any,
+    sigmas: torch.Tensor,
+    positive: Any,
+    negative: Any,
+    latent_samples: torch.Tensor,
+    noise_mask: Any,
+    callback: Any,
+    disable_pbar: bool,
+    seed: int,
+) -> torch.Tensor:
+    """Sample each latent batch item with its selected conditioning."""
+
+    sampled: list[torch.Tensor] = []
+    for index in range(int(latent_samples.shape[0])):
+        sampled.append(
+            comfy_sample.sample_custom(
+                model,
+                noise[index : index + 1],
+                cfg,
+                sampler,
+                sigmas,
+                select_conditioning(positive, index),
+                select_conditioning(negative, index),
+                latent_samples[index : index + 1],
+                noise_mask=_slice_noise_mask(noise_mask, index, latent_samples),
+                callback=callback,
+                disable_pbar=disable_pbar,
+                seed=seed,
+            )
+        )
+    return torch.cat(sampled, dim=0)
+
+
+def _slice_noise_mask(
+    noise_mask: Any,
+    index: int,
+    latent_samples: torch.Tensor,
+) -> Any:
+    """Return the noise mask slice matching one latent batch item."""
+
+    if isinstance(noise_mask, torch.Tensor) and noise_mask.shape[0] == int(
+        latent_samples.shape[0],
+    ):
+        return noise_mask[index : index + 1]
+    return noise_mask
 
 
 def _comfy_utils() -> Any:

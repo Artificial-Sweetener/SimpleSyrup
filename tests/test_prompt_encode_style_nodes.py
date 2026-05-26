@@ -29,7 +29,7 @@ def test_prompt_encode_style_node_contract_constants() -> None:
     """Style-only node constants match the public ComfyUI contract."""
 
     assert PromptEncodeStyle.RETURN_TYPES == ("STRING",)
-    assert PromptEncodeStyle.RETURN_NAMES == ("style_tag",)
+    assert PromptEncodeStyle.RETURN_NAMES == ("encode_style",)
     assert PromptEncodeStyle.FUNCTION == "build"
     assert PromptEncodeStyle.CATEGORY == "SimpleSyrup/Prompt"
 
@@ -60,18 +60,18 @@ def test_prompt_encode_style_node_builds_style_tag(
 ) -> None:
     """Style-only node formats Prompt Control STYLE tags from combo values."""
 
-    (style_tag,) = PromptEncodeStyle().build(encode_style)
+    (encode_style_text,) = PromptEncodeStyle().build(encode_style)
 
-    assert style_tag == expected
-    assert style_tag.endswith(" ")
-    assert not style_tag.endswith("  ")
+    assert encode_style_text == expected
+    assert encode_style_text.endswith(" ")
+    assert not encode_style_text.endswith("  ")
 
 
 def test_prompt_encode_style_and_normalization_node_contract_constants() -> None:
     """Normalization node constants match the public ComfyUI contract."""
 
     assert PromptEncodeStyleAndNormalization.RETURN_TYPES == ("STRING",)
-    assert PromptEncodeStyleAndNormalization.RETURN_NAMES == ("style_tag",)
+    assert PromptEncodeStyleAndNormalization.RETURN_NAMES == ("encode_style",)
     assert PromptEncodeStyleAndNormalization.FUNCTION == "build"
     assert PromptEncodeStyleAndNormalization.CATEGORY == "SimpleSyrup/Prompt"
 
@@ -110,10 +110,10 @@ def test_prompt_encode_style_and_normalization_node_builds_style_tag(
 ) -> None:
     """Normalization node formats Prompt Control STYLE tags from combo values."""
 
-    (style_tag,) = PromptEncodeStyleAndNormalization().build(
+    (encode_style_text,) = PromptEncodeStyleAndNormalization().build(
         encode_style, normalization
     )
 
-    assert style_tag == expected
-    assert style_tag.endswith(" ")
-    assert not style_tag.endswith("  ")
+    assert encode_style_text == expected
+    assert encode_style_text.endswith(" ")
+    assert not encode_style_text.endswith("  ")
