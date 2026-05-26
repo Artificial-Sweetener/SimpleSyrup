@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.2.0...v1.3.0) (2026-05-26)
+
+
+### Features
+
+* **prompt-control:** add schedule and encode prompt node ([bd515e6](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/bd515e696cedcc78d056af6c23b9193e34f131bc))
+
 # [1.2.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.1.0...v1.2.0) (2026-05-25)
 
 
