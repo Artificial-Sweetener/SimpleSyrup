@@ -84,11 +84,11 @@ class KSamplerTiledDiffusion:
                     {"tooltip": tooltips.SCHEDULER},
                 ),
                 "positive": (
-                    "CONDITIONING",
+                    "CONDITIONING,CONDITIONING_BATCH",
                     {"tooltip": tooltips.POSITIVE_CONDITIONING},
                 ),
                 "negative": (
-                    "CONDITIONING",
+                    "CONDITIONING,CONDITIONING_BATCH",
                     {"tooltip": tooltips.NEGATIVE_CONDITIONING},
                 ),
                 "latent_image": ("LATENT", {"tooltip": tooltips.LATENT_IMAGE}),
