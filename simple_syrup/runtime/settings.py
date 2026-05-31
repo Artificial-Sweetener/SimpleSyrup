@@ -8,12 +8,17 @@ from __future__ import annotations
 
 import importlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from json import JSONDecodeError
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Final
 
+from ..domain.external_llm import (
+    ExternalLLMConfigError,
+    normalize_base_url,
+    normalize_model_ids,
+)
 from ..shared.logging import get_logger
 
 LOGGER = get_logger(__name__)
@@ -25,15 +30,82 @@ class SimpleSyrupSettingsError(ValueError):
 
 
 @dataclass(frozen=True)
+class ExternalLLMSettings:
+    """Non-secret external LLM provider settings persisted in Comfy's user data."""
+
+    base_url: str = ""
+    cached_models: tuple[str, ...] = ()
+    default_model: str = ""
+
+    def to_payload(self) -> dict[str, object]:
+        """Return the validated external LLM JSON payload shape."""
+
+        return {
+            "base_url": self.base_url,
+            "cached_models": list(self.cached_models),
+            "default_model": self.default_model,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: object) -> ExternalLLMSettings:
+        """Create external LLM settings from a decoded JSON payload."""
+
+        if payload is None:
+            return cls()
+        if not isinstance(payload, dict):
+            raise SimpleSyrupSettingsError(
+                "SimpleSyrup external_llm settings must be a JSON object."
+            )
+
+        base_url = payload.get("base_url", "")
+        if not isinstance(base_url, str):
+            raise SimpleSyrupSettingsError(
+                "SimpleSyrup external_llm.base_url must be a string."
+            )
+
+        default_model = payload.get("default_model", "")
+        if not isinstance(default_model, str):
+            raise SimpleSyrupSettingsError(
+                "SimpleSyrup external_llm.default_model must be a string."
+            )
+
+        try:
+            cached_models = normalize_model_ids(payload.get("cached_models", []))
+        except ExternalLLMConfigError as error:
+            raise SimpleSyrupSettingsError(str(error)) from error
+
+        default = default_model.strip()
+        if default and cached_models and default not in cached_models:
+            default = cached_models[0]
+
+        normalized_url = ""
+        if base_url.strip():
+            try:
+                normalized_url = normalize_base_url(base_url)
+            except ExternalLLMConfigError as error:
+                raise SimpleSyrupSettingsError(str(error)) from error
+
+        return cls(
+            base_url=normalized_url,
+            cached_models=cached_models,
+            default_model=default,
+        )
+
+
+@dataclass(frozen=True)
 class SimpleSyrupSettings:
     """User-configurable SimpleSyrup runtime settings."""
 
     show_downloadable_models: bool = True
+    external_llm: ExternalLLMSettings = field(default_factory=ExternalLLMSettings)
 
-    def to_payload(self) -> dict[str, bool]:
+    def to_payload(self) -> dict[str, object]:
         """Return the validated JSON payload shape."""
 
-        return {"show_downloadable_models": self.show_downloadable_models}
+        return {
+            "show_downloadable_models": self.show_downloadable_models,
+            "external_llm": self.external_llm.to_payload(),
+        }
 
     @classmethod
     def from_payload(cls, payload: object) -> SimpleSyrupSettings:
@@ -50,7 +122,17 @@ class SimpleSyrupSettings:
                 "SimpleSyrup settings payload is invalid. Expected "
                 "show_downloadable_models to be a boolean."
             )
-        return cls(show_downloadable_models=value)
+
+        try:
+            external_llm = ExternalLLMSettings.from_payload(payload.get("external_llm"))
+        except SimpleSyrupSettingsError as error:
+            LOGGER.warning(
+                "using default external llm settings after failed load",
+                extra={"reason": str(error)},
+            )
+            external_llm = ExternalLLMSettings()
+
+        return cls(show_downloadable_models=value, external_llm=external_llm)
 
 
 class SimpleSyrupSettingsRepository:

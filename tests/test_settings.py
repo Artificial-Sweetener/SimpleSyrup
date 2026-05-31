@@ -78,7 +78,12 @@ def test_saving_settings_writes_validated_schema(tmp_path: Path) -> None:
     repository.save(SimpleSyrupSettings(show_downloadable_models=False))
 
     assert json.loads(path.read_text(encoding="utf-8")) == {
-        "show_downloadable_models": False
+        "external_llm": {
+            "base_url": "",
+            "cached_models": [],
+            "default_model": "",
+        },
+        "show_downloadable_models": False,
     }
 
 
@@ -100,3 +105,71 @@ def test_payload_validation_rejects_non_boolean_value() -> None:
 
     with pytest.raises(SimpleSyrupSettingsError, match="show_downloadable_models"):
         SimpleSyrupSettings.from_payload({"show_downloadable_models": 1})
+
+
+def test_missing_external_llm_settings_loads_defaults(tmp_path: Path) -> None:
+    """Existing settings files without external LLM settings remain valid."""
+
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps({"show_downloadable_models": False}),
+        encoding="utf-8",
+    )
+
+    settings = SimpleSyrupSettingsRepository(path).load()
+
+    assert settings.show_downloadable_models is False
+    assert settings.external_llm.base_url == ""
+    assert settings.external_llm.cached_models == ()
+    assert settings.external_llm.default_model == ""
+
+
+def test_valid_external_llm_settings_are_loaded(tmp_path: Path) -> None:
+    """External LLM settings are normalized when loaded."""
+
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "show_downloadable_models": True,
+                "external_llm": {
+                    "base_url": "https://provider.example/v1/",
+                    "cached_models": ["model-a", "model-a", "model-b"],
+                    "default_model": "model-b",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = SimpleSyrupSettingsRepository(path).load()
+
+    assert settings.external_llm.base_url == "https://provider.example/v1"
+    assert settings.external_llm.cached_models == ("model-a", "model-b")
+    assert settings.external_llm.default_model == "model-b"
+
+
+def test_invalid_external_llm_settings_fall_back_to_external_defaults(
+    tmp_path: Path,
+) -> None:
+    """Malformed external LLM settings do not invalidate other settings."""
+
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "show_downloadable_models": False,
+                "external_llm": {
+                    "base_url": "not-a-url",
+                    "cached_models": ["model-a"],
+                    "default_model": "model-a",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = SimpleSyrupSettingsRepository(path).load()
+
+    assert settings.show_downloadable_models is False
+    assert settings.external_llm.base_url == ""

@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Tests for SimpleSyrup ComfyUI node registration."""
+"""Tests for SimpleSyrup Comfy v3-only node registration."""
 
 from __future__ import annotations
 
@@ -12,21 +12,80 @@ import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any, Protocol, cast
 
 import pytest
 
-from simple_syrup.runtime.prompt_control_availability import prompt_control_is_available
+BASE_NODE_IDS = [
+    "SimpleSyrup.BatchRegionConditioning",
+    "SimpleSyrup.BatchSEGS",
+    "SimpleSyrup.ConditioningBatchAppend",
+    "SimpleSyrup.ConditioningBatchStart",
+    "SimpleSyrup.DetailSEGSAsRegions",
+    "SimpleSyrup.DetailSEGSByScaleFactorTiledDiffusion",
+    "SimpleSyrup.DetailSEGSByScaleFactor",
+    "SimpleSyrup.DetectSEGSWithUltralytics",
+    "SimpleSyrup.EncodePromptBatch",
+    "SimpleSyrup.ExternalLLMPrompt",
+    "SimpleSyrup.GroundedSAMModelInfo",
+    "SimpleSyrup.GroundingDINOModelLoader",
+    "SimpleSyrup.KSamplerExtras",
+    "SimpleSyrup.KSamplerTiledDiffusion",
+    "SimpleSyrup.LatentDiagnostics",
+    "SimpleSyrup.LayerStyleSAMModelsAdapter",
+    "SimpleSyrup.LoadUltralyticsModel",
+    "SimpleSyrup.PromptEncodeStyleAndNormalization",
+    "SimpleSyrup.PromptEncodeStyle",
+    "SimpleSyrup.PromptSEGSWithSAM",
+    "SimpleSyrup.ResizeImageToTarget",
+    "SimpleSyrup.SAMModelLoader",
+    "SimpleSyrup.ScaleFactor",
+    "SimpleSyrup.Seed",
+    "SimpleSyrup.SimpleLoadAnima",
+    "SimpleSyrup.SimpleLoadCheckpoint",
+    "SimpleSyrup.SimpleVAEEncode",
+    "SimpleSyrup.TagSEGSWithWD14",
+    "SimpleSyrup.TileAndTagSEGS",
+    "SimpleSyrup.UpscaleLatentFromImage",
+    "SimpleSyrup.VAEDecodeOptions",
+    "SimpleSyrup.VAEEncodeOptions",
+    "SimpleSyrup.ViTMatteModelLoader",
+    "SimpleSyrup.WD14TaggerLoader",
+]
+
+PROMPT_CONTROL_NODE_IDS = [
+    "SimpleSyrup.EncodePromptBatchWithPromptControl",
+    "SimpleSyrup.ScheduleAndEncodePromptsWithPromptControl",
+]
 
 
-def test_package_exports_node_mappings() -> None:
-    """Root package import exposes ComfyUI mapping dictionaries."""
+class _V3Node(Protocol):
+    """Protocol for Comfy v3 node schema declarations."""
+
+    @classmethod
+    def define_schema(cls) -> Any:
+        """Return a Comfy v3 schema object."""
+
+
+def test_package_exports_v3_entrypoint_only() -> None:
+    """Root package exposes Comfy v3 registration and no legacy mappings."""
 
     package = importlib.import_module("SimpleSyrup")
 
-    assert hasattr(package, "NODE_CLASS_MAPPINGS")
-    assert hasattr(package, "NODE_DISPLAY_NAME_MAPPINGS")
     assert hasattr(package, "comfy_entrypoint")
     assert package.WEB_DIRECTORY == "./web/dist"
+    assert not hasattr(package, "NODE_CLASS_MAPPINGS")
+    assert not hasattr(package, "NODE_DISPLAY_NAME_MAPPINGS")
+    assert package.__all__ == ["WEB_DIRECTORY", "comfy_entrypoint"]
+
+
+def test_nodes_package_is_not_a_legacy_registry() -> None:
+    """The implementation package no longer owns ComfyUI registration."""
+
+    nodes_package = importlib.import_module("SimpleSyrup.simple_syrup.nodes")
+
+    assert not hasattr(nodes_package, "NODE_CLASS_MAPPINGS")
+    assert not hasattr(nodes_package, "NODE_DISPLAY_NAME_MAPPINGS")
 
 
 def test_package_imports_from_custom_nodes_parent_path() -> None:
@@ -41,7 +100,9 @@ def test_package_imports_from_custom_nodes_parent_path() -> None:
         "if pathlib.Path(p or '.').resolve() != project]; "
         f"sys.path.insert(0, {str(custom_nodes_root)!r}); "
         "package = importlib.import_module('SimpleSyrup'); "
-        "assert 'SimpleSyrup.PromptSEGSWithSAM' in package.NODE_CLASS_MAPPINGS; "
+        "assert hasattr(package, 'comfy_entrypoint'); "
+        "assert not hasattr(package, 'NODE_CLASS_MAPPINGS'); "
+        "assert not hasattr(package, 'NODE_DISPLAY_NAME_MAPPINGS'); "
         "assert 'server' not in sys.modules"
     )
 
@@ -85,480 +146,6 @@ def test_comfy_import_exposes_stable_internal_package_alias() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_resize_node_is_registered() -> None:
-    """Resize node id maps to the expected node class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.ResizeImageToTarget"]
-
-    assert registered.__name__ == "ResizeImageToTarget"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.ResizeImageToTarget"]
-        == "Resize Image to Target"
-    )
-
-
-def test_ksampler_extras_node_is_registered() -> None:
-    """KSampler Extras node id maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.KSamplerExtras"]
-
-    assert registered.__name__ == "KSamplerExtras"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.KSamplerExtras"]
-        == "KSampler (Extras)"
-    )
-
-
-def test_ksampler_tiled_diffusion_node_is_registered() -> None:
-    """KSampler tiled diffusion node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.KSamplerTiledDiffusion"]
-
-    assert registered.__name__ == "KSamplerTiledDiffusion"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.KSamplerTiledDiffusion"]
-        == "KSampler (Tiled Diffusion)"
-    )
-    assert (
-        "KSamplerTiledDiffusion"
-        in importlib.import_module("SimpleSyrup.simple_syrup.nodes").__all__
-    )
-    assert "SimpleSyrup.KSamplerMixtureOfDiffusers" not in package.NODE_CLASS_MAPPINGS
-    assert "SimpleSyrup.KSamplerMultiDiffusion" not in package.NODE_CLASS_MAPPINGS
-    assert (
-        "SimpleSyrup.KSamplerMixtureOfDiffusers"
-        not in package.NODE_DISPLAY_NAME_MAPPINGS
-    )
-    assert (
-        "SimpleSyrup.KSamplerMultiDiffusion" not in package.NODE_DISPLAY_NAME_MAPPINGS
-    )
-
-
-def test_batch_segs_node_is_registered() -> None:
-    """Batch SEGS node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.BatchSEGS"]
-
-    assert registered.__name__ == "BatchSEGS"
-    assert package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.BatchSEGS"] == "Batch SEGS"
-
-
-def test_batch_region_conditioning_node_is_registered() -> None:
-    """Batch Region Conditioning node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.BatchRegionConditioning"]
-
-    assert registered.__name__ == "BatchRegionConditioning"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.BatchRegionConditioning"]
-        == "Batch Region Conditioning"
-    )
-
-
-def test_latent_diagnostics_node_is_registered() -> None:
-    """Latent Diagnostics node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.LatentDiagnostics"]
-
-    assert registered.__name__ == "LatentDiagnostics"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.LatentDiagnostics"]
-        == "Latent Diagnostics"
-    )
-
-
-def test_prompt_encode_style_node_is_registered() -> None:
-    """Prompt Encode Style node id maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.PromptEncodeStyle"]
-
-    assert registered.__name__ == "PromptEncodeStyle"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.PromptEncodeStyle"]
-        == "Prompt Encode Style"
-    )
-
-
-def test_prompt_encode_style_and_normalization_node_is_registered() -> None:
-    """Prompt Encode Style & Normalization node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS[
-        "SimpleSyrup.PromptEncodeStyleAndNormalization"
-    ]
-
-    assert registered.__name__ == "PromptEncodeStyleAndNormalization"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS[
-            "SimpleSyrup.PromptEncodeStyleAndNormalization"
-        ]
-        == "Prompt Encode Style & Normalization"
-    )
-
-
-def test_prompt_control_encode_style_clean_break_id_is_removed() -> None:
-    """Old Prompt Control Encode Style node id is not registered."""
-
-    package = importlib.import_module("SimpleSyrup")
-
-    assert "SimpleSyrup.PromptControlEncodeStyle" not in package.NODE_CLASS_MAPPINGS
-    assert (
-        "SimpleSyrup.PromptControlEncodeStyle" not in package.NODE_DISPLAY_NAME_MAPPINGS
-    )
-
-
-def test_prompt_control_schedule_node_is_legacy_registered_when_available() -> None:
-    """Prompt-Control schedule node is exported through legacy mappings."""
-
-    if not prompt_control_is_available():
-        pytest.skip("Prompt-Control is not installed in this test environment.")
-
-    package = importlib.import_module("SimpleSyrup")
-    nodes_module = importlib.import_module("SimpleSyrup.simple_syrup.nodes")
-
-    registered = package.NODE_CLASS_MAPPINGS[
-        "SimpleSyrup.ScheduleAndEncodePromptsWithPromptControl"
-    ]
-    assert registered.__name__ == "ScheduleAndEncodePromptsWithPromptControl"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS[
-            "SimpleSyrup.ScheduleAndEncodePromptsWithPromptControl"
-        ]
-        == "Schedule & Encode Prompts"
-    )
-    assert "ScheduleAndEncodePromptsWithPromptControl" in nodes_module.__all__
-
-
-def test_prompt_segs_with_sam_node_is_registered() -> None:
-    """Prompt SEGS w/ SAM node id maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.PromptSEGSWithSAM"]
-
-    assert registered.__name__ == "PromptSEGSWithSAM"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.PromptSEGSWithSAM"]
-        == "Prompt SEGS w/ SAM"
-    )
-    assert "SimpleSyrup.PromptSAMMask" not in package.NODE_CLASS_MAPPINGS
-    assert "SimpleSyrup.PromptSAMMask" not in package.NODE_DISPLAY_NAME_MAPPINGS
-
-
-def test_sam_model_loader_node_is_registered() -> None:
-    """SAM loader node id maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.SAMModelLoader"]
-
-    assert registered.__name__ == "SAMModelLoader"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.SAMModelLoader"]
-        == "SAM Model Loader"
-    )
-
-
-def test_scale_factor_node_is_registered() -> None:
-    """Scale Factor node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.ScaleFactor"]
-
-    assert registered.__name__ == "ScaleFactor"
-    assert package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.ScaleFactor"] == (
-        "Scale Factor"
-    )
-    assert (
-        "ScaleFactor"
-        in importlib.import_module("SimpleSyrup.simple_syrup.nodes").__all__
-    )
-
-
-def test_seed_node_is_registered() -> None:
-    """Seed node id maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.Seed"]
-
-    assert registered.__name__ == "Seed"
-    assert package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.Seed"] == "Seed"
-
-
-def test_grounding_dino_model_loader_node_is_registered() -> None:
-    """GroundingDINO loader node id maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.GroundingDINOModelLoader"]
-
-    assert registered.__name__ == "GroundingDINOModelLoader"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.GroundingDINOModelLoader"]
-        == "GroundingDINO Model Loader"
-    )
-
-
-def test_vitmatte_model_loader_node_is_registered() -> None:
-    """ViTMatte loader node id maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.ViTMatteModelLoader"]
-
-    assert registered.__name__ == "ViTMatteModelLoader"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.ViTMatteModelLoader"]
-        == "ViTMatte Model Loader"
-    )
-
-
-def test_wd14_tagger_loader_node_is_registered() -> None:
-    """WD14 tagger loader node id maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.WD14TaggerLoader"]
-
-    assert registered.__name__ == "WD14TaggerLoader"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.WD14TaggerLoader"]
-        == "Load WD14 Tagger"
-    )
-
-
-def test_load_ultralytics_model_node_is_registered() -> None:
-    """Load Ultralytics Model node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.LoadUltralyticsModel"]
-
-    assert registered.__name__ == "LoadUltralyticsModel"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.LoadUltralyticsModel"]
-        == "Load Ultralytics Model"
-    )
-
-
-def test_detect_segs_with_ultralytics_node_is_registered() -> None:
-    """Detect SEGS w/ Ultralytics node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.DetectSEGSWithUltralytics"]
-
-    assert registered.__name__ == "DetectSEGSWithUltralytics"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.DetectSEGSWithUltralytics"]
-        == "Detect SEGS w/ Ultralytics"
-    )
-
-
-def test_detail_segs_by_scale_factor_node_is_registered() -> None:
-    """Detail SEGS by Scale Factor node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.DetailSEGSByScaleFactor"]
-
-    assert registered.__name__ == "DetailSEGSByScaleFactor"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.DetailSEGSByScaleFactor"]
-        == "Detail SEGS by Scale Factor"
-    )
-
-
-def test_tiled_detail_segs_by_scale_factor_node_is_registered() -> None:
-    """Tiled Detail SEGS by Scale Factor node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS[
-        "SimpleSyrup.DetailSEGSByScaleFactorTiledDiffusion"
-    ]
-
-    assert registered.__name__ == "DetailSEGSByScaleFactorTiledDiffusion"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS[
-            "SimpleSyrup.DetailSEGSByScaleFactorTiledDiffusion"
-        ]
-        == "Detail SEGS by Scale Factor w/ Tiled Diffusion"
-    )
-    assert (
-        "DetailSEGSByScaleFactorTiledDiffusion"
-        in importlib.import_module("SimpleSyrup.simple_syrup.nodes").__all__
-    )
-
-
-def test_detail_segs_as_regions_node_is_registered() -> None:
-    """Detail SEGS as Regions node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.DetailSEGSAsRegions"]
-
-    assert registered.__name__ == "DetailSEGSAsRegions"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.DetailSEGSAsRegions"]
-        == "Detail SEGS as Regions"
-    )
-
-
-def test_tile_and_tag_segs_node_is_registered() -> None:
-    """Tile & Tag SEGS node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.TileAndTagSEGS"]
-
-    assert registered.__name__ == "TileAndTagSEGS"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.TileAndTagSEGS"]
-        == "Tile & Tag SEGS"
-    )
-
-
-def test_tag_segs_with_wd14_node_is_registered() -> None:
-    """Tag SEGS w/ WD14 node maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.TagSEGSWithWD14"]
-
-    assert registered.__name__ == "TagSEGSWithWD14"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.TagSEGSWithWD14"]
-        == "Tag SEGS w/ WD14"
-    )
-
-
-def test_conditioning_batch_nodes_are_registered() -> None:
-    """Conditioning batch nodes map to their classes and display names."""
-
-    package = importlib.import_module("SimpleSyrup")
-
-    assert (
-        package.NODE_CLASS_MAPPINGS["SimpleSyrup.ConditioningBatchStart"].__name__
-        == "ConditioningBatchStart"
-    )
-    assert (
-        package.NODE_CLASS_MAPPINGS["SimpleSyrup.ConditioningBatchAppend"].__name__
-        == "ConditioningBatchAppend"
-    )
-    assert (
-        package.NODE_CLASS_MAPPINGS["SimpleSyrup.EncodePromptBatch"].__name__
-        == "EncodePromptBatch"
-    )
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.ConditioningBatchStart"]
-        == "Conditioning Batch Start"
-    )
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.ConditioningBatchAppend"]
-        == "Conditioning Batch Append"
-    )
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.EncodePromptBatch"]
-        == "Encode Prompt Batch"
-    )
-
-
-def test_layerstyle_adapter_node_is_registered() -> None:
-    """LayerStyle adapter node id maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.LayerStyleSAMModelsAdapter"]
-
-    assert registered.__name__ == "LayerStyleSAMModelsAdapter"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.LayerStyleSAMModelsAdapter"]
-        == "LayerStyle SAM Models Adapter"
-    )
-
-
-def test_grounded_sam_model_info_node_is_registered() -> None:
-    """Grounded SAM model info node id maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.GroundedSAMModelInfo"]
-
-    assert registered.__name__ == "GroundedSAMModelInfo"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.GroundedSAMModelInfo"]
-        == "Grounded SAM Model Info"
-    )
-
-
-def test_simple_load_anima_node_is_registered() -> None:
-    """Simple Load Anima node id maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.SimpleLoadAnima"]
-
-    assert registered.__name__ == "SimpleLoadAnima"
-    assert registered.RETURN_TYPES == ("MODEL", "CLIP", "VAE")
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.SimpleLoadAnima"]
-        == "Simple Load Anima"
-    )
-
-
-def test_simple_load_checkpoint_node_is_registered() -> None:
-    """Simple Load Checkpoint node id maps to its class and display name."""
-
-    package = importlib.import_module("SimpleSyrup")
-    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.SimpleLoadCheckpoint"]
-
-    assert registered.__name__ == "SimpleLoadCheckpoint"
-    assert registered.RETURN_TYPES == ("MODEL", "CLIP", "VAE")
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.SimpleLoadCheckpoint"]
-        == "Simple Load Checkpoint"
-    )
-
-
-def test_provenance_latent_nodes_are_registered() -> None:
-    """Provenance-aware latent nodes map to their classes and display names."""
-
-    package = importlib.import_module("SimpleSyrup")
-    nodes_package = importlib.import_module("SimpleSyrup.simple_syrup.nodes")
-
-    simple_vae = package.NODE_CLASS_MAPPINGS["SimpleSyrup.SimpleVAEEncode"]
-    upscale = package.NODE_CLASS_MAPPINGS["SimpleSyrup.UpscaleLatentFromImage"]
-
-    assert simple_vae.__name__ == "SimpleVAEEncode"
-    assert upscale.__name__ == "UpscaleLatentFromImage"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.SimpleVAEEncode"]
-        == "Simple VAE Encode"
-    )
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.UpscaleLatentFromImage"]
-        == "Upscale Latent From Image"
-    )
-    assert "SimpleVAEEncode" in nodes_package.__all__
-    assert "UpscaleLatentFromImage" in nodes_package.__all__
-
-
-def test_vae_options_nodes_are_registered() -> None:
-    """VAE options nodes map to their classes and display names."""
-
-    package = importlib.import_module("SimpleSyrup")
-    nodes_package = importlib.import_module("SimpleSyrup.simple_syrup.nodes")
-
-    encode = package.NODE_CLASS_MAPPINGS["SimpleSyrup.VAEEncodeOptions"]
-    decode = package.NODE_CLASS_MAPPINGS["SimpleSyrup.VAEDecodeOptions"]
-
-    assert encode.__name__ == "VAEEncodeOptions"
-    assert decode.__name__ == "VAEDecodeOptions"
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.VAEEncodeOptions"]
-        == "VAE Encode (Options)"
-    )
-    assert (
-        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.VAEDecodeOptions"]
-        == "VAE Decode (Options)"
-    )
-    assert "VAEEncodeOptions" in nodes_package.__all__
-    assert "VAEDecodeOptions" in nodes_package.__all__
-
-
 def test_registration_import_does_not_require_torchlanc() -> None:
     """Importing registration does not eagerly import TorchLanc."""
 
@@ -569,39 +156,10 @@ def test_registration_import_does_not_require_torchlanc() -> None:
     assert imported_module is None
 
 
-def test_v3_entrypoint_registers_tile_and_prompt_control_batch_nodes(
+def test_v3_entrypoint_exports_all_base_nodes_without_prompt_control(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Comfy v3 entrypoint exposes native v3 nodes without Prompt Control imports."""
-
-    sys.modules.pop("prompt_control.nodes_lazy", None)
-    package = importlib.import_module("SimpleSyrup")
-    nodes_v3 = importlib.import_module("SimpleSyrup.simple_syrup.nodes_v3")
-    monkeypatch.setattr(nodes_v3, "prompt_control_is_available", lambda: True)
-
-    extension = asyncio.run(package.comfy_entrypoint())
-    nodes = asyncio.run(extension.get_node_list())
-
-    assert [node.__name__ for node in nodes] == [
-        "WD14TaggerLoaderV3",
-        "BatchSEGSV3",
-        "BatchRegionConditioningV3",
-        "TagSEGSWithWD14V3",
-        "TileAndTagSEGSV3",
-        "SimpleLoadCheckpointV3",
-        "ScaleFactorV3",
-        "VAEDecodeOptionsV3",
-        "VAEEncodeOptionsV3",
-        "EncodePromptBatchWithPromptControl",
-        "ScheduleAndEncodePromptsWithPromptControl",
-    ]
-    assert "prompt_control.nodes_lazy" not in sys.modules
-
-
-def test_v3_entrypoint_keeps_tile_node_when_prompt_control_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Comfy v3 entrypoint omits only Prompt Control nodes when unavailable."""
+    """Comfy v3 entrypoint exports every maintained non-conditional node."""
 
     sys.modules.pop("prompt_control.nodes_lazy", None)
     package = importlib.import_module("SimpleSyrup")
@@ -611,15 +169,38 @@ def test_v3_entrypoint_keeps_tile_node_when_prompt_control_unavailable(
     extension = asyncio.run(package.comfy_entrypoint())
     nodes = asyncio.run(extension.get_node_list())
 
-    assert [node.__name__ for node in nodes] == [
-        "WD14TaggerLoaderV3",
-        "BatchSEGSV3",
-        "BatchRegionConditioningV3",
-        "TagSEGSWithWD14V3",
-        "TileAndTagSEGSV3",
-        "SimpleLoadCheckpointV3",
-        "ScaleFactorV3",
-        "VAEDecodeOptionsV3",
-        "VAEEncodeOptionsV3",
+    assert _node_ids(cast(list[type[_V3Node]], nodes)) == BASE_NODE_IDS
+    assert "prompt_control.nodes_lazy" not in sys.modules
+
+
+def test_v3_entrypoint_adds_only_prompt_control_nodes_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prompt Control availability adds conditional nodes without removing others."""
+
+    sys.modules.pop("prompt_control.nodes_lazy", None)
+    package = importlib.import_module("SimpleSyrup")
+    nodes_v3 = importlib.import_module("SimpleSyrup.simple_syrup.nodes_v3")
+    monkeypatch.setattr(nodes_v3, "prompt_control_is_available", lambda: True)
+
+    extension = asyncio.run(package.comfy_entrypoint())
+    nodes = asyncio.run(extension.get_node_list())
+
+    assert _node_ids(cast(list[type[_V3Node]], nodes)) == [
+        *BASE_NODE_IDS,
+        *PROMPT_CONTROL_NODE_IDS,
     ]
     assert "prompt_control.nodes_lazy" not in sys.modules
+
+
+def _node_ids(nodes: list[type[_V3Node]]) -> list[str]:
+    """Return node ids from v3 schemas."""
+
+    ids: list[str] = []
+    for node in nodes:
+        schema = node.define_schema()
+        node_id: Any = schema.node_id
+        if not isinstance(node_id, str):
+            raise AssertionError(f"{node.__name__} has invalid node_id.")
+        ids.append(node_id)
+    return ids
