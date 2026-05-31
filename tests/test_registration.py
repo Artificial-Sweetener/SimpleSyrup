@@ -44,6 +44,7 @@ BASE_NODE_IDS = [
     "SimpleSyrup.SimpleLoadAnima",
     "SimpleSyrup.SimpleLoadCheckpoint",
     "SimpleSyrup.SimpleVAEEncode",
+    "SimpleSyrup.TagSEGSWithExternalLLM",
     "SimpleSyrup.TagSEGSWithWD14",
     "SimpleSyrup.TileAndTagSEGS",
     "SimpleSyrup.UpscaleLatentFromImage",

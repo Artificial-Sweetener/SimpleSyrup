@@ -228,6 +228,30 @@ class ExternalLLMPromptService:
     ) -> str:
         """Generate an assistant response for the supplied prompt pair."""
 
+        return self.generate_with_image_data_url(
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=max_tokens,
+            reasoning_effort=reasoning_effort,
+            image_data_url=(
+                None
+                if image is None
+                else self._image_encoder.encode_first_image_as_data_url(image)
+            ),
+        )
+
+    def generate_with_image_data_url(
+        self,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int = DEFAULT_EXTERNAL_LLM_MAX_TOKENS,
+        reasoning_effort: str = DEFAULT_EXTERNAL_LLM_REASONING_EFFORT,
+        image_data_url: str | None = None,
+    ) -> str:
+        """Generate an assistant response with a pre-encoded optional image."""
+
         selected_model = self._resolve_model_for_execution(model)
 
         external = self._settings_repository.load().external_llm
@@ -250,11 +274,7 @@ class ExternalLLMPromptService:
             user_prompt=user_prompt,
             max_tokens=max_tokens,
             reasoning_effort=reasoning_effort,
-            image_data_url=(
-                None
-                if image is None
-                else self._image_encoder.encode_first_image_as_data_url(image)
-            ),
+            image_data_url=image_data_url,
         )
         response = self._client.create_chat_completion(
             external.base_url,

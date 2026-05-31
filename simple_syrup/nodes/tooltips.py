@@ -78,6 +78,38 @@ EXTERNAL_LLM_IMAGE_INPUT = (
 )
 EXTERNAL_LLM_RESPONSE_OUTPUT = "Assistant response returned by the external model."
 
+EXTERNAL_LLM_TAG_SEGS_IMAGE = "Source image that the incoming SEGS were detected from."
+EXTERNAL_LLM_TAG_SEGS_SEGS = (
+    "Existing SEGS to describe and keep aligned with the conditioning batch."
+)
+EXTERNAL_LLM_TAG_SEGS_CLIP = "CLIP model used to encode each generated regional prompt."
+EXTERNAL_LLM_TAG_SEGS_MODEL = "External vision model used to describe each SEG crop."
+EXTERNAL_LLM_TAG_SEGS_SYSTEM_PROMPT = (
+    "Instruction text that controls how the model writes regional tags."
+)
+EXTERNAL_LLM_TAG_SEGS_USER_PROMPT = "Per-region request sent with each SEG crop image."
+EXTERNAL_LLM_TAG_SEGS_UNIVERSAL_POSITIVE = (
+    "Positive prompt text added before every generated regional prompt."
+)
+EXTERNAL_LLM_TAG_SEGS_IMAGE_MODE = (
+    "How pixels outside each SEG mask are shown to the vision model."
+)
+EXTERNAL_LLM_TAG_SEGS_REPLACE_UNDERSCORE = (
+    "Replace underscores in generated tags before CLIP encoding."
+)
+EXTERNAL_LLM_TAG_SEGS_TRAILING_COMMA = (
+    "Add a final comma to each generated regional prompt."
+)
+EXTERNAL_LLM_TAG_SEGS_EXCLUDE_TAGS = (
+    "Comma-separated exact tags removed from generated regional prompts."
+)
+EXTERNAL_LLM_TAG_SEGS_SEGS_OUTPUT = (
+    "Original SEGS returned in the same order as the conditioning batch."
+)
+EXTERNAL_LLM_TAG_SEGS_POSITIVE_OUTPUT = (
+    "Positive conditioning from external LLM tags, matched to SEGS order."
+)
+
 SAMPLING_MODEL = "Diffusion model used to denoise the input latent."
 SAMPLING_SEED = (
     "Seed used to create sampling noise. Reusing it with matching settings makes "
