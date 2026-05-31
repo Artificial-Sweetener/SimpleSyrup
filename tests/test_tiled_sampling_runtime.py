@@ -54,7 +54,8 @@ def test_validate_latent_samples_rejects_non_tensor() -> None:
 def test_validate_tensor_shape_rejects_nested_tensor() -> None:
     """Nested tensors are rejected before spatial tiling."""
 
-    samples = torch.nested.nested_tensor([torch.zeros((4, 8, 8))])
+    with pytest.warns(UserWarning, match="nested tensors.*prototype stage"):
+        samples = torch.nested.nested_tensor([torch.zeros((4, 8, 8))])
 
     with pytest.raises(ValueError, match="non-nested latent samples"):
         tiled_sampling.validate_tensor_shape(samples, sampler_label="TestSampler")

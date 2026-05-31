@@ -40,6 +40,23 @@ class ConditioningBatch:
         return ConditioningBatch((*self.entries, conditioning))
 
 
+def batch_conditioning(
+    values: tuple[Conditioning | ConditioningBatch, ...],
+) -> ConditioningBatch:
+    """Flatten conditioning values and batches into one ordered batch."""
+
+    if not values:
+        raise ValueError("Batch Region Conditioning requires one or more inputs.")
+
+    entries: list[Conditioning] = []
+    for value in values:
+        if isinstance(value, ConditioningBatch):
+            entries.extend(value.entries)
+        else:
+            entries.append(value)
+    return ConditioningBatch(tuple(entries))
+
+
 def split_prompt_batch(text: str, separator: str = "[SEP]") -> tuple[str, ...]:
     """Split prompt text into ordered chunks using a configurable separator."""
 

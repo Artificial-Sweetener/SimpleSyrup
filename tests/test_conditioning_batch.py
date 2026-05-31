@@ -10,6 +10,7 @@ import pytest
 
 from simple_syrup.domain.conditioning_batch import (
     ConditioningBatch,
+    batch_conditioning,
     select_conditioning,
     split_prompt_batch,
 )
@@ -63,6 +64,25 @@ def test_conditioning_batch_rejects_negative_indexes() -> None:
 
     with pytest.raises(ValueError, match="conditioning batch index"):
         ConditioningBatch(("a",)).select(-1)
+
+
+def test_batch_conditioning_flattens_batches_and_normal_conditioning() -> None:
+    """Mixed conditioning inputs become one ordered per-region batch."""
+
+    first = ConditioningBatch(("auto 1", "auto 2"))
+    hand = "hand 1"
+    second = ConditioningBatch(("auto 3",))
+
+    batch = batch_conditioning((first, hand, second))
+
+    assert batch.entries == ("auto 1", "auto 2", "hand 1", "auto 3")
+
+
+def test_batch_conditioning_rejects_no_inputs() -> None:
+    """At least one input is needed to build a conditioning batch."""
+
+    with pytest.raises(ValueError, match="one or more inputs"):
+        batch_conditioning(())
 
 
 def test_select_conditioning_broadcasts_normal_conditioning() -> None:
