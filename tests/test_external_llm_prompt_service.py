@@ -401,6 +401,24 @@ def test_generate_attaches_encoded_image_when_supplied() -> None:
     assert client.requests[0].image_data_url == "data:image/png;base64,abc"
 
 
+def test_generate_with_image_data_url_forwards_preencoded_image() -> None:
+    """SEG callers can supply a prebuilt image data URL."""
+
+    client = FakeClient()
+    service = configured_service(client=client)
+
+    assert (
+        service.generate_with_image_data_url(
+            model="model-a",
+            system_prompt="system",
+            user_prompt="user",
+            image_data_url="data:image/png;base64,seg",
+        )
+        == "assistant response"
+    )
+    assert client.requests[0].image_data_url == "data:image/png;base64,seg"
+
+
 def configured_service(
     client: FakeClient | None = None,
     image_encoder: FakeImageEncoder | None = None,
