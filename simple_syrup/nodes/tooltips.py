@@ -209,3 +209,31 @@ TILE_SEGS_OUTPUT = "Generated tile SEGS in the same order as the conditioning ba
 TILE_POSITIVE_OUTPUT = (
     "Positive conditioning from WD14 tile tags, matched to SEGS order."
 )
+
+TAG_SEGS_IMAGE = "Image that the incoming SEGS were detected from."
+TAG_SEGS_SEGS = "Existing SEGS to crop, tag, and keep in their current order."
+TAG_SEGS_CLIP = "CLIP model used to encode each generated SEGS prompt."
+TAG_SEGS_WD14_TAGGER = "WD14 tagger that reads each SEG crop and suggests prompt tags."
+TAG_SEGS_UNIVERSAL_POSITIVE = (
+    "Positive prompt text added before every generated SEGS tag prompt."
+)
+TAG_SEGS_SEGS_OUTPUT = (
+    "Original SEGS returned in the same order as the conditioning batch."
+)
+TAG_SEGS_POSITIVE_OUTPUT = (
+    "Positive conditioning from WD14 SEGS tags, matched to SEGS order."
+)
+
+BATCH_SEGS_FIRST = "First SEGS payload in the output order."
+BATCH_SEGS_SECOND = "Second SEGS payload appended after the first."
+BATCH_SEGS_OUTPUT = "Combined SEGS with all input segments in order."
+
+BATCH_REGION_CONDITIONING_FIRST = (
+    "First conditioning or conditioning batch in the output order."
+)
+BATCH_REGION_CONDITIONING_SECOND = (
+    "Second conditioning or conditioning batch appended after the first."
+)
+BATCH_REGION_CONDITIONING_OUTPUT = (
+    "Conditioning batch containing all input entries in order."
+)

@@ -16,6 +16,7 @@ from simple_syrup.domain.segs import (
     BoundingBox,
     CropRegion,
     Segment,
+    batch_segs,
     coerce_segment,
     coerce_segs,
     coerce_segs_group,
@@ -153,6 +154,73 @@ def test_impact_segs_group_conversion_returns_list_outputs() -> None:
     assert isinstance(output, list)
     assert [segments[0].label for _header, segments in output] == ["first", "second"]
     assert all(isinstance(segments, list) for _header, segments in output)
+
+
+def test_batch_segs_preserves_input_and_segment_order() -> None:
+    """Batch SEGS flattens input payloads without reordering segments."""
+
+    first = (
+        (16, 16),
+        (
+            _segment("1", CropRegion(0, 0, 2, 2), 0.9),
+            _segment("2", CropRegion(2, 0, 4, 2), 0.8),
+            _segment("3", CropRegion(4, 0, 6, 2), 0.7),
+        ),
+    )
+    second = (
+        (16, 16),
+        [
+            _segment("4", CropRegion(0, 2, 2, 4), 0.6),
+            _segment("5", CropRegion(2, 2, 4, 4), 0.5),
+            _segment("6", CropRegion(4, 2, 6, 4), 0.4),
+        ],
+    )
+
+    header, segments = batch_segs((first, second))
+
+    assert header == (16, 16)
+    assert [segment.label for segment in segments] == ["1", "2", "3", "4", "5", "6"]
+
+
+def test_batch_segs_allows_empty_payloads() -> None:
+    """Empty SEGS inputs contribute no segments to the batched payload."""
+
+    first = (
+        (16, 16),
+        (
+            _segment("1", CropRegion(0, 0, 2, 2), 0.9),
+            _segment("2", CropRegion(2, 0, 4, 2), 0.8),
+        ),
+    )
+    empty = ((16, 16), ())
+    third = ((16, 16), (_segment("3", CropRegion(4, 0, 6, 2), 0.7),))
+
+    _header, segments = batch_segs((first, empty, third))
+
+    assert [segment.label for segment in segments] == ["1", "2", "3"]
+
+
+def test_batch_segs_returns_empty_payload_when_all_inputs_are_empty() -> None:
+    """All-empty SEGS inputs keep the shared header and return no segments."""
+
+    assert batch_segs((((16, 16), ()), ((16, 16), []))) == ((16, 16), ())
+
+
+def test_batch_segs_rejects_no_inputs() -> None:
+    """Batch SEGS requires at least one payload for an output header."""
+
+    with pytest.raises(ValueError, match="one or more SEGS inputs"):
+        batch_segs(())
+
+
+def test_batch_segs_rejects_mismatched_headers() -> None:
+    """Batch SEGS refuses to merge regions targeting different image sizes."""
+
+    first = ((8, 16), (_segment("first", CropRegion(0, 0, 2, 2), 0.9),))
+    second = ((16, 8), (_segment("second", CropRegion(0, 0, 2, 2), 0.8),))
+
+    with pytest.raises(ValueError, match="input 2 is 16x8 but input 1 is 8x16"):
+        batch_segs((first, second))
 
 
 def test_sort_order_options_are_plain_english_and_ordered() -> None:
