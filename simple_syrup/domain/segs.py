@@ -184,6 +184,32 @@ def to_impact_compatible_segs_group(segs_group: NativeSegsGroup) -> list[ImpactS
     return [to_impact_compatible_segs(segs) for segs in segs_group]
 
 
+def batch_segs(values: Iterable[object]) -> NativeSegs:
+    """Return one SEGS payload containing all segments in input order."""
+
+    raw_values = tuple(values)
+    if not raw_values:
+        raise ValueError("Batch SEGS requires one or more SEGS inputs.")
+
+    expected_header: SegsHeader | None = None
+    batched_segments: list[Segment] = []
+    for index, value in enumerate(raw_values, start=1):
+        header, segments = coerce_segs(value)
+        if expected_header is None:
+            expected_header = header
+        elif header != expected_header:
+            raise ValueError(
+                "Batch SEGS requires all SEGS inputs to use the same image size; "
+                f"input {index} is {_format_header(header)} but input 1 is "
+                f"{_format_header(expected_header)}."
+            )
+        batched_segments.extend(segments)
+
+    if expected_header is None:
+        raise ValueError("Batch SEGS requires one or more SEGS inputs.")
+    return expected_header, tuple(batched_segments)
+
+
 def limit_segs(segs: NativeSegs, keep_only: int, keep_by: str) -> NativeSegs:
     """Return SEGS limited by a user-facing ranking policy."""
 
@@ -282,6 +308,13 @@ def _coerce_header(value: object) -> SegsHeader:
     if height <= 0 or width <= 0:
         raise ValueError("SEGS header height and width must be positive.")
     return height, width
+
+
+def _format_header(header: SegsHeader) -> str:
+    """Return a height-first image size description."""
+
+    height, width = header
+    return f"{height}x{width}"
 
 
 def _looks_like_segs(value: object) -> bool:

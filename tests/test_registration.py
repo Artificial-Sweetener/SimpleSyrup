@@ -137,6 +137,29 @@ def test_ksampler_tiled_diffusion_node_is_registered() -> None:
     )
 
 
+def test_batch_segs_node_is_registered() -> None:
+    """Batch SEGS node maps to its class and display name."""
+
+    package = importlib.import_module("SimpleSyrup")
+    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.BatchSEGS"]
+
+    assert registered.__name__ == "BatchSEGS"
+    assert package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.BatchSEGS"] == "Batch SEGS"
+
+
+def test_batch_region_conditioning_node_is_registered() -> None:
+    """Batch Region Conditioning node maps to its class and display name."""
+
+    package = importlib.import_module("SimpleSyrup")
+    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.BatchRegionConditioning"]
+
+    assert registered.__name__ == "BatchRegionConditioning"
+    assert (
+        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.BatchRegionConditioning"]
+        == "Batch Region Conditioning"
+    )
+
+
 def test_latent_diagnostics_node_is_registered() -> None:
     """Latent Diagnostics node maps to its class and display name."""
 
@@ -392,6 +415,19 @@ def test_tile_and_tag_segs_node_is_registered() -> None:
     )
 
 
+def test_tag_segs_with_wd14_node_is_registered() -> None:
+    """Tag SEGS w/ WD14 node maps to its class and display name."""
+
+    package = importlib.import_module("SimpleSyrup")
+    registered = package.NODE_CLASS_MAPPINGS["SimpleSyrup.TagSEGSWithWD14"]
+
+    assert registered.__name__ == "TagSEGSWithWD14"
+    assert (
+        package.NODE_DISPLAY_NAME_MAPPINGS["SimpleSyrup.TagSEGSWithWD14"]
+        == "Tag SEGS w/ WD14"
+    )
+
+
 def test_conditioning_batch_nodes_are_registered() -> None:
     """Conditioning batch nodes map to their classes and display names."""
 
@@ -548,6 +584,9 @@ def test_v3_entrypoint_registers_tile_and_prompt_control_batch_nodes(
 
     assert [node.__name__ for node in nodes] == [
         "WD14TaggerLoaderV3",
+        "BatchSEGSV3",
+        "BatchRegionConditioningV3",
+        "TagSEGSWithWD14V3",
         "TileAndTagSEGSV3",
         "SimpleLoadCheckpointV3",
         "ScaleFactorV3",
@@ -574,6 +613,9 @@ def test_v3_entrypoint_keeps_tile_node_when_prompt_control_unavailable(
 
     assert [node.__name__ for node in nodes] == [
         "WD14TaggerLoaderV3",
+        "BatchSEGSV3",
+        "BatchRegionConditioningV3",
+        "TagSEGSWithWD14V3",
         "TileAndTagSEGSV3",
         "SimpleLoadCheckpointV3",
         "ScaleFactorV3",

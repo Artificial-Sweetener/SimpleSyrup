@@ -12,8 +12,11 @@ from ..runtime.prompt_control_availability import prompt_control_is_available
 def get_nodes() -> list[type[object]]:
     """Return v3 nodes that can be advertised in this environment."""
 
+    from .batch_region_conditioning import BatchRegionConditioningV3
+    from .batch_segs import BatchSEGSV3
     from .scale_factor import ScaleFactorV3
     from .simple_load_checkpoint import SimpleLoadCheckpointV3
+    from .tag_segs_with_wd14 import TagSEGSWithWD14V3
     from .tile_and_tag_segs import TileAndTagSEGSV3
     from .vae_decode_options import VAEDecodeOptionsV3
     from .vae_encode_options import VAEEncodeOptionsV3
@@ -22,6 +25,9 @@ def get_nodes() -> list[type[object]]:
     if not prompt_control_is_available():
         return [
             WD14TaggerLoaderV3,
+            BatchSEGSV3,
+            BatchRegionConditioningV3,
+            TagSEGSWithWD14V3,
             TileAndTagSEGSV3,
             SimpleLoadCheckpointV3,
             ScaleFactorV3,
@@ -38,6 +44,9 @@ def get_nodes() -> list[type[object]]:
 
     return [
         WD14TaggerLoaderV3,
+        BatchSEGSV3,
+        BatchRegionConditioningV3,
+        TagSEGSWithWD14V3,
         TileAndTagSEGSV3,
         SimpleLoadCheckpointV3,
         ScaleFactorV3,

@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 from ..runtime.prompt_control_availability import prompt_control_is_available
+from .batch_region_conditioning import BatchRegionConditioning
+from .batch_segs import BatchSEGS
 from .conditioning_batch_pack import ConditioningBatchAppend, ConditioningBatchStart
 from .detail_segs_as_regions import DetailSEGSAsRegions
 from .detail_segs_by_scale_factor import DetailSEGSByScaleFactor
@@ -32,6 +34,7 @@ from .scale_factor import ScaleFactor
 from .seed import Seed
 from .simple_load_anima import SimpleLoadAnima
 from .simple_load_checkpoint import SimpleLoadCheckpoint
+from .tag_segs_with_wd14 import TagSEGSWithWD14
 from .tile_and_tag_segs import TileAndTagSEGS
 from .vae_options import VAEDecodeOptions, VAEEncodeOptions
 from .vitmatte_model_loader import ViTMatteModelLoader
@@ -40,6 +43,8 @@ from .wd14_tagger_loader import WD14TaggerLoader
 _PROMPT_CONTROL_EXPORTS: list[str] = []
 
 NODE_CLASS_MAPPINGS = {
+    "SimpleSyrup.BatchRegionConditioning": BatchRegionConditioning,
+    "SimpleSyrup.BatchSEGS": BatchSEGS,
     "SimpleSyrup.ConditioningBatchAppend": ConditioningBatchAppend,
     "SimpleSyrup.ConditioningBatchStart": ConditioningBatchStart,
     "SimpleSyrup.GroundedSAMModelInfo": GroundedSAMModelInfo,
@@ -69,12 +74,15 @@ NODE_CLASS_MAPPINGS = {
     "SimpleSyrup.LoadUltralyticsModel": LoadUltralyticsModel,
     "SimpleSyrup.DetectSEGSWithUltralytics": DetectSEGSWithUltralytics,
     "SimpleSyrup.EncodePromptBatch": EncodePromptBatch,
+    "SimpleSyrup.TagSEGSWithWD14": TagSEGSWithWD14,
     "SimpleSyrup.TileAndTagSEGS": TileAndTagSEGS,
     "SimpleSyrup.ViTMatteModelLoader": ViTMatteModelLoader,
     "SimpleSyrup.WD14TaggerLoader": WD14TaggerLoader,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "SimpleSyrup.BatchRegionConditioning": "Batch Region Conditioning",
+    "SimpleSyrup.BatchSEGS": "Batch SEGS",
     "SimpleSyrup.ConditioningBatchAppend": "Conditioning Batch Append",
     "SimpleSyrup.ConditioningBatchStart": "Conditioning Batch Start",
     "SimpleSyrup.GroundedSAMModelInfo": "Grounded SAM Model Info",
@@ -106,6 +114,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SimpleSyrup.LoadUltralyticsModel": "Load Ultralytics Model",
     "SimpleSyrup.DetectSEGSWithUltralytics": "Detect SEGS w/ Ultralytics",
     "SimpleSyrup.EncodePromptBatch": "Encode Prompt Batch",
+    "SimpleSyrup.TagSEGSWithWD14": "Tag SEGS w/ WD14",
     "SimpleSyrup.TileAndTagSEGS": "Tile & Tag SEGS",
     "SimpleSyrup.ViTMatteModelLoader": "ViTMatte Model Loader",
     "SimpleSyrup.WD14TaggerLoader": "Load WD14 Tagger",
@@ -125,6 +134,8 @@ if prompt_control_is_available():
     _PROMPT_CONTROL_EXPORTS.append("ScheduleAndEncodePromptsWithPromptControl")
 
 __all__ = [
+    "BatchRegionConditioning",
+    "BatchSEGS",
     "ConditioningBatchAppend",
     "ConditioningBatchStart",
     "GroundedSAMModelInfo",
@@ -152,6 +163,7 @@ __all__ = [
     "SimpleLoadAnima",
     "SimpleLoadCheckpoint",
     "SimpleVAEEncode",
+    "TagSEGSWithWD14",
     "TileAndTagSEGS",
     "UpscaleLatentFromImage",
     "VAEDecodeOptions",
