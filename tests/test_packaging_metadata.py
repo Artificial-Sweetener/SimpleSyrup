@@ -24,6 +24,7 @@ EXPECTED_RUNTIME_REQUIREMENTS = (
     "addict",
     "yapf",
     "huggingface-hub",
+    "keyring",
 )
 
 

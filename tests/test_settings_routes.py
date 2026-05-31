@@ -17,6 +17,7 @@ from aiohttp import web
 
 import simple_syrup.runtime.settings_routes as settings_routes
 from simple_syrup.runtime.settings import (
+    ExternalLLMSettings,
     SimpleSyrupSettings,
     SimpleSyrupSettingsRepository,
 )
@@ -114,7 +115,14 @@ def test_get_settings_returns_current_settings(tmp_path: Path) -> None:
     response = asyncio.run(prompt_server.routes.get_handlers[SETTINGS_ROUTE](object()))
 
     assert response.status == 200
-    assert json.loads(response_text(response)) == {"show_downloadable_models": False}
+    assert json.loads(response_text(response)) == {
+        "external_llm": {
+            "base_url": "",
+            "cached_models": [],
+            "default_model": "",
+        },
+        "show_downloadable_models": False,
+    }
 
 
 def test_post_settings_validates_and_persists_payload(tmp_path: Path) -> None:
@@ -131,8 +139,55 @@ def test_post_settings_validates_and_persists_payload(tmp_path: Path) -> None:
     )
 
     assert response.status == 200
-    assert json.loads(response_text(response)) == {"show_downloadable_models": False}
+    assert json.loads(response_text(response)) == {
+        "external_llm": {
+            "base_url": "",
+            "cached_models": [],
+            "default_model": "",
+        },
+        "show_downloadable_models": False,
+    }
     assert repository.load().show_downloadable_models is False
+
+
+def test_post_settings_preserves_external_llm_when_payload_omits_it(
+    tmp_path: Path,
+) -> None:
+    """Generic settings updates do not clear saved external LLM config."""
+
+    prompt_server = FakePromptServer()
+    repository = SimpleSyrupSettingsRepository(tmp_path / "settings.json")
+    repository.save(
+        SimpleSyrupSettings(
+            show_downloadable_models=True,
+            external_llm=ExternalLLMSettings(
+                base_url="https://provider.example/v1",
+                cached_models=("model-a",),
+                default_model="model-a",
+            ),
+        )
+    )
+    register_fake_routes(repository, prompt_server)
+
+    response = asyncio.run(
+        prompt_server.routes.post_handlers[SETTINGS_ROUTE](
+            FakeRequest({"show_downloadable_models": False})
+        )
+    )
+
+    payload = json.loads(response_text(response))
+    assert response.status == 200
+    assert payload == {
+        "external_llm": {
+            "base_url": "https://provider.example/v1",
+            "cached_models": ["model-a"],
+            "default_model": "model-a",
+        },
+        "show_downloadable_models": False,
+    }
+    loaded = repository.load()
+    assert loaded.show_downloadable_models is False
+    assert loaded.external_llm.base_url == "https://provider.example/v1"
 
 
 def test_post_settings_rejects_non_boolean_payload(tmp_path: Path) -> None:

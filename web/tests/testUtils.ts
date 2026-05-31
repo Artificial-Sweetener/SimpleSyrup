@@ -11,8 +11,8 @@ import type {
 } from "../src/types";
 
 export interface FakeComfySettingsApi {
-  definitions: Array<ComfySettingDefinition<boolean>>;
-  settings: Array<ComfySetting<boolean>>;
+  definitions: Array<ComfySettingDefinition<SettingValue>>;
+  settings: Array<ComfySetting<SettingValue>>;
   addSetting<TValue extends SettingValue>(
     definition: ComfySettingDefinition<TValue>
   ): ComfySetting<TValue>;
@@ -36,9 +36,9 @@ export function createFakeComfyApp(): FakeComfyApp {
         value: definition.defaultValue
       };
       this.definitions.push(
-        definition as unknown as ComfySettingDefinition<boolean>
+        definition as unknown as ComfySettingDefinition<SettingValue>
       );
-      this.settings.push(setting as ComfySetting<boolean>);
+      this.settings.push(setting);
       return setting;
     }
   };
@@ -48,6 +48,7 @@ export function createFakeComfyApp(): FakeComfyApp {
     ui: {
       settings: settingsApi
     },
+    refreshComboInNodes: async (): Promise<void> => {},
     registerExtension(extension: ComfyExtension): void {
       this.extensions.push(extension);
     }
