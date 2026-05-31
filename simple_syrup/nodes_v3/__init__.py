@@ -43,6 +43,7 @@ def get_nodes() -> list[type[object]]:
     )
     from .scale_factor import ScaleFactorV3
     from .simple_load_checkpoint import SimpleLoadCheckpointV3
+    from .tag_segs_with_external_llm import TagSEGSWithExternalLLMV3
     from .tag_segs_with_wd14 import TagSEGSWithWD14V3
     from .tile_and_tag_segs import TileAndTagSEGSV3
     from .vae_decode_options import VAEDecodeOptionsV3
@@ -77,6 +78,7 @@ def get_nodes() -> list[type[object]]:
         SimpleLoadAnimaV3,
         SimpleLoadCheckpointV3,
         SimpleVAEEncodeV3,
+        TagSEGSWithExternalLLMV3,
         TagSEGSWithWD14V3,
         TileAndTagSEGSV3,
         UpscaleLatentFromImageV3,
