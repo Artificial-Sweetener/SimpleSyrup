@@ -14,6 +14,8 @@ from typing import Any, Protocol, cast
 import pytest
 
 from simple_syrup.nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+from simple_syrup.nodes_v3.batch_region_conditioning import BatchRegionConditioningV3
+from simple_syrup.nodes_v3.batch_segs import BatchSEGSV3
 from simple_syrup.nodes_v3.encode_prompt_batch_with_prompt_control import (
     EncodePromptBatchWithPromptControl,
 )
@@ -22,6 +24,7 @@ from simple_syrup.nodes_v3.schedule_and_encode_prompts_with_prompt_control impor
     ScheduleAndEncodePromptsWithPromptControl,
 )
 from simple_syrup.nodes_v3.simple_load_checkpoint import SimpleLoadCheckpointV3
+from simple_syrup.nodes_v3.tag_segs_with_wd14 import TagSEGSWithWD14V3
 from simple_syrup.nodes_v3.tile_and_tag_segs import TileAndTagSEGSV3
 from simple_syrup.nodes_v3.vae_decode_options import VAEDecodeOptionsV3
 from simple_syrup.nodes_v3.vae_encode_options import VAEEncodeOptionsV3
@@ -120,6 +123,9 @@ def test_legacy_named_outputs_provide_tooltips() -> None:
     [
         SimpleLoadCheckpointV3,
         ScaleFactorV3,
+        BatchSEGSV3,
+        BatchRegionConditioningV3,
+        TagSEGSWithWD14V3,
         TileAndTagSEGSV3,
         VAEDecodeOptionsV3,
         VAEEncodeOptionsV3,
