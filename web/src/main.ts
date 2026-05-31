@@ -6,6 +6,7 @@
 import { app } from "../../../scripts/app.js";
 
 import { registerSimpleSyrupSettings } from "./settings";
+import { registerExternalLLMRefreshHook } from "./refresh";
 import type { ComfyApp } from "./types";
 
 const comfyApp = app as unknown as ComfyApp;
@@ -14,5 +15,6 @@ comfyApp.registerExtension({
   name: "SimpleSyrup.Settings",
   async setup(appInstance) {
     await registerSimpleSyrupSettings(appInstance);
+    registerExternalLLMRefreshHook(appInstance);
   }
 });

@@ -60,7 +60,7 @@ class SettingsHandlers:
 
         try:
             payload = await request.json()
-            settings = SimpleSyrupSettings.from_payload(payload)
+            settings = self._settings_from_request_payload(payload)
         except SimpleSyrupSettingsError as error:
             return web.json_response({"error": str(error)}, status=400)
         except Exception as error:
@@ -75,6 +75,18 @@ class SettingsHandlers:
 
         saved = self._repository.save(settings)
         return web.json_response(saved.to_payload())
+
+    def _settings_from_request_payload(self, payload: object) -> SimpleSyrupSettings:
+        """Return validated settings while preserving omitted nested config."""
+
+        settings = SimpleSyrupSettings.from_payload(payload)
+        if isinstance(payload, dict) and "external_llm" not in payload:
+            current = self._repository.load()
+            return SimpleSyrupSettings(
+                show_downloadable_models=settings.show_downloadable_models,
+                external_llm=current.external_llm,
+            )
+        return settings
 
 
 def register_settings_routes(

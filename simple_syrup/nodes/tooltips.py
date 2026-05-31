@@ -61,6 +61,23 @@ GROUNDING_DINO_TEXT_ENCODER_INPUT = (
 VITMATTE_MODEL_INPUT = "ViTMatte model choice used for mask edge refinement."
 WD14_MODEL_INPUT = "WD14 tagger model choice used to generate tags from image crops."
 
+EXTERNAL_LLM_MODEL_INPUT = "External model used for the prompt request."
+EXTERNAL_LLM_SYSTEM_PROMPT_INPUT = "Instruction text sent as the system message."
+EXTERNAL_LLM_USER_PROMPT_INPUT = "Prompt text sent as the user message."
+EXTERNAL_LLM_MAX_TOKENS_INPUT = (
+    "Maximum number of response tokens the external model may generate. Higher "
+    "values allow longer replies but can take longer and cost more."
+)
+EXTERNAL_LLM_REASONING_EFFORT_INPUT = (
+    "Reasoning behavior for compatible providers. Default omits provider-specific "
+    "controls; off sends thinking disabled through chat template options."
+)
+EXTERNAL_LLM_IMAGE_INPUT = (
+    "Optional image sent with the user message for vision-capable external models. "
+    "When a batch is connected, the first image is used."
+)
+EXTERNAL_LLM_RESPONSE_OUTPUT = "Assistant response returned by the external model."
+
 SAMPLING_MODEL = "Diffusion model used to denoise the input latent."
 SAMPLING_SEED = (
     "Seed used to create sampling noise. Reusing it with matching settings makes "

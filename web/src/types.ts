@@ -13,8 +13,9 @@ export interface ComfySetting<TValue extends SettingValue> {
 export interface ComfySettingDefinition<TValue extends SettingValue> {
   id: string;
   name: string;
-  type: "boolean";
+  type: "boolean" | "text" | (() => HTMLElement);
   defaultValue: TValue;
+  sortOrder?: number;
   tooltip?: string;
   onChange?: (value: TValue) => void | Promise<void>;
 }
@@ -29,6 +30,7 @@ export interface ComfyApp {
   ui: {
     settings: ComfySettingsApi;
   };
+  refreshComboInNodes?: () => Promise<void>;
   registerExtension(extension: ComfyExtension): void;
 }
 

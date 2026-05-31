@@ -12,9 +12,8 @@ from . import simple_syrup as _simple_syrup_package
 
 sys.modules.setdefault("simple_syrup", _simple_syrup_package)
 
-from .simple_syrup.nodes import (  # noqa: E402
-    NODE_CLASS_MAPPINGS,
-    NODE_DISPLAY_NAME_MAPPINGS,
+from .simple_syrup.runtime.external_llm_routes import (  # noqa: E402
+    register_external_llm_routes,
 )
 from .simple_syrup.runtime.settings_routes import register_settings_routes  # noqa: E402
 
@@ -40,10 +39,9 @@ async def comfy_entrypoint() -> object:
 
 
 register_settings_routes()
+register_external_llm_routes()
 
 __all__ = [
-    "NODE_CLASS_MAPPINGS",
-    "NODE_DISPLAY_NAME_MAPPINGS",
     "WEB_DIRECTORY",
     "comfy_entrypoint",
 ]

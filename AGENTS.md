@@ -61,8 +61,8 @@ If a required tool is missing from `..\..\venv`, install or update development d
 ## Architecture Rules
 
 - Organize code into clear layers with one-way dependencies.
-- ComfyUI integration layer: `NODE_CLASS_MAPPINGS`, `NODE_DISPLAY_NAME_MAPPINGS`, node categories, input/output declarations, and ComfyUI import-time registration.
-- Node API layer: thin node classes exposing ComfyUI-facing methods such as `INPUT_TYPES`, `RETURN_TYPES`, `FUNCTION`, and execution entry points.
+- ComfyUI integration layer: the Comfy v3 `comfy_entrypoint()`, `simple_syrup/nodes_v3/__init__.py::get_nodes()`, v3 schema declarations, node categories, input/output declarations, and ComfyUI import-time registration.
+- Node API layer: thin v3 node classes exposing ComfyUI-facing schema and execution entry points.
 - Application/service layer: orchestration for node behavior, validation flow, and feature-level use cases.
 - Domain layer: stable internal models, value objects, policies, and pure behavior.
 - Runtime/adapter layer: filesystem access, image/audio/model IO, ComfyUI object adaptation, subprocess boundaries, network boundaries, and optional external integrations.
@@ -83,7 +83,7 @@ If a required tool is missing from `..\..\venv`, install or update development d
 - For behavior-critical areas, work in two steps:
   1. Add characterization/regression tests for existing behavior.
   2. Perform structural changes behind those tests.
-- Behavior-critical areas include node registration, `INPUT_TYPES`, `RETURN_TYPES`, widget names, output ordering, execution return shapes, workflow compatibility, validation behavior, file IO, model IO, image/audio tensor handling, and ComfyUI import behavior.
+- Behavior-critical areas include node registration, v3 schema declarations, return metadata, widget names, output ordering, execution return shapes, workflow compatibility, validation behavior, file IO, model IO, image/audio tensor handling, and ComfyUI import behavior.
 - Do not start structural changes in an area without behavior safeguards for that area.
 - When behavior spans multiple components, trace the current ownership and data flow before editing.
 - Correct the ownership model instead of layering compensating patches across consumers.
@@ -99,7 +99,7 @@ If a required tool is missing from `..\..\venv`, install or update development d
 - Public node identifiers are compatibility-sensitive.
 - Do not rename node classes, display names, categories, input keys, output names, return types, or function names without explicit approval.
 - Keep ComfyUI-facing node classes small and predictable.
-- `INPUT_TYPES` must be deterministic and must not perform expensive IO.
+- V3 schema declarations must be deterministic and must not perform expensive IO.
 - Importing the node pack must not perform heavy computation, network access, model loading, or destructive filesystem operations.
 - Node execution must validate inputs before performing side effects.
 - Node execution must return exactly the declared output shape.
@@ -121,25 +121,23 @@ If a required tool is missing from `..\..\venv`, install or update development d
 - Avoid implementation jargon unless the user needs it to make a good workflow decision.
 - Do not repeat the field name as a definition.
 - Do not document removed behavior, imagined alternatives, or choices the product does not expose.
-- Keep legacy `INPUT_TYPES` tooltips and Comfy v3 schema tooltips aligned when both export paths expose the same node or field.
+- Keep Comfy v3 schema tooltips aligned with the current node behavior.
 
 ## ComfyUI Node Export Rules
 
-- When adding, renaming, or removing a ComfyUI node, update and verify every export path used by this repository.
-- Legacy ComfyUI mapping exports must be updated in `simple_syrup/nodes/__init__.py`:
-  - `NODE_CLASS_MAPPINGS`
-  - `NODE_DISPLAY_NAME_MAPPINGS`
-  - `__all__`
-- Comfy v3 entrypoint exports must be updated when the node should be visible through the v3 API:
+- Comfy v3 is the only supported ComfyUI node export path.
+- Do not add, preserve, or restore legacy ComfyUI mapping exports.
+- The root package export in repository root `__init__.py` must expose `comfy_entrypoint` and must not expose `NODE_CLASS_MAPPINGS` or `NODE_DISPLAY_NAME_MAPPINGS`.
+- `simple_syrup/nodes_v3/__init__.py::get_nodes()` is the authoritative node registry.
+- When adding, renaming, or removing a ComfyUI node, update and verify:
+  - the v3 wrapper class when needed
   - `simple_syrup/nodes_v3/__init__.py`
   - `get_nodes()`
-  - a v3 wrapper class when needed
-- The root package export in repository root `__init__.py` must continue exposing the relevant mappings and `comfy_entrypoint`.
-- Tests must cover every export path used by the node:
-  - A registration test must assert the node id and display name exist in `NODE_CLASS_MAPPINGS` and `NODE_DISPLAY_NAME_MAPPINGS`.
-  - A v3 entrypoint test must assert `comfy_entrypoint().get_node_list()` includes the node when it is expected to be visible through Comfy v3.
-  - If a v3 node is conditional, tests must cover both the available and unavailable conditions and prove unrelated v3 nodes remain exported.
-- Do not consider a node addition complete from `NODE_CLASS_MAPPINGS` alone. A node is not fully exported until every repository-supported ComfyUI export path is updated and tested.
+  - tests that exercise the v3 schema, entrypoint export, and execution behavior
+- Maintained nodes must keep stable `SimpleSyrup.*` node ids unless the maintainer explicitly approves a workflow-facing rename.
+- If a v3 node is conditional, tests must cover both the available and unavailable conditions and prove unrelated v3 nodes remain exported.
+- Do not maintain a compatibility layer, fallback registry, or migration path for old ComfyUI versions that only load `NODE_CLASS_MAPPINGS`.
+- A node is not fully exported until the v3 entrypoint returns it and tests prove the intended schema and behavior.
 
 ## Code Organization and Readability
 
@@ -215,7 +213,7 @@ If a required tool is missing from `..\..\venv`, install or update development d
 - Use real behavior tests over excessive mocking.
 - Mock only external boundaries such as ComfyUI runtime calls, filesystem errors, network calls, subprocesses, random generation, and time.
 - Node behavior must be tested at the narrowest useful level and through integration-style tests when ComfyUI-facing shape matters.
-- Node registration changes require tests for exported mappings.
+- Node registration changes require tests for the v3 entrypoint and v3 schemas.
 - Tooltip coverage must be tested for exported node descriptions, inputs, and outputs supported by each ComfyUI API path.
 - Input/output signature changes require workflow-facing compatibility tests.
 - Runtime behavior requires tests for success and failure paths.
@@ -301,7 +299,7 @@ Per change, all of the following are required:
 - Frontend source is typed and tested when touched.
 - Generated frontend artifacts are rebuilt from source.
 - `npm run lint:web`, `npm run typecheck:web`, `npm run test:web`, and `npm run build:web` pass when frontend code exists or is touched.
-- New, renamed, or removed nodes are updated in all legacy and Comfy v3 export paths, with tests proving both paths expose the intended node set.
+- New, renamed, or removed nodes are updated in the Comfy v3 export path, with tests proving the v3 entrypoint exposes the intended node set.
 
 ## Commit Policy
 
