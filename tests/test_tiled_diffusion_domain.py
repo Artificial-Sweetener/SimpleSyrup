@@ -50,7 +50,7 @@ def test_validate_tiled_diffusion_mode_rejects_unsupported_mode() -> None:
 
 
 def test_plan_clamps_tile_size_to_latent_dimensions() -> None:
-    """Requested tiles larger than the latent are clamped to latent dimensions."""
+    """Requested tiles and overlap larger than the latent use safe dimensions."""
 
     plan = build_tiled_diffusion_plan(
         latent_width=12,
@@ -63,13 +63,13 @@ def test_plan_clamps_tile_size_to_latent_dimensions() -> None:
 
     assert plan.tile_width == 12
     assert plan.tile_height == 8
-    assert plan.overlap == 48
+    assert plan.overlap == 4
     assert plan.tiles == (LatentTile(0, 0, 12, 8),)
     assert not tile_is_splittable(12, 8, 96, 96, 48)
 
 
 def test_plan_clamps_overlap_against_requested_tile_dimensions() -> None:
-    """Overlap clamps against requested tile dimensions."""
+    """Overlap clamps against effective tile dimensions."""
 
     plan = build_tiled_diffusion_plan(
         latent_width=8,
@@ -82,7 +82,26 @@ def test_plan_clamps_overlap_against_requested_tile_dimensions() -> None:
 
     assert plan.tile_width == 8
     assert plan.tile_height == 8
-    assert plan.overlap == 92
+    assert plan.overlap == 4
+
+
+def test_plan_uses_single_tile_for_small_latent_with_default_detailer_overlap() -> None:
+    """Small detailer latents use one full tile instead of a zero-stride grid."""
+
+    plan = build_tiled_diffusion_plan(
+        latent_width=16,
+        latent_height=30,
+        tile_width=128,
+        tile_height=128,
+        overlap=16,
+        tile_batch_size=4,
+    )
+
+    assert plan.tile_width == 16
+    assert plan.tile_height == 30
+    assert plan.overlap == 12
+    assert plan.tiles == (LatentTile(0, 0, 16, 30),)
+    assert not tile_is_splittable(16, 30, 128, 128, 16)
 
 
 def test_plan_generates_row_major_symmetric_tiles() -> None:
