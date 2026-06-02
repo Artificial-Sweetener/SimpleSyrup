@@ -73,7 +73,8 @@ def build_tiled_diffusion_plan(
     )
     effective_tile_width = min(tile_width, latent_width)
     effective_tile_height = min(tile_height, latent_height)
-    effective_overlap = max(0, min(overlap, min(tile_width, tile_height) - 4))
+    max_effective_overlap = min(effective_tile_width, effective_tile_height) - 4
+    effective_overlap = max(0, min(overlap, max_effective_overlap))
 
     tiles = _split_tiles(
         latent_width=latent_width,
