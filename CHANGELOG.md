@@ -1,3 +1,16 @@
+# [1.4.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.3.0...v1.4.0) (2026-06-02)
+
+
+### Bug Fixes
+
+* **tiled-diffusion:** clamp overlap for small latents ([d7448c6](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/d7448c6ca52ce517b8d0f8ee697249c5def13535))
+
+
+### Features
+
+* **detailing:** add external llm segs tagging ([b7cd40c](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/b7cd40c85ae9f9514d0b1ff3c3f6007730796752))
+* **segs:** add regional batching and wd14 tagging nodes ([fef60ad](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/fef60adeca2c8ec7c0641e8106bb0863ee2f195e))
+
 # [1.3.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.2.0...v1.3.0) (2026-05-26)
 
 
