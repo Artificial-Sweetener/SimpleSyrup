@@ -1,5 +1,7 @@
 # SimpleSyrup
 
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE) [![Comfy Registry](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.comfy.org%2Fnodes%2FSimpleSyrup&query=%24.latest_version.version&label=Comfy%20Registry&color=5b5bd6)](https://registry.comfy.org/publishers/artificialsweetener/nodes/SimpleSyrup) [![Comfy Registry downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.comfy.org%2Fnodes%2FSimpleSyrup&query=%24.downloads&label=downloads&color=5b5bd6)](https://registry.comfy.org/publishers/artificialsweetener/nodes/SimpleSyrup) [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+
 **SimpleSyrup** is a ComfyUI node pack that grew out of moving my A1111/WebUI image workflows into ComfyUI graphs.
 
 The WebUI side shows up in the things I kept reaching for: ADetailer-style inline `[SEP]` prompt batches, tiled diffusion, familiar checkpoint loader controls, CLIP skip where WebUI users expect it, and sampler/scheduler extras. The Comfy side matters just as much: the detailers are modeled heavily on ComfyUI Impact Pack's SEGS workflow, and the utility nodes are built for graph readability, ordered data, and explicit runtime behavior.
