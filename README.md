@@ -22,9 +22,11 @@ SimpleSyrup pulls from a few different places:
 - A WebUI-familiar checkpoint loader with CLIP skip and VAE override controls.
 - A Simple Anima loader that keeps Anima's model, VAE, dtype, and device controls together.
 - Loaders for SAM, GroundingDINO, ViTMatte, Ultralytics, and WD14.
-- Tile & Tag SEGS workflows that run WD14 on deterministic tile crops and keep conditioning aligned to tile order.
+- Tile, tag, and guide workflows that can generate conditioning from WD14 or a configured external vision LLM.
 - KSampler extras including A1111-style Euler ancestral behavior, AYS, GITS, automatic A1111 scheduling, and beta57.
 - GPU Lanczos resizing through [TorchLanc](https://github.com/Artificial-Sweetener/TorchLanc), with batch and mask handling.
+- Normal and tiled VAE encode/decode option nodes with spatial and temporal tiling controls.
+- Expandable SEGS and conditioning batch helpers for larger regional graphs.
 - Provenance-aware latent helpers for recovering the latent behind an unmodified decoded image.
 - Settings-backed model dropdowns that can show known downloadable models or only locally installed ones.
 
@@ -59,6 +61,7 @@ The detailer nodes are modeled heavily on **ComfyUI Impact Pack**. Detectors cre
 
 - **Prompt SEGS w/ SAM** uses GroundingDINO to find prompt-matched boxes, SAM to segment them, optional negative prompting to subtract unwanted areas, and optional ViTMatte refinement to clean up mask edges. It returns both SEGS and a combined mask.
 - **Detect SEGS w/ Ultralytics** runs bbox or segmentation detection, filters by threshold and size, supports label filtering, and returns Impact-compatible SEGS plus a combined mask.
+- **Batch SEGS** combines multiple SEGS inputs into one ordered SEGS payload.
 - **Detail SEGS by Scale Factor** upscales each SEG crop, samples it, downsizes it back, and composites it into the original image with feathering and optional denoise masks.
 - **Detail SEGS by Scale Factor w/ Tiled Diffusion** uses the same crop/detail idea, but samples large crops through SimpleSyrup's tiled diffusion path.
 - **Detail SEGS as Regions** runs one regional MultiDiffusion pass over the image and pairs every SEG with its matching `CONDITIONING_BATCH` entry.
@@ -73,6 +76,9 @@ Those prompts become an ordered `CONDITIONING_BATCH`, so prompt 1 stays matched 
 
 - **Encode Prompt Batch** splits prompt text with `[SEP]` and encodes ordered positive and negative `CONDITIONING_BATCH` values.
 - **Conditioning Batch Start** and **Conditioning Batch Append** build ordered conditioning batches for per-segment and regional workflows.
+- **Batch Region Conditioning** combines normal `CONDITIONING` values and existing `CONDITIONING_BATCH` values into one ordered regional batch.
+- **Encode Prompt Batch w/ Prompt Control** is exported when Prompt Control is installed. It keeps the `[SEP]` batching workflow while letting Prompt Control handle prompt scheduling and encoding.
+- **Schedule & Encode Prompts** is also exported when Prompt Control is installed. It schedules Prompt Control LoRA tags, encodes positive and negative prompts, and returns normal conditioning or SimpleSyrup batches depending on whether `[SEP]` is used.
 
 ### Tile, Tag, and Guide
 
@@ -81,6 +87,15 @@ Those prompts become an ordered `CONDITIONING_BATCH`, so prompt 1 stays matched 
 It splits an image into deterministic tile SEGS, crops each tile, runs WD14 tagging on each crop, prefixes your universal positive prompt text, and CLIP-encodes the resulting prompts into a `CONDITIONING_BATCH`. The order matters: the conditioning batch is aligned to the tile SEGS order so downstream per-SEG or regional nodes can pick the right prompt for the right area.
 
 That is the kind of thing that is easy to do once by hand and annoying to keep correct in a real graph.
+
+- **Tag SEGS w/ WD14** tags existing SEGS crops with a connected WD14 tagger and returns conditioning aligned to the original SEGS order.
+- **Tag SEGS w/ External LLM** sends each SEG crop to a configured vision-capable external LLM, formats the returned tags, and returns aligned conditioning for detail or regional workflows.
+
+### External LLM Prompting
+
+**External LLM Prompt** sends system and user prompts to a configured OpenAI-compatible provider and returns the assistant response as text. It can also include the first image from an optional image input when the selected provider model supports vision.
+
+The external LLM nodes use the endpoint and API key configured in SimpleSyrup settings.
 
 ### Tiled Sampling
 
@@ -134,6 +149,7 @@ These nodes handle the smaller jobs that show up all over image workflows.
 - **Resize Image to Target** resizes image batches with stretch, keep-aspect, crop, and pad modes. It can round output dimensions to a divisibility target, anchor crop or pad placement, process batches in chunks, resize a mask with the image, and use GPU Lanczos through [TorchLanc](https://github.com/Artificial-Sweetener/TorchLanc).
 - **Simple VAE Encode** encodes an image to latent space, but reuses the source latent when the graph proves the image came from an unmodified `VAEDecode`.
 - **Upscale Latent From Image** finds the latent behind an unmodified decoded image and expands to Comfy's latent upscale behavior.
+- **VAE Encode (Options)** and **VAE Decode (Options)** wrap ComfyUI's normal and tiled VAE paths behind one explicit tiling toggle, with spatial and temporal tile controls available when tiling is enabled.
 - **Latent Diagnostics** passes a latent through unchanged while reporting shape, dtype, device, and tiling-fit details.
 - **Prompt Encode Style** creates Prompt Control style tags from an encode-style selection.
 - **Prompt Encode Style & Normalization** creates Prompt Control style and normalization tags together.
@@ -144,13 +160,13 @@ The provenance nodes trace the graph. They do not guess from tensor values. If a
 
 ## Settings
 
-SimpleSyrup adds one ComfyUI setting:
+SimpleSyrup adds ComfyUI settings for model visibility and external LLM access:
 
-- **SimpleSyrup: Show downloadable models in loader dropdowns**
+- **SimpleSyrup: Show downloadable models in loader dropdowns** controls whether known downloadable SAM, GroundingDINO, ViTMatte, and WD14 models appear before they are installed locally.
+- **SimpleSyrup: External LLM endpoint** stores the OpenAI-compatible base URL used by external LLM prompt nodes.
+- **SimpleSyrup: External LLM API key** stores the API key for that endpoint in OS credential storage.
 
-When this is enabled, supported loaders show known downloadable model choices even if the files are not installed yet. When it is disabled, those dropdowns only show models SimpleSyrup can verify locally.
-
-This setting affects SAM, GroundingDINO, ViTMatte, and WD14 loader dropdowns. Anima's automatic Qwen text encoder and VAE resolution is handled by the Anima loader itself.
+When downloadable models are shown, supported loaders list known model choices even if the files are not installed yet. When they are hidden, those dropdowns only show models SimpleSyrup can verify locally. Anima's automatic Qwen text encoder and VAE resolution is handled by the Anima loader itself.
 
 ## License & Acknowledgements
 
