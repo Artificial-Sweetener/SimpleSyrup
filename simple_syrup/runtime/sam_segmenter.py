@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 
 from .loaded_models import LoadedSAMModel, unwrap_sam_model
 from .model_device_manager import TorchModelDeviceManager, external_model_inference
+from .progress import create_comfy_phase_progress
 from .sam_loader import SAM_HQ_RUNTIME_PACKAGE
 
 
@@ -47,6 +48,37 @@ class SAMModelSegmenter:
 
         if boxes.numel() == 0:
             return ()
+
+        progress = create_comfy_phase_progress(
+            operation="sam_inference",
+            subject=_sam_subject(sam_model),
+            total_phases=3,
+        )
+        progress.advance("preparing_device")
+        try:
+            progress.advance("running_inference")
+            masks = self._segment_boxes(
+                sam_model,
+                image,
+                boxes,
+                threshold,
+                execution_device,
+            )
+        except Exception:
+            progress.advance("failed")
+            raise
+        progress.advance("completed")
+        return masks
+
+    def _segment_boxes(
+        self,
+        sam_model: object,
+        image: torch.Tensor,
+        boxes: torch.Tensor,
+        threshold: float,
+        execution_device: str,
+    ) -> tuple[torch.Tensor, ...]:
+        """Run SAM adaptation after progress ownership is established."""
 
         model = unwrap_sam_model(sam_model)
         image_array = _tensor_to_rgb_array(image)
@@ -83,6 +115,19 @@ class SAMModelSegmenter:
                 loaded.device,
                 use_hq_predictor=_uses_sam_hq_predictor(model),
             )
+
+
+def _sam_subject(model: object) -> str:
+    """Return non-sensitive model identity for progress diagnostics."""
+
+    if isinstance(model, LoadedSAMModel):
+        return model.model_id
+    model_name = getattr(model, "model_name", None)
+    return (
+        model_name
+        if isinstance(model_name, str) and model_name
+        else type(model).__name__
+    )
 
 
 def _predict_with_wrapper(

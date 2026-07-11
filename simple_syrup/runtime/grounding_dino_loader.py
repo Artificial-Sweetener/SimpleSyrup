@@ -27,6 +27,7 @@ from .model_folders import (
     resolve_model_file,
 )
 from .model_instance_cache import ModelInstanceCache
+from .progress import NullPhaseProgressReporter, PhaseProgressReporter
 
 LOGGER = get_logger(__name__)
 GROUNDING_DINO_RUNTIME_PACKAGE = "simple_syrup.third_party.groundingdino_runtime"
@@ -93,47 +94,65 @@ class GroundingDINOLoaderService:
         text_encoder: str,
         auto_download: bool,
         progress: ProgressReporter | None = None,
+        phase_progress: PhaseProgressReporter | None = None,
     ) -> LoadedGroundingDINOModel:
         """Load GroundingDINO and return a `GROUNDING_DINO_MODEL` object."""
 
-        register_required_model_folders(self._folder_paths_module)
-        entry = get_grounding_dino_entry(grounding_dino_model)
-        artifact_paths = self._resolve_artifacts(entry, auto_download, progress)
-        text_encoder_resolution = self.resolve_text_encoder(
-            text_encoder,
-            auto_download,
-            progress,
-        )
-        config_path = _artifact_path_with_suffix(artifact_paths, ".py")
-        checkpoint_path = _artifact_path_with_suffix(artifact_paths, ".pth")
-        key = GroundingDINOModelCacheKey(
-            model_id=entry.entry_id,
-            config_path=config_path.resolve(),
-            checkpoint_path=checkpoint_path.resolve(),
-            text_encoder_path=text_encoder_resolution.path.resolve(),
-        )
-        already_loaded = key in self._cache.entries
-        loaded = self._cache.get_or_load(
-            key,
-            lambda: self._load_uncached_model(
-                entry,
-                config_path,
-                checkpoint_path,
-                text_encoder_resolution,
-            ),
-        )
-        if already_loaded:
-            LOGGER.info(
-                "GroundingDINO model loaded from process cache",
+        reporter = phase_progress or NullPhaseProgressReporter()
+        reporter.advance("resolving_artifacts")
+        try:
+            register_required_model_folders(self._folder_paths_module)
+            entry = get_grounding_dino_entry(grounding_dino_model)
+            artifact_paths = self._resolve_artifacts(entry, auto_download, progress)
+            text_encoder_resolution = self.resolve_text_encoder(
+                text_encoder,
+                auto_download,
+                progress,
+            )
+            config_path = _artifact_path_with_suffix(artifact_paths, ".py")
+            checkpoint_path = _artifact_path_with_suffix(artifact_paths, ".pth")
+            key = GroundingDINOModelCacheKey(
+                model_id=entry.entry_id,
+                config_path=config_path.resolve(),
+                checkpoint_path=checkpoint_path.resolve(),
+                text_encoder_path=text_encoder_resolution.path.resolve(),
+            )
+            already_loaded = key in self._cache.entries
+            if already_loaded:
+                reporter.advance("cache_hit")
+            loaded = self._cache.get_or_load(
+                key,
+                lambda: self._load_uncached_model(
+                    entry,
+                    config_path,
+                    checkpoint_path,
+                    text_encoder_resolution,
+                    reporter,
+                ),
+            )
+            if already_loaded:
+                LOGGER.info(
+                    "GroundingDINO model loaded from process cache",
+                    extra={
+                        "operation": "grounding_dino_loader",
+                        "model": entry.entry_id,
+                        "config_path": str(config_path),
+                        "checkpoint_path": str(checkpoint_path),
+                        "text_encoder_path": str(text_encoder_resolution.path),
+                    },
+                )
+            reporter.advance("completed")
+            return loaded
+        except Exception:
+            reporter.advance("failed")
+            LOGGER.exception(
+                "GroundingDINO model load failed",
                 extra={
                     "operation": "grounding_dino_loader",
-                    "model": entry.entry_id,
-                    "config_path": str(config_path),
-                    "checkpoint_path": str(checkpoint_path),
-                    "text_encoder_path": str(text_encoder_resolution.path),
+                    "model": grounding_dino_model,
                 },
             )
-        return loaded
+            raise
 
     def _load_uncached_model(
         self,
@@ -141,6 +160,7 @@ class GroundingDINOLoaderService:
         config_path: Path,
         checkpoint_path: Path,
         text_encoder_resolution: TextEncoderResolution,
+        phase_progress: PhaseProgressReporter,
     ) -> LoadedGroundingDINOModel:
         """Load and wrap GroundingDINO after resolution and cache lookup."""
 
@@ -149,7 +169,9 @@ class GroundingDINOLoaderService:
             config_path,
             checkpoint_path,
             text_encoder_resolution.path,
+            phase_progress,
         )
+        phase_progress.advance("registering_device_management")
         managed_model = self._device_manager.manage(
             model,
             model_id=entry.entry_id,
@@ -291,6 +313,7 @@ class GroundingDINOLoaderService:
         config_path: Path,
         checkpoint_path: Path,
         text_encoder_path: Path,
+        phase_progress: PhaseProgressReporter,
     ) -> object:
         """Load GroundingDINO from a known config/checkpoint pair."""
 
@@ -313,13 +336,16 @@ class GroundingDINOLoaderService:
                 f"Import failed: {error}."
             ) from error
 
+        phase_progress.advance("constructing_model")
         args = slconfig_module.SLConfig.fromfile(str(config_path))
         if getattr(args, "text_encoder_type", "") == "bert-base-uncased":
             args.text_encoder_type = str(text_encoder_path)
 
         model = models_module.build_model(args)
+        phase_progress.advance("loading_checkpoint")
         checkpoint = torch.load(str(checkpoint_path), map_location="cpu")
         clean_state_dict = utils_module.clean_state_dict
+        phase_progress.advance("loading_state_dict")
         model.load_state_dict(clean_state_dict(checkpoint["model"]), strict=False)
         model.eval()
         model.model_name = entry.entry_id

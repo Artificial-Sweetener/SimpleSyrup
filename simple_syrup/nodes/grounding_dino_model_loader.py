@@ -15,6 +15,7 @@ from ..runtime.grounding_dino_loader import (
 )
 from ..runtime.model_choices import ModelChoiceService, default_choice
 from ..runtime.model_downloads import ComfyProgressReporter
+from ..runtime.progress import create_comfy_phase_progress
 from . import tooltips
 
 
@@ -72,5 +73,10 @@ class GroundingDINOModelLoader:
                 text_encoder=text_encoder,
                 auto_download=True,
                 progress=ComfyProgressReporter(),
+                phase_progress=create_comfy_phase_progress(
+                    operation="grounding_dino_model_load",
+                    subject=grounding_dino_model,
+                    total_phases=6,
+                ),
             ),
         )

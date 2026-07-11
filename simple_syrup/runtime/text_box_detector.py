@@ -23,6 +23,7 @@ from .model_device_manager import (
     TorchModelDeviceManager,
     external_model_inference,
 )
+from .progress import create_comfy_phase_progress
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,37 @@ class GroundingDINOTextBoxDetector:
         execution_device: str,
     ) -> tuple[TextBoxDetection, ...]:
         """Return filtered prompt detections in pixel coordinates."""
+
+        progress = create_comfy_phase_progress(
+            operation="grounding_dino_inference",
+            subject=_grounding_dino_subject(grounding_dino_model),
+            total_phases=3,
+        )
+        progress.advance("preparing_device")
+        try:
+            progress.advance("running_inference")
+            detections = self._detect(
+                grounding_dino_model,
+                image,
+                prompt,
+                threshold,
+                execution_device,
+            )
+        except Exception:
+            progress.advance("failed")
+            raise
+        progress.advance("completed")
+        return detections
+
+    def _detect(
+        self,
+        grounding_dino_model: object,
+        image: torch.Tensor,
+        prompt: str,
+        threshold: float,
+        execution_device: str,
+    ) -> tuple[TextBoxDetection, ...]:
+        """Run GroundingDINO adaptation after progress ownership is established."""
 
         if (
             isinstance(grounding_dino_model, LoadedGroundingDINOModel)
@@ -107,6 +139,19 @@ class GroundingDINOTextBoxDetector:
             "GROUNDING_DINO_MODEL or DINO_MODEL with predict_boxes(...) or a callable "
             "GroundingDINO model."
         )
+
+
+def _grounding_dino_subject(model: object) -> str:
+    """Return non-sensitive model identity for progress diagnostics."""
+
+    if isinstance(model, LoadedGroundingDINOModel):
+        return model.model_id
+    model_name = getattr(model, "model_name", None)
+    return (
+        model_name
+        if isinstance(model_name, str) and model_name
+        else type(model).__name__
+    )
 
 
 def _detect_with_raw_grounding_dino(
