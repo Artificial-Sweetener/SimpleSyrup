@@ -28,6 +28,18 @@ from simple_syrup.runtime.loaded_models import LoadedGroundingDINOModel
 from test_helpers import FakeFolderPaths
 
 
+@dataclass
+class _RecordingPhaseProgress:
+    """Record semantic model-load phases emitted by the runtime service."""
+
+    phases: list[str] = field(default_factory=list)
+
+    def advance(self, phase: str) -> None:
+        """Record one phase transition."""
+
+        self.phases.append(phase)
+
+
 def test_grounding_dino_loader_resolves_explicit_layerstyle_bert(
     tmp_path: Path,
 ) -> None:
@@ -114,6 +126,50 @@ def test_grounding_dino_loader_uses_process_cache_for_identical_model(
     assert len(cache) == 1
 
 
+def test_grounding_dino_loader_reports_cache_miss_and_hit_phases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GroundingDINO loads should expose construction and cache-hit boundaries."""
+
+    _install_fake_grounding_dino(monkeypatch)
+    _write_grounding_dino_artifacts(tmp_path)
+    _write_bert(tmp_path / "bert-base-uncased")
+    service = GroundingDINOLoaderService(
+        folder_paths_module=FakeFolderPaths(tmp_path),
+        cache={},
+    )
+    cache_miss_progress = _RecordingPhaseProgress()
+    cache_hit_progress = _RecordingPhaseProgress()
+
+    service.load_model(
+        "GroundingDINO_SwinT_OGC (694MB)",
+        TEXT_ENCODER_LAYERSTYLE,
+        auto_download=True,
+        phase_progress=cache_miss_progress,
+    )
+    service.load_model(
+        "GroundingDINO_SwinT_OGC (694MB)",
+        TEXT_ENCODER_LAYERSTYLE,
+        auto_download=True,
+        phase_progress=cache_hit_progress,
+    )
+
+    assert cache_miss_progress.phases == [
+        "resolving_artifacts",
+        "constructing_model",
+        "loading_checkpoint",
+        "loading_state_dict",
+        "registering_device_management",
+        "completed",
+    ]
+    assert cache_hit_progress.phases == [
+        "resolving_artifacts",
+        "cache_hit",
+        "completed",
+    ]
+
+
 def test_grounding_dino_loader_invalidates_import_caches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -194,12 +250,20 @@ def test_grounding_dino_loader_does_not_cache_failed_model_build(
         cache=cache,
     )
 
+    phase_progress = _RecordingPhaseProgress()
     with pytest.raises(RuntimeError, match="GroundingDINO failed"):
         service.load_model(
             "GroundingDINO_SwinT_OGC (694MB)",
             TEXT_ENCODER_LAYERSTYLE,
             auto_download=True,
+            phase_progress=phase_progress,
         )
+
+    assert phase_progress.phases == [
+        "resolving_artifacts",
+        "constructing_model",
+        "failed",
+    ]
 
     loaded = service.load_model(
         "GroundingDINO_SwinT_OGC (694MB)",

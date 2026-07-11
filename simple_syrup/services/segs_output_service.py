@@ -6,11 +6,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import torch
 
-from ..domain.segs import BoundingBox, NativeSegs, Segment
+from ..domain.segs import (
+    BoundingBox,
+    ImpactSegs,
+    NativeSegs,
+    Segment,
+    limit_segs,
+    sort_segs,
+    to_impact_compatible_segs,
+)
 from ..masking.segs_mask_ops import (
     crop_image,
     crop_mask,
@@ -24,6 +33,14 @@ class CombinedSegsResult:
     """Return one combined SEGS payload and its full-image mask."""
 
     segs: NativeSegs
+    mask: torch.Tensor
+
+
+@dataclass(frozen=True)
+class FinalizedSegsOutput:
+    """Return Impact-compatible SEGS and its paired output mask."""
+
+    segs: ImpactSegs
     mask: torch.Tensor
 
 
@@ -67,6 +84,31 @@ def build_combined_segs_result(
         label="combined",
     )
     return CombinedSegsResult(segs=(header, (combined_segment,)), mask=mask_output)
+
+
+def finalize_detector_segs_output(
+    image: object,
+    segs: NativeSegs,
+    keep_only: int,
+    keep_by: str,
+    crop_factor: float,
+    sort_order: str,
+    combine_segs: bool,
+    combined_builder: Callable[
+        [object, NativeSegs, float],
+        CombinedSegsResult,
+    ] = build_combined_segs_result,
+) -> FinalizedSegsOutput:
+    """Apply shared detector-style SEGS output policy."""
+
+    limited_segs = limit_segs(segs, keep_only, keep_by)
+    sorted_segs = sort_segs(limited_segs, sort_order)
+    combined = combined_builder(image, sorted_segs, crop_factor)
+    output_segs = combined.segs if combine_segs else sorted_segs
+    return FinalizedSegsOutput(
+        segs=to_impact_compatible_segs(output_segs),
+        mask=combined.mask,
+    )
 
 
 def combined_mask_from_segs(segs: NativeSegs) -> torch.Tensor:

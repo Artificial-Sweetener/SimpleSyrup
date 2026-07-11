@@ -15,9 +15,6 @@ from ..domain.segs import (
     KEEP_BY_OPTIONS,
     SORT_ORDER_OPTIONS,
     NativeSegs,
-    limit_segs,
-    sort_segs,
-    to_impact_compatible_segs,
 )
 from ..masking.segs_mask_ops import iter_single_images, validate_image_batch
 from ..runtime.ultralytics_loader import UltralyticsDetectorModel
@@ -27,6 +24,7 @@ from ..services.segs_detection_service import (
 from ..services.segs_output_service import (
     CombinedSegsResult,
     build_combined_segs_result,
+    finalize_detector_segs_output,
 )
 
 
@@ -231,11 +229,17 @@ class DetectSEGSWithUltralytics:
                 sub_dilation=sub_dilation,
                 post_dilation=post_dilation,
             )
-            segs = limit_segs(segs, keep_only, keep_by)
-            segs = sort_segs(segs, sort_order)
-            combined = type(self).combined_builder(single_image, segs, crop_factor)
-            output_segs = combined.segs if combine_segs else segs
-            segs_outputs.append(to_impact_compatible_segs(output_segs))
-            mask_outputs.append(combined.mask)
+            finalized = finalize_detector_segs_output(
+                image=single_image,
+                segs=segs,
+                keep_only=keep_only,
+                keep_by=keep_by,
+                crop_factor=crop_factor,
+                sort_order=sort_order,
+                combine_segs=combine_segs,
+                combined_builder=type(self).combined_builder,
+            )
+            segs_outputs.append(finalized.segs)
+            mask_outputs.append(finalized.mask)
 
         return segs_outputs, torch.cat(mask_outputs, dim=0)

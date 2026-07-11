@@ -10,6 +10,7 @@ from typing import Any
 
 from ..runtime.model_choices import ModelChoiceService, default_choice
 from ..runtime.model_downloads import ComfyProgressReporter
+from ..runtime.progress import create_comfy_phase_progress
 from ..runtime.sam_loader import SAMLoaderService
 from . import tooltips
 
@@ -56,5 +57,10 @@ class SAMModelLoader:
                 sam_model=sam_model,
                 auto_download=True,
                 progress=ComfyProgressReporter(),
+                phase_progress=create_comfy_phase_progress(
+                    operation="sam_model_load",
+                    subject=sam_model,
+                    total_phases=4,
+                ),
             ),
         )

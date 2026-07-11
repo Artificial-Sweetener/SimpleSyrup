@@ -24,6 +24,7 @@ from .model_folders import (
     resolve_model_file,
 )
 from .model_instance_cache import ModelInstanceCache
+from .progress import NullPhaseProgressReporter, PhaseProgressReporter
 
 LOGGER = get_logger(__name__)
 SAM_HQ_RUNTIME_PACKAGE = "simple_syrup.third_party.sam_hq_runtime"
@@ -65,43 +66,60 @@ class SAMLoaderService:
         sam_model: str,
         auto_download: bool,
         progress: ProgressReporter | None = None,
+        phase_progress: PhaseProgressReporter | None = None,
     ) -> LoadedSAMModel:
         """Load a known SAM model and return a `SAM_MODEL`-compatible object."""
 
-        register_required_model_folders(self._folder_paths_module)
-        entry = get_sam_entry(sam_model)
-        artifact_paths = self._resolve_artifacts(entry, auto_download, progress)
-        checkpoint_path = artifact_paths[0]
-        key = SAMModelCacheKey(
-            model_id=entry.entry_id,
-            model_type=entry.model_type,
-            checkpoint_path=checkpoint_path.resolve(),
-        )
-        already_loaded = key in self._cache.entries
-        loaded = self._cache.get_or_load(
-            key,
-            lambda: self._load_uncached_model(entry, checkpoint_path),
-        )
-        if already_loaded:
-            LOGGER.info(
-                "SAM model loaded from process cache",
-                extra={
-                    "operation": "sam_loader",
-                    "model": entry.entry_id,
-                    "model_type": entry.model_type,
-                    "checkpoint_path": str(checkpoint_path),
-                },
+        reporter = phase_progress or NullPhaseProgressReporter()
+        reporter.advance("resolving_artifacts")
+        try:
+            register_required_model_folders(self._folder_paths_module)
+            entry = get_sam_entry(sam_model)
+            artifact_paths = self._resolve_artifacts(entry, auto_download, progress)
+            checkpoint_path = artifact_paths[0]
+            key = SAMModelCacheKey(
+                model_id=entry.entry_id,
+                model_type=entry.model_type,
+                checkpoint_path=checkpoint_path.resolve(),
             )
-        return loaded
+            already_loaded = key in self._cache.entries
+            if already_loaded:
+                reporter.advance("cache_hit")
+            loaded = self._cache.get_or_load(
+                key,
+                lambda: self._load_uncached_model(entry, checkpoint_path, reporter),
+            )
+            if already_loaded:
+                LOGGER.info(
+                    "SAM model loaded from process cache",
+                    extra={
+                        "operation": "sam_loader",
+                        "model": entry.entry_id,
+                        "model_type": entry.model_type,
+                        "checkpoint_path": str(checkpoint_path),
+                    },
+                )
+            reporter.advance("completed")
+            return loaded
+        except Exception:
+            reporter.advance("failed")
+            LOGGER.exception(
+                "SAM model load failed",
+                extra={"operation": "sam_loader", "model": sam_model},
+            )
+            raise
 
     def _load_uncached_model(
         self,
         entry: ModelEntry,
         checkpoint_path: Path,
+        phase_progress: PhaseProgressReporter,
     ) -> LoadedSAMModel:
         """Load and wrap a SAM model after artifact resolution and cache lookup."""
 
+        phase_progress.advance("loading_checkpoint")
         model = self._load_segment_anything_model(entry, checkpoint_path)
+        phase_progress.advance("registering_device_management")
         managed_model = self._device_manager.manage(
             model,
             model_id=entry.entry_id,
