@@ -1,648 +1,516 @@
-# Plan: Tag SEGS w/ External LLM
+# Plan: Image-Associated Mask to SEGS
 
 ## Goal
 
-Add a new Comfy v3-only node named `Tag SEGS w/ External LLM`.
+Add a SimpleSyrup node that converts an existing ComfyUI mask into Impact-compatible SEGS while associating every SEG with cropped image data from the source image.
 
-The node will take an image, existing Impact-compatible SEGS, and a CLIP object. It will show each SEG crop to the configured external vision LLM, turn each LLM response into a positive regional prompt, CLIP-encode those prompts in the same order as the SEGS, and return the unchanged SEGS plus an aligned `CONDITIONING_BATCH` output named `positive`.
+The node should feel like `Detect SEGS w/ Ultralytics`, but it must take an `IMAGE` and a `MASK` instead of an image and detector model. It should expose the same general region workflow controls where they make sense: size filtering, keep-only limiting, mask dilation, post-dilation, crop factor, sort order, and optional unioning into one SEG.
 
-The intended workflow is the same regional-conditioning role currently served by `Tag SEGS w/ WD14` and `Tile & Tag SEGS`, but with an external vision model instead of WD14. The node should be useful when a vision LLM can produce better region descriptions than WD14 tags.
+## Decisions From Maintainer Discussion
 
-## Decisions From Planning
+- This should be a first-class SimpleSyrup node, not just documentation for an Impact Pack workflow chain.
+- The node should behave like a detector-style SEGS source because downstream users think of this as "pre-detected regions from a mask."
+- The node must take both `image` and `mask`.
+- The output SEGS must include full image association by storing each SEG's `cropped_image` from the input image.
+- The node should support masks with multiple disconnected regions.
+- The node should let users choose whether disconnected regions become separate SEGs or one combined SEG.
+- The node should include controls similar to `Detect SEGS w/ Ultralytics` and in a similar order.
+- The node should not expose detector confidence controls because the input is an existing mask, not detector predictions.
+- Segment confidence should be fixed at `1.0`.
+- The existing Impact Pack nodes can already do some of this with `MASK to SEGS` plus `Set Default Image for SEGS`, but that is not the desired UX for SimpleSyrup.
 
-- Export only through the Comfy v3 node path.
-- Do not add a legacy node class.
-- Do not add `NODE_CLASS_MAPPINGS` or `NODE_DISPLAY_NAME_MAPPINGS`.
-- Do not add an internal compatibility shim or dual implementation path.
-- Make exactly one external LLM call per SEG.
-- Preserve SEGS order exactly.
-- Return the original SEGS unchanged, converted only to the existing Impact-compatible output shape.
-- Output one `CONDITIONING_BATCH` entry per SEG.
-- Fail closed when alignment is uncertain.
-- Provide a single widget for how SEG crops are presented to the vision model.
-- Support LLM response cleanup controls similar to the WD14 tagging nodes.
-- Treat the LLM response as prompt text after lightweight tag formatting. Do not add clever semantic parsing in the first implementation.
-- Do not provide opinionated default prompt text for `system_prompt` or `user_prompt`; leave both defaults empty.
+## Existing Code To Reuse
 
-## Implementation Status
+Use these SimpleSyrup modules as the main implementation references:
 
-- [x] Review plan and current code patterns.
-  - Landing note: existing `Tag SEGS w/ WD14` owns SEGS validation/alignment, `External LLM Prompt` owns provider settings/key flow, and v3 registration is centralized in `simple_syrup/nodes_v3/__init__.py`.
-- [x] Add SEG crop image encoder and tests.
-  - Landing note: `ExternalLLMSegsImageEncoder` now emits PNG data URLs for `transparent mask`, `black mask`, and `full crop`; focused encoder tests pass.
-- [x] Add external LLM image-data-url execution path.
-  - Landing note: `ExternalLLMPromptService.generate_with_image_data_url()` reuses the existing model/settings/key/client flow while accepting the SEG encoder's prebuilt PNG data URL.
-- [x] Add service formatting and orchestration tests.
-  - Landing note: service tests cover per-SEG LLM call order, prompt formatting, exclusions, progress, logging metadata, validation failures, and conditioning count alignment.
-- [x] Add `TagSEGSWithExternalLLMService`.
-  - Landing note: the service owns SEGS validation, SEG image encoding, pre-encoded LLM calls, response formatting, prompt prefixing, CLIP conditioning encoding, and completion logging.
-- [x] Add v3-only node schema and execution forwarding.
-  - Landing note: `TagSEGSWithExternalLLMV3` defines the schema directly and delegates to `TagSEGSWithExternalLLMService`; no file was added under `simple_syrup/nodes/`. `system_prompt` and `user_prompt` default to empty strings.
-- [x] Register v3 node and update registration tests.
-  - Landing note: `SimpleSyrup.TagSEGSWithExternalLLM` is now returned by `get_nodes()` with the maintained base node list.
-- [x] Add tooltips and update tooltip coverage.
-  - Landing note: all new v3 inputs/outputs use dedicated tooltip constants, and focused registration/tooltip tests pass.
-- [x] Update this plan with final landing notes.
-  - Landing note: implementation completed as a v3-only vertical slice with no new `simple_syrup/nodes/` node class and no legacy mapping export changes.
-- [x] Run required verification gates.
-  - Landing note: `ruff format .`, `ruff check .`, `mypy --strict simple_syrup tests`, and `pytest -n auto -q` pass in `..\..\venv`.
+- `simple_syrup/nodes/detect_segs_with_ultralytics.py`
+  - Existing detector-style node UX and control order.
+  - Current output shape: `RETURN_TYPES = ("SEGS", "MASK")`.
+  - Current list behavior for batched images: `OUTPUT_IS_LIST = (True, False)`.
+  - Applies `limit_segs`, `sort_segs`, and then `build_combined_segs_result`.
+- `simple_syrup/services/segs_detection_service.py`
+  - Existing service pattern for constructing `Segment` objects from masks and image crops.
+  - Uses `crop_region_for_bbox`, `crop_mask`, `crop_image`, and `dilate_mask`.
+- `simple_syrup/services/segs_output_service.py`
+  - `build_combined_segs_result()` already creates a one-SEG union with `cropped_image`.
+  - `combined_mask_from_segs()` already produces the mask output from SEGS.
+  - `coerce_cropped_mask()` validates crop-local SEG masks.
+  - This module should become the shared owner for detector-style SEGS output finalization.
+- `simple_syrup/masking/segs_mask_ops.py`
+  - Reuse image validation, mask crop, image crop, resize, crop factor, and signed dilation behavior.
+- `simple_syrup/domain/segs.py`
+  - Reuse `Segment`, `BoundingBox`, `CropRegion`, `NativeSegs`, `SORT_ORDER_OPTIONS`, `limit_segs`, `sort_segs`, and `to_impact_compatible_segs`.
 
-## New Node Contract
+Use these Impact Pack modules only as behavioral references, not as imports:
 
-Node id:
+- `E:\ComfyUI\custom_nodes\comfyui-impact-pack\modules\impact\segs_nodes.py`
+  - `MaskToSEGS` splits or combines mask regions.
+  - `DefaultImageForSEGS` attaches cropped source image data after mask conversion.
+  - `SEGSMerge`, `SEGSOrderedFilter`, and `DilateMaskInSEGS` show existing user expectations.
+- `E:\ComfyUI\custom_nodes\comfyui-impact-pack\modules\impact\core.py`
+  - `mask_to_segs()` uses contour detection for disconnected regions.
+  - `batch_mask_to_segs()` handles batched masks for video-style masks.
 
-```text
-SimpleSyrup.TagSEGSWithExternalLLM
-```
+Do not import Impact Pack code. SimpleSyrup tests already enforce avoiding external pack imports.
 
-Display name:
+## Node Name And Contract
 
-```text
-Tag SEGS w/ External LLM
-```
+Add a new Comfy v3 node:
 
-Category:
-
-```text
-SimpleSyrup/Detailing
-```
-
-Inputs:
-
-```text
-image: IMAGE
-segs: SEGS
-clip: CLIP
-model: external LLM model dropdown
-system_prompt: STRING
-user_prompt: STRING
-universal_positive: STRING
-seg_image_mode: COMBO
-replace_underscore: BOOLEAN
-trailing_comma: BOOLEAN
-exclude_tags: STRING
-max_tokens: INT
-reasoning_effort: COMBO
-```
+- Node id: `SimpleSyrup.MaskToSEGS`
+- Display name: `Mask to SEGS`
+- Category: `SimpleSyrup/Detection`
+- Search aliases: `mask`, `segs`, `region`, `detect`, `segmentation`
+- Description: `Converts an existing mask into image-associated SEGS for detail and regional workflows.`
 
 Outputs:
 
-```text
-segs: SEGS
-positive: CONDITIONING_BATCH
-```
+- `segs: SEGS`
+- `mask: MASK`
 
-Suggested default input values:
+Output behavior should match `Detect SEGS w/ Ultralytics`:
 
-```text
-system_prompt:
+- `segs` is list-output compatible, one SEGS payload per input image/mask pair.
+- `mask` is a standard ComfyUI batched mask tensor with shape `(B, H, W)`.
+- The output mask is the union of the retained SEGS after filtering, sorting, and optional combining.
 
-user_prompt:
+## Architecture Landing Shape
 
-universal_positive:
+Do not add a third copy of the detector-style output pipeline.
 
-seg_image_mode:
-transparent mask
+The current code has two nodes that inline the same sequence after SEGS extraction:
 
-replace_underscore:
-true
+1. `simple_syrup/nodes/detect_segs_with_ultralytics.py`
+2. `simple_syrup/nodes/prompt_segs_with_sam.py`
 
-trailing_comma:
-false
-
-exclude_tags:
-
-max_tokens:
-1024
-
-reasoning_effort:
-default
-```
-
-Search aliases:
-
-```text
-llm
-vision
-tag
-segs
-detail
-regional
-prompt
-```
-
-## SEG Image Modes
-
-Add one combo input named `seg_image_mode` with these exact options:
-
-```text
-transparent mask
-black mask
-full crop
-```
-
-### `transparent mask`
-
-Crop the original image to `segment.crop_region`.
-
-Crop the SEG mask to the same rectangle. Resize or normalize the mask only if needed to match the crop dimensions.
-
-Encode a PNG data URL with RGBA channels:
-
-- RGB comes from the crop.
-- Alpha comes from the cropped SEG mask.
-- Pixels outside the mask are hidden by alpha.
-
-Use this as the default because it most directly communicates "only this SEG matters" when the provider supports alpha.
-
-### `black mask`
-
-Crop the original image to `segment.crop_region`.
-
-Crop the SEG mask to the same rectangle. Resize or normalize the mask only if needed to match the crop dimensions.
-
-Encode an RGB PNG data URL:
-
-- Pixels inside the mask keep the original crop color.
-- Pixels outside the mask are set to black.
-
-This is the compatibility mode for providers that ignore PNG alpha or flatten transparent pixels unpredictably.
-
-### `full crop`
-
-Crop the original image to `segment.crop_region`.
-
-Encode the full RGB crop unchanged.
-
-Ignore the SEG mask for the image sent to the LLM. This gives the model surrounding context when context improves region tagging.
-
-## Formatting Rules For LLM Responses
-
-Add formatting controls:
-
-```text
-replace_underscore: BOOLEAN = true
-trailing_comma: BOOLEAN = false
-exclude_tags: STRING = ""
-```
-
-For each LLM response:
-
-1. Strip leading and trailing whitespace.
-2. Reject the response if it is empty after stripping.
-3. Split the response by commas into tag-like chunks.
-4. Trim whitespace around each chunk.
-5. Drop empty chunks.
-6. If `replace_underscore` is enabled, replace `_` with spaces inside each chunk.
-7. Parse `exclude_tags` as a comma-separated list.
-8. Normalize excluded tags using the same trim, empty-drop, and optional underscore replacement policy.
-9. Remove exact tag matches after normalization.
-10. Rejoin remaining tags with `, `.
-11. Reject the prompt if no tags remain after exclusion.
-12. If `trailing_comma` is enabled and the prompt does not already end in a comma, append `,`.
-13. Prefix with `universal_positive` using `domain.prompt_composition.prefix_prompt`.
-
-Do not fuzzy-match excluded tags.
-
-Do not parse JSON, markdown, prose sections, or model-specific response schemas in the first implementation. Prompt discipline should keep responses comma-like. If a model returns prose, the comma splitting still gives deterministic behavior.
-
-## Architecture
-
-Follow the existing layer boundaries in `AGENTS.md`.
-
-### Domain Layer
-
-Use existing domain objects where possible:
-
-- `simple_syrup/domain/segs.py`
-- `simple_syrup/domain/conditioning_batch.py`
-- `simple_syrup/domain/prompt_composition.py`
-- `simple_syrup/domain/external_llm.py`
-
-Add a small domain value object only if it removes duplication or clarifies validation. A likely useful object is a frozen dataclass for formatting controls:
+Both nodes currently perform:
 
 ```python
-@dataclass(frozen=True)
-class LLMTagFormattingControls:
-    replace_underscore: bool
-    trailing_comma: bool
-    exclude_tags: str
+segs = limit_segs(segs, keep_only, keep_by)
+segs = sort_segs(segs, sort_order)
+combined = build_combined_segs_result(single_image, segs, crop_factor)
+output_segs = combined.segs if combine_segs else segs
+segs_outputs.append(to_impact_compatible_segs(output_segs))
+mask_outputs.append(combined.mask)
 ```
 
-Place it where ownership is clearest after implementation. If the formatting is used only by this service, keep it service-local. If it becomes shared with future LLM tagging code, place it in a domain module.
+The new mask node must not duplicate this sequence inline. Instead, implement a shared output-finalization helper in `simple_syrup/services/segs_output_service.py` and refactor the existing detector nodes to use it.
 
-### Runtime / Adapter Layer
+Recommended shape:
 
-Add a crop image encoder near:
+- `MaskToSEGSService`
+  - Owns only one-image, one-mask extraction into separate native SEGS.
+  - Does not own `keep_only`, `sort_order`, `combine_segs`, Impact-compatible conversion, or output mask construction.
+- `segs_output_service`
+  - Owns the common detector-style post-processing pipeline:
+    1. limit SEGS
+    2. sort SEGS
+    3. build the combined result
+    4. choose separate or combined output SEGS
+    5. convert output SEGS to Impact-compatible shape
+    6. return the paired mask output
+- Node classes
+  - Own Comfy-facing schema, batch iteration, and wiring only.
+  - Delegate source-specific extraction to a source service.
+  - Delegate shared final output shaping to `segs_output_service`.
 
-```text
-simple_syrup/runtime/external_llm_images.py
-```
+This keeps ownership strict:
 
-Recommended additions:
+- Mask-derived region extraction belongs to the mask-to-SEGS service.
+- Detector model inference belongs to detector services.
+- Prompt/SAM detection belongs to the SAM prompt service.
+- Sorting, limiting, combining, and output mask generation belong to the shared SEGS output service.
+- Domain helpers remain pure SEGS policies and value conversions.
 
-```python
-SEG_IMAGE_MODES = ("transparent mask", "black mask", "full crop")
+## Input Schema
 
-class ExternalLLMSegsImageEncoder:
-    """Encode SEG crops for OpenAI-compatible vision payloads."""
+Use this input order:
 
-    def encode_segment_as_data_url(
-        self,
-        image: torch.Tensor,
-        segment: Segment,
-        mode: str,
-    ) -> str:
-        """Return one SEG crop as a PNG data URL."""
-```
+1. `image: IMAGE`
+2. `mask: MASK`
+3. `mask_threshold: FLOAT`
+4. `size_threshold: INT`
+5. `keep_only: INT`
+6. `mask_dilation: INT`
+7. `post_dilation: INT`
+8. `crop_factor: FLOAT`
+9. `sort_order: SORT_ORDER_OPTIONS`
+10. `combine_segs: BOOLEAN`
+11. `label: STRING`
 
-This adapter owns tensor-to-PIL conversion and PNG/base64 data URL encoding.
+Detailed input behavior:
 
-The existing `ExternalLLMImageEncoder.encode_first_image_as_data_url()` sends the first whole image. Do not overload that method with SEG-specific behavior. Keep the SEG crop behavior separate so the existing `External LLM Prompt` node remains simple and unchanged.
+- `image`
+  - Source image used to associate cropped image data with every SEG.
+  - Must be a ComfyUI `IMAGE` tensor shaped `(B, H, W, C)`.
+- `mask`
+  - Source mask to convert into SEGS.
+  - Must be a ComfyUI `MASK` tensor shaped `(B, H, W)` or a single mask compatible with the image batch.
+  - The implementation may support a single mask for a single image first. If supporting image batches, batch count must either match the image batch or be exactly `1` for reuse across all images.
+- `mask_threshold`
+  - Default: `0.5`
+  - Min: `0.0`
+  - Max: `1.0`
+  - Step: `0.01`
+  - Converts soft masks into active pixels before region extraction.
+  - Active pixels are `mask >= mask_threshold`.
+- `size_threshold`
+  - Default: `10`
+  - Min: `1`
+  - Max: `8192`
+  - Drops extracted regions whose bounding box is smaller than this many pixels wide or tall.
+  - Match the wording and role of `Detect SEGS w/ Ultralytics`'s `size_threshold`.
+- `keep_only`
+  - Default: `0`
+  - Min: `0`
+  - Max: `4096`
+  - Keeps only the largest N regions after size filtering. `0` keeps all regions.
+  - Do not expose a confidence ranking option. There is no detector confidence.
+- `mask_dilation`
+  - Default: `0`
+  - Min: `-512`
+  - Max: `512`
+  - Signed dilation applied to the full input mask before region extraction.
+  - Positive grows mask regions; negative erodes them.
+- `post_dilation`
+  - Default: `0`
+  - Min: `-512`
+  - Max: `512`
+  - Signed dilation applied to each final crop-local SEG mask after the crop is chosen.
+  - This mirrors the Ultralytics node's final SEG mask cleanup behavior.
+- `crop_factor`
+  - Default: `3.0`
+  - Min: `0.0`
+  - Max: `100.0`
+  - Step: `0.1`
+  - `0.0` means use the full image as the crop, matching SimpleSyrup's existing detector convention.
+  - Values greater than or equal to `1.0` expand the SEG crop around the extracted region's bounding box.
+  - Values between `0.0` and `1.0` must fail with an actionable `ValueError`.
+- `sort_order`
+  - Use `SORT_ORDER_OPTIONS` from `simple_syrup.domain.segs`.
+  - Default: `largest to smallest`.
+  - Sort extracted regions before output and before any combined mask result is built.
+- `combine_segs`
+  - Default: `False`
+  - `False` returns one SEG per disconnected mask region.
+  - `True` returns one unioned SEG representing all retained mask pixels.
+- `label`
+  - Default: `mask`
+  - Label applied to extracted SEGs.
+  - If `combine_segs` is true, the combined output label should be `combined` unless there is a strong reason to preserve the user label. Match `build_combined_segs_result()` unless intentionally extending it.
 
-Use existing masking helpers where possible:
+## Behavior Details
 
-- `validate_single_image`
-- `crop_image`
-- `crop_mask`
-- `resize_mask`
+### Region Extraction
 
-If `segment.cropped_mask` is already crop-local, do not assume it is full-image. The service or encoder must normalize the mask robustly:
-
-- If the mask shape matches the crop height and width, use it directly.
-- If the mask shape matches the full source image height and width, crop it by `segment.crop_region`.
-- If the mask has a batch dimension, normalize to one HW mask.
-- If the mask shape is compatible but not exact, resize with bilinear interpolation and clamp to `0.0..1.0`.
-- If the mask cannot be interpreted as HW or BHW, raise a clear `ValueError`.
-
-Preserve security boundaries:
-
-- No filesystem writes are needed.
-- No workflow-provided code execution.
-- No shell invocation.
-- No network logic inside the image encoder.
-
-### Application / Service Layer
-
-Add a service module:
-
-```text
-simple_syrup/services/tag_segs_with_external_llm_service.py
-```
-
-Recommended public result:
-
-```python
-@dataclass(frozen=True)
-class TagSEGSWithExternalLLMResult:
-    """Return unchanged SEGS and aligned external-LLM conditioning."""
-
-    segs: ImpactSegs
-    positive: ConditioningBatch
-```
-
-Recommended service:
-
-```python
-class TagSEGSWithExternalLLMService:
-    """Caption provided SEGS crops with an external LLM and encode conditioning."""
-```
+Add a new service, probably `simple_syrup/services/mask_to_segs_service.py`, with a class such as `MaskToSEGSService`.
 
 The service should own:
 
-- Input validation.
-- External LLM model resolution.
-- External LLM settings and credential checks.
-- One provider request per SEG.
-- Progress reporting.
-- Response formatting.
-- Prompt prefixing.
-- CLIP conditioning encoding.
-- Alignment checks.
-- Structured logging.
+- Image and mask validation.
+- Mask thresholding.
+- Signed full-mask dilation.
+- Disconnected region extraction.
+- Per-region bounding box calculation.
+- Size filtering.
+- Crop region calculation.
+- Crop-local mask creation.
+- Optional post-dilation on each crop-local mask.
+- Cropped image association.
+- Native immutable SEGS output.
 
-Keep external boundaries injectable for tests:
+The service must not own:
+
+- `keep_only`
+- final `sort_order`
+- `combine_segs`
+- Impact-compatible conversion
+- final output mask construction
+
+Those responsibilities belong to the shared SEGS output finalization helper.
+
+The node should own only Comfy-facing schema, input ordering, batch iteration, and wiring.
+
+### Connected Components
+
+Implement disconnected region extraction inside SimpleSyrup. Do not import Impact Pack.
+
+Prefer a torch-based or standard-library implementation over adding a new required runtime dependency. A simple deterministic flood-fill or connected-components routine is acceptable because masks are 2D binary tensors and the node is not model-bound.
+
+Connectivity decision:
+
+- Use 8-connected components unless tests or existing SimpleSyrup behavior strongly point to 4-connected components.
+- Document this in the service docstring and tests.
+- 8-connected behavior usually matches user expectations for painted masks where diagonal contact should remain one region.
+
+Extraction algorithm outline:
+
+1. Convert mask to a CPU `torch.bool` active-pixel tensor after threshold and dilation.
+2. If no pixels are active, return empty native SEGS. The shared output finalization helper is responsible for turning that into a zero mask output.
+3. Find connected components.
+4. For each component, compute bbox from active pixel coordinates.
+5. Drop components where bbox width or height is less than `size_threshold`.
+6. Create one `Segment` per kept component.
+
+The service always returns separate native SEGS. `combine_segs` is handled later by the shared output finalization helper so all detector-style SEGS nodes use the same combine behavior.
+
+### Mask Values
+
+Use thresholded masks to decide region membership, but preserve useful soft-mask values when forming crop-local masks where possible.
+
+Recommended behavior:
+
+- Use the thresholded, dilated mask for topology and bbox extraction.
+- Use the original normalized mask after `mask_dilation` as the crop-local mask values.
+- Zero out pixels outside the active component for each separate SEG.
+- Clamp all final masks to `0.0..1.0`.
+
+This lets soft masks retain feathered values inside each SEG while still giving deterministic region extraction.
+
+### Cropped Image Association
+
+Every returned `Segment` must set:
+
+- `cropped_image = crop_image(single_image, crop_region).detach().clone()`
+- `cropped_mask = crop-local mask tensor`
+- `confidence = 1.0`
+- `crop_region = CropRegion(...)`
+- `bbox = BoundingBox(...)`
+- `label = label`
+- `control_net_wrapper = None`
+
+This is the key difference from Impact Pack's `MASK to SEGS`, which creates SEGS without cropped image data and relies on a separate `Set Default Image for SEGS` node.
+
+### Batch Handling
+
+Match existing SimpleSyrup detector behavior as closely as possible:
+
+- Validate the image batch with `validate_image_batch()`.
+- Iterate image items with `iter_single_images()`.
+- Produce one SEGS payload per image.
+- Concatenate mask outputs into one `(B, H, W)` tensor.
+
+Mask batch rules:
+
+- If mask batch size equals image batch size, pair by index.
+- If mask batch size is `1` and image batch size is greater than `1`, reuse the mask for every image.
+- Otherwise raise `ValueError` explaining the mismatch.
+- Mask height and width must match the image height and width. Do not silently resize masks for this node unless the maintainer explicitly approves it later.
+
+## Sorting And Keeping
+
+Do not expose `keep_by` unless there is a future product decision to add multiple non-confidence policies.
+
+For `keep_only`, retain the largest regions by crop area before final sorting. Reuse `limit_segs(segs, keep_only, "largest size")` inside the shared output finalization helper for this node. Do not add a new ranking abstraction unless tests show the current domain helper cannot express the behavior clearly.
+
+Final output order must come from `sort_segs(segs, sort_order)`.
+
+## Shared Output Finalization
+
+Add a small result type and helper to `simple_syrup/services/segs_output_service.py`.
+
+Suggested result type:
 
 ```python
-class VisionLLMBoundary(Protocol):
-    def generate(
-        self,
-        model: str,
-        system_prompt: str,
-        user_prompt: str,
-        max_tokens: int,
-        reasoning_effort: str,
-        image: object | None = None,
-    ) -> str:
-        """Return one assistant response."""
+@dataclass(frozen=True)
+class FinalizedSegsOutput:
+    """Return Impact-compatible SEGS and its paired output mask."""
 
-
-class SegmentImageEncodingBoundary(Protocol):
-    def encode_segment_as_data_url(
-        self,
-        image: torch.Tensor,
-        segment: Segment,
-        mode: str,
-    ) -> str:
-        """Return one SEG crop image data URL."""
-
-
-class ConditioningEncodingBoundary(Protocol):
-    def encode_batch(self, clip: Any, chunks: tuple[str, ...]) -> ConditioningBatch:
-        """Return conditioning entries in prompt order."""
+    segs: object
+    mask: torch.Tensor
 ```
 
-The existing `ExternalLLMPromptService.generate()` expects an `image` object and then asks its own image encoder to encode it. For this node, prefer adding a provider-call method that accepts a prebuilt image data URL, or extract shared provider execution into a helper. Do not pass already encoded data URLs through an API that claims to accept Comfy `IMAGE` tensors.
-
-Recommended clean shape:
-
-- Keep `ExternalLLMPromptService.generate()` behavior unchanged.
-- Add a method to the same service or a new small collaborator that accepts `image_data_url`.
-- Reuse the same settings repository, key store, model choice, and provider client logic.
-- Avoid duplicating endpoint/API-key validation across services if it can be extracted without creating an unclear abstraction.
-
-The service execution should look like:
-
-1. Validate `image` as a single BHWC IMAGE tensor.
-2. Coerce `segs` with `coerce_segs`.
-3. Validate SEGS header matches the image height and width.
-4. Validate every `segment.crop_region` fits inside the image.
-5. Reject empty SEGS.
-6. Resolve the selected LLM model.
-7. Create progress with `len(segments) + 2`.
-8. For each segment in input order:
-   - Encode one SEG crop according to `seg_image_mode`.
-   - Call the external LLM once with that crop.
-   - Format the LLM response.
-   - Prefix with `universal_positive`.
-   - Append the prompt to an ordered tuple/list.
-   - Update progress.
-9. Encode the prompt tuple using `ComfyConditioningEncoder.encode_batch`.
-10. Verify `len(positive.entries) == len(segments)`.
-11. Log completion with operation name, segment count, selected model, image mode, and formatting-control presence.
-12. Return `to_impact_compatible_segs(native_segs)` and `positive`.
-
-Suggested operation constant:
+Suggested helper:
 
 ```python
-OPERATION = "Tag SEGS w/ External LLM"
+def finalize_detector_segs_output(
+    image: object,
+    segs: NativeSegs,
+    keep_only: int,
+    keep_by: str,
+    crop_factor: float,
+    sort_order: str,
+    combine_segs: bool,
+) -> FinalizedSegsOutput:
+    """Apply shared detector-style SEGS output policy."""
 ```
 
-### Comfy v3 Node Layer
+Behavior:
 
-Add only:
+1. Apply `limit_segs(segs, keep_only, keep_by)`.
+2. Apply `sort_segs(segs, sort_order)`.
+3. Build `combined = build_combined_segs_result(image, segs, crop_factor)`.
+4. Use `combined.segs` when `combine_segs` is true; otherwise use the sorted separate SEGS.
+5. Convert chosen SEGS with `to_impact_compatible_segs`.
+6. Return the converted SEGS and `combined.mask`.
 
-```text
-simple_syrup/nodes_v3/tag_segs_with_external_llm.py
-```
+For the new mask node, call this helper with `keep_by="largest size"` internally.
 
-Do not add:
+Refactor these existing nodes to use the helper as part of this change:
 
-```text
-simple_syrup/nodes/tag_segs_with_external_llm.py
-```
+- `simple_syrup/nodes/detect_segs_with_ultralytics.py`
+- `simple_syrup/nodes/prompt_segs_with_sam.py`
 
-The v3 node should:
+Add characterization tests before refactoring or preserve existing tests that already prove:
 
-- Define the schema directly.
-- Use `comfy_api.latest`.
-- Use `Custom("CONDITIONING_BATCH")` for the positive output.
-- Use model choices from the external LLM service, like the current `External LLM Prompt` node does.
-- Delegate non-trivial behavior to `TagSEGSWithExternalLLMService`.
-- Contain only input declaration and execution forwarding.
+- final sorting happens before combined output construction
+- keep-only limiting happens before final sorting
+- `combine_segs` chooses the combined SEGS while retaining the same output mask
+- returned SEGS are Impact-compatible
 
-Register the node in:
+The helper should be narrow. Do not move source-specific detection behavior into it.
 
-```text
-simple_syrup/nodes_v3/__init__.py
-```
+## V3 Registration
 
-The root package export must continue to expose only `comfy_entrypoint`.
+Comfy v3 is the only supported export path.
+
+Preferred implementation:
+
+- Add a direct v3 node class under `simple_syrup/nodes_v3/mask_to_segs.py`.
+- Register it in `simple_syrup/nodes_v3/__init__.py::get_nodes()`.
+- Do not add `NODE_CLASS_MAPPINGS` or legacy export mappings.
+
+If reusing the legacy adapter pattern would materially reduce risk, it is acceptable to add a legacy-style internal node class under `simple_syrup/nodes/` and wrap it with `LegacyNodeV3Adapter`, but the public export must still be v3-only.
+
+The implementation should look native to the current codebase and should not add compatibility shims.
 
 ## Tooltips
 
-Update:
+Every visible input and output must have concise user-facing tooltip text.
 
-```text
-simple_syrup/nodes/tooltips.py
-```
+Required tooltip intent:
 
-Every visible input and output needs a concise user-facing tooltip.
+- `image`: source image used for SEG crops.
+- `mask`: mask whose active regions become SEGS.
+- `mask_threshold`: threshold used to decide active mask pixels.
+- `size_threshold`: smallest region width or height to keep, in pixels.
+- `keep_only`: maximum number of largest regions to keep; `0` keeps all.
+- `mask_dilation`: grow or shrink the source mask before regions are found.
+- `post_dilation`: grow or shrink each final SEG mask after cropping.
+- `crop_factor`: context around each region; `0` uses the full image.
+- `sort_order`: output ordering for separate SEGS.
+- `combine_segs`: return one unioned SEG instead of separate regions.
+- `label`: label stored on extracted SEGs.
+- `segs` output: image-associated SEGS from the mask.
+- `mask` output: union of retained SEGS as a ComfyUI mask.
 
-Suggested tooltip intent:
+## Tests To Add
 
-- `image`: The source image that the SEGS were detected from.
-- `segs`: The regions to describe and align with conditioning.
-- `clip`: The CLIP/text encoder used to encode generated regional prompts.
-- `model`: The configured external vision model used for each SEG crop.
-- `system_prompt`: Instructions that control how the model writes tags.
-- `user_prompt`: The per-region request sent with each SEG crop.
-- `universal_positive`: Prompt text added before every generated region prompt.
-- `seg_image_mode`: How pixels outside the SEG mask are shown to the vision model.
-- `replace_underscore`: Converts booru-style underscores into spaces before encoding.
-- `trailing_comma`: Adds a final comma to each generated prompt when enabled.
-- `exclude_tags`: Comma-separated exact tags to remove from LLM responses.
-- `max_tokens`: Maximum response length for each SEG request.
-- `reasoning_effort`: Provider-specific reasoning control, when supported.
-- `segs` output: The original SEGS, kept in the same order as the conditioning batch.
-- `positive` output: One CLIP-encoded positive conditioning entry per SEG.
+Add focused tests before or alongside implementation.
 
-Keep wording concise. Do not document removed choices or alternatives the node does not expose.
+### Shared Output Finalization Tests
 
-## Tests
-
-Add or update tests alongside implementation.
-
-### Image Encoder Tests
-
-Add:
-
-```text
-tests/test_external_llm_segs_images.py
-```
+Add tests for the new helper in `tests/test_segs_output_service.py` or extend the existing SEGS output service coverage currently housed in `tests/test_ultralytics_detection_service.py`.
 
 Cover:
 
-- `transparent mask` returns a PNG data URL with alpha.
-- Alpha is low/zero outside the SEG mask and high/one inside it.
-- `black mask` returns RGB where outside-mask pixels are black.
-- `full crop` preserves the crop rectangle without masking.
-- Crop dimensions match `segment.crop_region`.
-- Crop-local masks are accepted.
-- Full-image masks are accepted and cropped.
-- Invalid mask rank fails with an actionable `ValueError`.
-- Unknown `seg_image_mode` fails with an actionable `ValueError`.
+- Applies `limit_segs` before `sort_segs`.
+- Builds the combined result from the limited and sorted SEGS.
+- Returns separate SEGS when `combine_segs` is false.
+- Returns one combined SEG when `combine_segs` is true.
+- Always returns the mask from `build_combined_segs_result`.
+- Converts output SEGS to Impact-compatible tuple/list shape.
+- Supports `keep_by="largest size"` for mask-derived SEGS.
 
-Use small deterministic tensors, such as 4x4 or 6x6 images, so pixel assertions are simple.
+After this helper is tested, refactor `Detect SEGS w/ Ultralytics` and `Prompt SEGS w/ SAM` to use it without changing their public behavior.
 
 ### Service Tests
 
-Add:
-
-```text
-tests/test_tag_segs_with_external_llm_service.py
-```
+Create `tests/test_mask_to_segs_service.py`.
 
 Cover:
 
-- Existing SEGS, LLM responses, formatted prompts, and conditioning stay aligned by index.
-- The service makes one LLM call per SEG.
-- The service sends the selected `seg_image_mode` to the encoder.
-- `universal_positive` is prefixed to every generated prompt.
-- `replace_underscore=True` turns `blue_hair` into `blue hair`.
-- `replace_underscore=False` preserves `blue_hair`.
-- `exclude_tags` removes exact normalized tags.
-- `trailing_comma=True` adds a comma after formatting.
-- Empty SEGS raise `ValueError`.
-- Mismatched SEGS header and image dimensions raise `ValueError`.
-- Crop regions outside the image raise `ValueError`.
-- Empty LLM responses raise `ValueError`.
-- Responses that become empty after exclusions raise `ValueError`.
-- Conditioning encoder returning the wrong entry count raises `ValueError`.
-- Completion logging includes operation, segment count, model, image mode, and universal-positive presence.
+- Single rectangular mask creates one SEG.
+- `cropped_image` matches the source image crop.
+- `cropped_mask` matches the mask crop.
+- Two disconnected regions create two separate SEGs.
+- Service always returns separate SEGS; combining is covered by shared output finalization tests and node tests.
+- Empty mask returns empty native SEGS from the service and a zero mask output through the node/output helper.
+- `mask_threshold` controls active pixels.
+- `mask_dilation` grows a source mask before region extraction.
+- Negative `mask_dilation` erodes a source mask.
+- `post_dilation` changes only crop-local final masks.
+- `crop_factor` expands crop regions.
+- `crop_factor = 0.0` uses the full image.
+- `0.0 < crop_factor < 1.0` raises `ValueError`.
+- `size_threshold` drops small components.
+- Soft mask values are clamped and retained inside component masks.
+- Batch mask and image mismatch raises an actionable error if batch handling is in the service.
 
-Use fake boundaries for LLM calls, image encoding, conditioning encoding, and progress. Do not call a real provider in tests.
+### Node Contract Tests
 
-### V3 Node Tests
-
-Add:
-
-```text
-tests/test_tag_segs_with_external_llm_v3_node.py
-```
+Create `tests/test_mask_to_segs_node.py` or a v3-specific equivalent.
 
 Cover:
 
-- Schema node id is `SimpleSyrup.TagSEGSWithExternalLLM`.
-- Display name is `Tag SEGS w/ External LLM`.
-- Category is `SimpleSyrup/Detailing`.
-- Inputs are exposed in the intended order.
-- `seg_image_mode` choices are exactly `transparent mask`, `black mask`, `full crop`.
-- `transparent mask` is the default.
-- Formatting controls have intended defaults.
-- Outputs are `segs` and `positive`.
-- Output types are `SEGS` and `CONDITIONING_BATCH`.
-- `execute()` forwards all inputs to the service.
+- Node id is `SimpleSyrup.MaskToSEGS`.
+- Display name is `Mask to SEGS`.
+- Category is `SimpleSyrup/Detection`.
+- Outputs are `SEGS` and `MASK`.
+- The input list order exactly matches the plan.
+- Every input has a tooltip.
+- Every output has a tooltip.
+- No confidence input exists.
+- No detector model input exists.
+- No `keep_by` widget exists unless the implementation deliberately adds more non-confidence policies and updates this plan.
+- Execution returns Impact-compatible SEGS and a `(B, H, W)` mask.
+- `combine_segs = false` returns separate SEGs.
+- `combine_segs = true` returns one combined SEG.
+- `keep_only` keeps the largest mask-derived regions.
+- `sort_order` orders separate regions using existing domain policies.
+- Batched images return list-output SEGS and batched masks.
 
 ### Registration Tests
 
-Update existing registration/v3 export tests. The new node must appear in the v3 entrypoint output from:
+Update existing registration tests:
 
-```text
-simple_syrup/nodes_v3/__init__.py::get_nodes()
-```
+- `SimpleSyrup.MaskToSEGS` appears in `get_nodes()`.
+- Adding the node does not remove or rename existing nodes.
+- Root `comfy_entrypoint` still exposes v3 nodes only.
 
-Also update tooltip coverage tests so the new node does not create coverage gaps.
+### Tooltip Coverage Tests
 
-## Validation And Errors
+Update `tests/test_node_tooltips.py` so the new node passes the repository tooltip requirements.
 
-Use explicit, actionable errors.
+## Implementation Steps
 
-Required validation failures:
-
-- `image` is not a torch IMAGE tensor.
-- `image` batch size is not 1.
-- `segs` is not a valid SEGS payload.
-- SEGS header dimensions do not match the image.
-- SEGS contains no segments.
-- A SEG crop region is outside the image.
-- `seg_image_mode` is unknown.
-- The external LLM provider is not configured.
-- The external LLM API key is missing.
-- The external LLM response is empty.
-- Formatting removes every generated tag.
-- The conditioning encoder returns a count different from the SEG count.
-
-Do not silently continue after invalid inputs or provider failures.
-
-## Logging And Progress
-
-Use `simple_syrup.shared.logging.get_logger`.
-
-At completion, log an `info` event with:
-
-```text
-operation: tag_segs_with_external_llm
-segment_count
-external_llm_model
-seg_image_mode
-universal_positive_present
-replace_underscore
-trailing_comma
-exclude_tags_present
-```
-
-Provider failures should preserve exception context. Existing external LLM provider errors can propagate if they are already actionable.
-
-Use Comfy progress in the service:
-
-- Start with one initial progress update after validation/model resolution.
-- Update after each SEG LLM call.
-- Update once after conditioning encode.
-
-## Security And Runtime Constraints
-
-- Use the ComfyUI virtual environment located at `..\..\venv`.
-- Do not create a repository-local `.venv`.
-- Do not use global Python for verification.
-- Use PowerShell command forms on Windows.
-- Do not write temporary crop files to disk.
-- Do not log API keys, provider secrets, or full data URLs.
-- Do not execute workflow-provided code.
-- Keep network calls inside the external LLM client/provider boundary.
-- Keep filesystem, subprocess, and network behavior out of node classes and domain logic.
-- Keep import-time behavior cheap. The node schema may read cached model names, but must not make provider requests during import/schema declaration.
-
-## Required Files To Touch
-
-Expected new files:
-
-```text
-simple_syrup/services/tag_segs_with_external_llm_service.py
-simple_syrup/nodes_v3/tag_segs_with_external_llm.py
-tests/test_external_llm_segs_images.py
-tests/test_tag_segs_with_external_llm_service.py
-tests/test_tag_segs_with_external_llm_v3_node.py
-```
-
-Expected modified files:
-
-```text
-simple_syrup/runtime/external_llm_images.py
-simple_syrup/services/external_llm_prompt_service.py
-simple_syrup/nodes/tooltips.py
-simple_syrup/nodes_v3/__init__.py
-tests/test_registration.py
-tests/test_node_tooltips.py
-```
-
-Only modify additional files if implementation proves they are the correct ownership location.
-
-Do not add a file under:
-
-```text
-simple_syrup/nodes/
-```
-
-for this node.
-
-## Implementation Sequence
-
-1. Add characterization tests around the existing external LLM prompt service if extraction is needed.
-2. Add the SEG crop image encoder and image-mode tests.
-3. Add response formatting logic and service tests.
-4. Add the application service with fake-boundary tests.
-5. Add the v3 node schema and execute forwarding tests.
-6. Register the v3 node and update registration tests.
-7. Add tooltips and update tooltip coverage tests.
-8. Run focused tests while developing.
-9. Run full verification gates before completion.
+- [x] Add or confirm characterization tests for the existing Ultralytics and SAM detector-style output behavior.
+  - Landing note: Existing node tests already covered separate/combined outputs, keep-only limiting, final sorting, combined-builder input order, and batch handling for both detector nodes.
+- [x] Add shared output finalization tests.
+  - Landing note: `tests/test_segs_output_service.py` now covers limit-before-sort, combined output selection, returned mask preservation, Impact-compatible conversion, and `keep_by="largest size"` for mask-derived SEGS.
+- [x] Add the shared output finalization helper in `segs_output_service.py`.
+  - Landing note: `FinalizedSegsOutput` and `finalize_detector_segs_output()` now own detector-style limit/sort/combine/conversion/mask finalization.
+- [x] Refactor `Detect SEGS w/ Ultralytics` and `Prompt SEGS w/ SAM` to use the helper without behavior changes.
+  - Landing note: Both nodes still own source-specific extraction and batch wiring, but delegate shared output shaping to `finalize_detector_segs_output()` with their injectable combined builders.
+- [x] Add the connected-component helper and mask-to-SEGS service.
+  - Landing note: `mask_components.py` implements deterministic 8-connected component extraction, and `MaskToSEGSService` now converts one image plus one mask into separate native SEGS with cropped image association.
+- [x] Add direct v3 node schema and execution wrapper.
+  - Landing note: `MaskToSEGSV3` defines the Comfy v3 schema directly, owns image/mask batch pairing, and delegates extraction plus shared output finalization.
+- [x] Register the node in `simple_syrup/nodes_v3/__init__.py`.
+  - Landing note: `SimpleSyrup.MaskToSEGS` is included in the base v3 node list.
+- [x] Add or update registration and tooltip tests.
+  - Landing note: Registration expectations include `SimpleSyrup.MaskToSEGS`; the schema-driven tooltip coverage includes every new input and output.
+- [x] Run focused tests for shared output finalization, existing detector nodes, the new service, the new node, registration, and tooltips.
+  - Landing note: Focused plan checks pass: `51 passed`.
+- [x] Run full Python gates.
+  - Landing note: `ruff format .`, `ruff check .`, `mypy --strict simple_syrup tests`, and full `pytest -n auto -q` pass. Full test result: `969 passed`.
+- [x] Do not touch frontend code unless the Comfy v3 UI requires it.
+  - Landing note: No frontend source or generated browser artifact was changed.
 
 ## Verification Commands
 
-Run all commands from the repository root with PowerShell syntax.
+Run all commands from repository root with the ComfyUI virtual environment two directories above this repo.
 
-Required gates:
+Focused checks during development:
+
+```powershell
+..\..\venv\Scripts\python.exe -m pytest -n auto -q tests\test_detect_segs_with_ultralytics_node.py tests\test_prompt_segs_with_sam_node.py
+..\..\venv\Scripts\python.exe -m pytest -n auto -q tests\test_segs_output_service.py
+..\..\venv\Scripts\python.exe -m pytest -n auto -q tests\test_mask_to_segs_service.py tests\test_mask_to_segs_node.py
+..\..\venv\Scripts\python.exe -m pytest -n auto -q tests\test_registration.py tests\test_node_tooltips.py
+```
+
+Required final gates:
 
 ```powershell
 ..\..\venv\Scripts\ruff.exe format .
@@ -651,20 +519,25 @@ Required gates:
 ..\..\venv\Scripts\python.exe -m pytest -n auto -q
 ```
 
-Do not substitute global tools.
+If frontend code is touched, also run:
 
-If a required tool is missing from `..\..\venv`, install or update development dependencies in that environment before verification. Do not create a local `.venv`.
+```powershell
+npm ci
+npm run lint:web
+npm run typecheck:web
+npm run test:web
+npm run build:web
+```
 
-## Definition Of Done
+## Acceptance Criteria
 
-- The node is exported only through Comfy v3.
-- `SimpleSyrup.TagSEGSWithExternalLLM` appears in `get_nodes()`.
-- The node returns unchanged SEGS plus one positive conditioning entry per SEG.
-- One external LLM call is made per SEG.
-- `transparent mask`, `black mask`, and `full crop` are implemented and tested.
-- Formatting controls are implemented and tested.
-- All validation failures are explicit and actionable.
-- Tooltips cover every input and output.
-- Tests cover service behavior, image encoding, v3 schema, execution forwarding, registration, and tooltip coverage.
-- No legacy node class or legacy mapping export is introduced.
-- Required ruff, mypy, and pytest gates pass in `..\..\venv`.
+- A user can plug in an image and a mask and get ready-to-use image-associated SEGS.
+- A mask with two disconnected regions can produce either two SEGs or one combined SEG.
+- The node has detector-style controls that feel aligned with `Detect SEGS w/ Ultralytics`.
+- The node exposes no detector confidence controls.
+- Each SEG has `cropped_image`, `cropped_mask`, `crop_region`, `bbox`, `label`, and `confidence = 1.0`.
+- The returned SEGS are Impact-compatible.
+- The returned mask is the union of retained output SEGS.
+- The implementation does not import Impact Pack.
+- The implementation is covered by behavior tests, node contract tests, registration tests, and tooltip tests.
+- Full Python verification gates pass.
