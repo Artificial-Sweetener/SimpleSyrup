@@ -19,6 +19,18 @@ from simple_syrup.runtime.sam_loader import SAMLoaderService, SAMModelCacheKey
 from test_helpers import FakeFolderPaths
 
 
+@dataclass
+class _RecordingPhaseProgress:
+    """Record semantic SAM load phases emitted by the runtime service."""
+
+    phases: list[str] = field(default_factory=list)
+
+    def advance(self, phase: str) -> None:
+        """Record one phase transition."""
+
+        self.phases.append(phase)
+
+
 class RecordingDownloader:
     """Downloader double that writes requested artifacts."""
 
@@ -81,6 +93,45 @@ def test_sam_loader_uses_process_cache_for_identical_resolved_model(
     assert len(cache) == 1
 
 
+def test_sam_loader_reports_cache_miss_and_hit_phases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SAM loads should expose checkpoint construction and cache reuse."""
+
+    _install_fake_segment_anything(monkeypatch)
+    _create_sam_file(tmp_path, "sam_vit_b_01ec64.pth")
+    service = SAMLoaderService(
+        folder_paths_module=FakeFolderPaths(tmp_path),
+        cache={},
+    )
+    cache_miss_progress = _RecordingPhaseProgress()
+    cache_hit_progress = _RecordingPhaseProgress()
+
+    service.load_model(
+        "sam_vit_b (375MB)",
+        auto_download=True,
+        phase_progress=cache_miss_progress,
+    )
+    service.load_model(
+        "sam_vit_b (375MB)",
+        auto_download=True,
+        phase_progress=cache_hit_progress,
+    )
+
+    assert cache_miss_progress.phases == [
+        "resolving_artifacts",
+        "loading_checkpoint",
+        "registering_device_management",
+        "completed",
+    ]
+    assert cache_hit_progress.phases == [
+        "resolving_artifacts",
+        "cache_hit",
+        "completed",
+    ]
+
+
 def test_sam_loader_cache_separates_model_selections(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -121,8 +172,19 @@ def test_sam_loader_does_not_cache_failed_registry_load(
         cache=cache,
     )
 
+    phase_progress = _RecordingPhaseProgress()
     with pytest.raises(RuntimeError, match="SAM failed"):
-        service.load_model("sam_vit_b (375MB)", auto_download=True)
+        service.load_model(
+            "sam_vit_b (375MB)",
+            auto_download=True,
+            phase_progress=phase_progress,
+        )
+
+    assert phase_progress.phases == [
+        "resolving_artifacts",
+        "loading_checkpoint",
+        "failed",
+    ]
 
     loaded = service.load_model("sam_vit_b (375MB)", auto_download=True)
 
