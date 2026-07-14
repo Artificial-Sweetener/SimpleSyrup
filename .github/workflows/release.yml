@@ -46,7 +46,7 @@ jobs:
 
       - name: Install compatibility test dependencies
         run: >-
-          python -m pip install pytest torch
+          python -m pip install aiohttp pytest torch
           "transformers${{ matrix.version }}"
 
       - name: Verify GroundingDINO BERT compatibility
