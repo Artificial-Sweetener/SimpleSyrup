@@ -1,3 +1,15 @@
+# [1.5.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.4.0...v1.5.0) (2026-07-14)
+
+
+### Bug Fixes
+
+* **groundingdino:** support transformers v4 and v5 ([239070b](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/239070b12d3eecbfd5c47c9410c7ca31ac1402ac))
+
+
+### Features
+
+* **masking:** expand segmentation tooling and progress ([f70766d](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/f70766dafe096895ad8d6309681fd59270664600))
+
 # [1.4.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.3.0...v1.4.0) (2026-06-02)
 
 
