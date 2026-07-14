@@ -1,6 +1,7 @@
 name: release
 
 on:
+  pull_request:
   push:
     branches:
       - main
@@ -19,7 +20,44 @@ permissions:
   contents: write
 
 jobs:
+  transformers-compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: comfy-v4-floor
+            version: "==4.50.3"
+          - label: latest-v4
+            version: "==4.57.6"
+          - label: v5-floor
+            version: "==5.0.0"
+          - label: latest-v5
+            version: ">=5,<6"
+    name: Transformers ${{ matrix.label }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install compatibility test dependencies
+        run: >-
+          python -m pip install pytest torch
+          "transformers${{ matrix.version }}"
+
+      - name: Verify GroundingDINO BERT compatibility
+        run: >-
+          python -m pytest -q
+          tests/test_grounding_dino_bert_adapter.py
+          tests/test_grounding_dino_text_token_masks.py
+
   release:
+    if: github.event_name != 'pull_request'
+    needs: transformers-compatibility
     runs-on: ubuntu-latest
     env:
       SIMPLE_SYRUP_TEST_COMFY_CPU: "1"
