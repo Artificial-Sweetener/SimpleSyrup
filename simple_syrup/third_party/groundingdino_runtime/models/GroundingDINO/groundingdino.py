@@ -21,6 +21,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from simple_syrup.runtime.grounding_dino_bert_adapter import (
+    prepare_grounding_dino_bert_attention_mask,
+)
 from simple_syrup.third_party.groundingdino_runtime.util import get_tokenlizer
 from simple_syrup.third_party.groundingdino_runtime.util.misc import (
     NestedTensor,
@@ -30,10 +33,7 @@ from simple_syrup.third_party.groundingdino_runtime.util.misc import (
 
 from ..registry import MODULE_BUILD_FUNCS
 from .backbone import build_backbone
-from .bertwarper import (
-    BertModelWarper,
-    generate_masks_with_special_tokens_and_transfer_map,
-)
+from .text_token_masks import generate_text_token_masks
 from .transformer import build_transformer
 from .utils import MLP, ContrastiveEmbed
 
@@ -98,7 +98,6 @@ class GroundingDINO(nn.Module):
         self.bert = get_tokenlizer.get_pretrained_language_model(text_encoder_type)
         self.bert.pooler.dense.weight.requires_grad_(False)
         self.bert.pooler.dense.bias.requires_grad_(False)
-        self.bert = BertModelWarper(bert_model=self.bert)
 
         self.feat_map = nn.Linear(self.bert.config.hidden_size, self.hidden_dim, bias=True)
         nn.init.constant_(self.feat_map.bias.data, 0)
@@ -228,9 +227,7 @@ class GroundingDINO(nn.Module):
             text_self_attention_masks,
             position_ids,
             cate_to_token_mask_list,
-        ) = generate_masks_with_special_tokens_and_transfer_map(
-            tokenized, self.specical_tokens, self.tokenizer
-        )
+        ) = generate_text_token_masks(tokenized, self.specical_tokens)
 
         if text_self_attention_masks.shape[1] > self.max_text_len:
             text_self_attention_masks = text_self_attention_masks[
@@ -250,6 +247,12 @@ class GroundingDINO(nn.Module):
             # import ipdb; ipdb.set_trace()
             tokenized_for_encoder = tokenized
 
+        tokenized_for_encoder["attention_mask"] = (
+            prepare_grounding_dino_bert_attention_mask(
+                tokenized_for_encoder["attention_mask"],
+                text_encoder=self.bert,
+            )
+        )
         bert_output = self.bert(**tokenized_for_encoder)  # bs, 195, 768
 
         encoded_text = self.feat_map(bert_output["last_hidden_state"])  # bs, 195, d_model
@@ -383,4 +386,3 @@ def build_groundingdino(args):
     )
 
     return model
-
