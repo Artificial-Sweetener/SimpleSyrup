@@ -62,6 +62,7 @@ def sample_multidiffusion(
     latent_tile_batch_size: int,
     preview_context: DetailPreviewContext | None = None,
     differential_diffusion: bool = False,
+    allow_full_context_masks: bool = False,
 ) -> Latent:
     """Sample a latent with a cloned model patched for MultiDiffusion."""
 
@@ -73,8 +74,16 @@ def sample_multidiffusion(
         latent_tile_batch_size=latent_tile_batch_size,
     )
     _reject_unipc_sampler(sampler_name)
-    reject_unsupported_conditioning(positive, sampler_label=SAMPLER_LABEL)
-    reject_unsupported_conditioning(negative, sampler_label=SAMPLER_LABEL)
+    reject_unsupported_conditioning(
+        positive,
+        sampler_label=SAMPLER_LABEL,
+        allow_full_context_masks=allow_full_context_masks,
+    )
+    reject_unsupported_conditioning(
+        negative,
+        sampler_label=SAMPLER_LABEL,
+        allow_full_context_masks=allow_full_context_masks,
+    )
 
     sampler = sampling_samplers.resolve_sampler(sampler_name)
     sigmas = sampling_schedulers.calculate_sigmas(

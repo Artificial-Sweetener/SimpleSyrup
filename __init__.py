@@ -15,6 +15,9 @@ sys.modules.setdefault("simple_syrup", _simple_syrup_package)
 from .simple_syrup.runtime.external_llm_routes import (  # noqa: E402
     register_external_llm_routes,
 )
+from .simple_syrup.runtime.mask_batch_preview_routes import (  # noqa: E402
+    register_mask_batch_preview_routes,
+)
 from .simple_syrup.runtime.settings_routes import register_settings_routes  # noqa: E402
 
 WEB_DIRECTORY = "./web/dist"
@@ -40,6 +43,7 @@ async def comfy_entrypoint() -> object:
 
 register_settings_routes()
 register_external_llm_routes()
+register_mask_batch_preview_routes()
 
 __all__ = [
     "WEB_DIRECTORY",

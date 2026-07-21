@@ -18,14 +18,12 @@ class EncodePromptBatch:
     RETURN_TYPES = ("CONDITIONING_BATCH", "CONDITIONING_BATCH")
     RETURN_NAMES = ("positive", "negative")
     OUTPUT_TOOLTIPS = (
-        "Positive conditioning entries selected by SEGS order.",
-        "Negative conditioning entries selected by SEGS order.",
+        "Ordered positive conditioning entries for batch-aware consumers.",
+        "Ordered negative conditioning entries for batch-aware consumers.",
     )
     FUNCTION = "encode"
     CATEGORY = "SimpleSyrup/Conditioning"
-    DESCRIPTION = (
-        "Encodes [SEP]-separated prompts into per-segment conditioning batches."
-    )
+    DESCRIPTION = "Encodes [SEP]-separated prompts into ordered conditioning batches."
     SEARCH_ALIASES = ["conditioning batch", "prompt batch", "segs prompts"]
 
     encoder_class: ClassVar[type[ComfyConditioningEncoder]] = ComfyConditioningEncoder
@@ -51,7 +49,7 @@ class EncodePromptBatch:
                         "default": "",
                         "multiline": True,
                         "tooltip": (
-                            "Positive prompts in SEGS order, separated by [SEP]."
+                            "Ordered positive prompt entries separated by [SEP]."
                         ),
                     },
                 ),
@@ -61,7 +59,7 @@ class EncodePromptBatch:
                         "default": "",
                         "multiline": True,
                         "tooltip": (
-                            "Negative prompts in SEGS order, separated by [SEP]."
+                            "Ordered negative prompt entries separated by [SEP]."
                         ),
                     },
                 ),

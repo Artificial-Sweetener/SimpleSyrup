@@ -7,9 +7,16 @@ import { app } from "../../../scripts/app.js";
 
 import { registerSimpleSyrupSettings } from "./settings";
 import { registerExternalLLMRefreshHook } from "./refresh";
-import type { ComfyApp } from "./types";
+import { registerMaskBatchUpload } from "./maskBatchUpload";
+import type { ComfyApp, ComfyExecutionEvents } from "./types";
+
+interface ComfyRuntimeWindow extends Window {
+  comfyAPI: { api: { api: ComfyExecutionEvents } };
+}
 
 const comfyApp = app as unknown as ComfyApp;
+const comfyExecutionEvents = (window as unknown as ComfyRuntimeWindow).comfyAPI
+  .api.api;
 
 comfyApp.registerExtension({
   name: "SimpleSyrup.Settings",
@@ -18,3 +25,5 @@ comfyApp.registerExtension({
     registerExternalLLMRefreshHook(appInstance);
   }
 });
+
+registerMaskBatchUpload(comfyApp, comfyExecutionEvents);
