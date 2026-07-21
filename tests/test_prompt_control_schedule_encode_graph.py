@@ -88,22 +88,41 @@ def test_schedule_encode_graph_packs_only_multichunk_sides(
     ]
 
 
-def test_schedule_encode_graph_collects_loras_from_all_chunks(
+def test_schedule_encode_graph_keeps_loras_local_to_aligned_segments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """LoRA scheduling sees all tags from every separator-delimited chunk."""
+    """Each SEP index receives one hook plan shared by both prompt sides."""
 
     calls = _install_fake_prompt_control(monkeypatch)
 
-    PromptControlScheduleEncodeGraphBuilder().build(
+    output = PromptControlScheduleEncodeGraphBuilder().build(
         model=["model", 0],
         clip=["clip", 0],
         positive_prompt="face <lora:a:1> [SEP] hair <lora:b:1>",
-        negative_prompt="blur <lora:c:1> [SEP] noise <lora:d:1>",
+        negative_prompt="blur <lora:c:1> [SEP] noise <lora:d:[0:1:0.5]>",
     )
 
-    assert calls["lora"][0]["text"] == "<lora:a:1>\n<lora:b:1>"
-    assert calls["lora"][1]["text"] == "<lora:c:1>\n<lora:d:1>"
+    assert output.args[0] == ["model", 0]
+    assert calls["lora"] == []
+    assert output.expand is not None
+    hook_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "PCLoraHooksFromText"
+    ]
+    assert [node["inputs"]["text"] for node in hook_nodes] == [
+        "<lora:a:1>\n<lora:c:1>",
+        "<lora:b:1>\n<lora:d:[0:1:0.5]>",
+    ]
+    clip_nodes = [
+        node for node in output.expand.values() if node["class_type"] == "SetClipHooks"
+    ]
+    assert len(clip_nodes) == 2
+    assert all(node["inputs"]["apply_to_conds"] is True for node in clip_nodes)
+    assert all(node["inputs"]["schedule_clip"] is True for node in clip_nodes)
+    assert calls["encode"][0]["clip"] == calls["encode"][2]["clip"]
+    assert calls["encode"][1]["clip"] == calls["encode"][3]["clip"]
+    assert calls["encode"][0]["clip"] != calls["encode"][1]["clip"]
 
 
 def test_schedule_encode_graph_reports_duplicate_expand_ids(
@@ -133,7 +152,7 @@ def test_schedule_encode_graph_reports_missing_prompt_control(
         return import_module(name)
 
     monkeypatch.setattr(
-        "simple_syrup.runtime.prompt_control_schedule_encode_graph.import_module",
+        "simple_syrup.runtime.prompt_control_graph_adapter.import_module",
         fake_import_module,
     )
 

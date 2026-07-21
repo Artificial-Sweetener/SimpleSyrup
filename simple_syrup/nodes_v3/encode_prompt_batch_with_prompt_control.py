@@ -48,7 +48,7 @@ class EncodePromptBatchWithPromptControl(_ComfyNodeBase):
             category="SimpleSyrup/Conditioning",
             description=(
                 "Encodes [SEP]-separated prompts into per-segment Prompt Control "
-                "conditioning batches."
+                "conditioning batches with segment-local LoRA hooks."
             ),
             inputs=[
                 _comfy_io.Clip.Input(
@@ -64,8 +64,8 @@ class EncodePromptBatchWithPromptControl(_ComfyNodeBase):
                     multiline=True,
                     default="",
                     tooltip=(
-                        "Positive Prompt Control prompts in SEGS order, separated "
-                        "by the separator text."
+                        "Positive Prompt Control prompts in positional order; each "
+                        "segment keeps its aligned LoRA hooks."
                     ),
                 ),
                 _comfy_io.String.Input(
@@ -73,8 +73,8 @@ class EncodePromptBatchWithPromptControl(_ComfyNodeBase):
                     multiline=True,
                     default="",
                     tooltip=(
-                        "Negative Prompt Control prompts in SEGS order, separated "
-                        "by the separator text."
+                        "Negative Prompt Control prompts in positional order; each "
+                        "segment shares hooks with the matching positive index."
                     ),
                 ),
                 _comfy_io.String.Input(

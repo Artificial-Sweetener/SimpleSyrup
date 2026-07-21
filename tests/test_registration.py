@@ -21,6 +21,7 @@ BASE_NODE_IDS = [
     "SimpleSyrup.BatchSEGS",
     "SimpleSyrup.ConditioningBatchAppend",
     "SimpleSyrup.ConditioningBatchStart",
+    "SimpleSyrup.ComposeRegionalConditioning",
     "SimpleSyrup.DetailSEGSAsRegions",
     "SimpleSyrup.DetailSEGSByScaleFactorTiledDiffusion",
     "SimpleSyrup.DetailSEGSByScaleFactor",
@@ -30,10 +31,13 @@ BASE_NODE_IDS = [
     "SimpleSyrup.GroundedSAMModelInfo",
     "SimpleSyrup.GroundingDINOModelLoader",
     "SimpleSyrup.KSamplerExtras",
+    "SimpleSyrup.KSamplerPromptByRegion",
+    "SimpleSyrup.KSamplerPromptByTiledRegion",
     "SimpleSyrup.KSamplerTiledDiffusion",
     "SimpleSyrup.LatentDiagnostics",
     "SimpleSyrup.LayerStyleSAMModelsAdapter",
     "SimpleSyrup.LoadUltralyticsModel",
+    "SimpleSyrup.LoadMaskBatch",
     "SimpleSyrup.MaskToSEGS",
     "SimpleSyrup.PromptEncodeStyleAndNormalization",
     "SimpleSyrup.PromptEncodeStyle",
@@ -120,7 +124,7 @@ def test_package_imports_from_custom_nodes_parent_path() -> None:
 
 
 def test_comfy_import_exposes_stable_internal_package_alias() -> None:
-    """ComfyUI-style import exposes `simple_syrup` for vendored runtime imports."""
+    """ComfyUI-style import exposes `simple_syrup` to nested vendored packages."""
 
     project_root = Path(__file__).resolve().parents[1]
     custom_nodes_root = project_root.parent
@@ -132,9 +136,9 @@ def test_comfy_import_exposes_stable_internal_package_alias() -> None:
         f"sys.path.insert(0, {str(custom_nodes_root)!r}); "
         "importlib.import_module('SimpleSyrup'); "
         "runtime = importlib.import_module("
-        "'simple_syrup.third_party.groundingdino_runtime.models'"
+        "'simple_syrup.third_party.groundingdino_runtime.util'"
         "); "
-        "assert runtime.__name__.endswith('groundingdino_runtime.models')"
+        "assert runtime.__name__.endswith('groundingdino_runtime.util')"
     )
 
     result = subprocess.run(

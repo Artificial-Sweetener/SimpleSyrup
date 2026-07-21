@@ -86,6 +86,38 @@ def test_prompt_control_batch_graph_builds_pack_chain_for_multiple_chunks(
     assert output.args[1] == ["BATCH.0.5.2", 0]
 
 
+def test_prompt_control_batch_graph_attaches_segment_local_lora_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The clip-only encoder shares each aligned hook plan across both sides."""
+
+    calls = _install_fake_prompt_control(monkeypatch)
+    graph_utils = import_module("comfy_execution.graph_utils")
+    graph_utils.GraphBuilder.set_default_prefix("HOOKS", 0, 0)
+
+    output = PromptControlBatchGraphBuilder().build(
+        clip=[0, 0],
+        positive_prompt="face <lora:a:1> [SEP] hair <lora:b:1>",
+        negative_prompt="blur <lora:c:1> [SEP] noise",
+        separator="[SEP]",
+    )
+
+    assert output.expand is not None
+    hook_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "PCLoraHooksFromText"
+    ]
+    assert [node["inputs"]["text"] for node in hook_nodes] == [
+        "<lora:a:1>\n<lora:c:1>",
+        "<lora:b:1>",
+    ]
+    assert [call["text"] for call in calls] == ["face ", "hair ", "blur ", "noise"]
+    assert calls[0]["clip"] == calls[2]["clip"]
+    assert calls[1]["clip"] == calls[3]["clip"]
+    assert calls[0]["clip"] != calls[1]["clip"]
+
+
 def test_prompt_control_batch_graph_reports_missing_prompt_control(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -97,7 +129,7 @@ def test_prompt_control_batch_graph_reports_missing_prompt_control(
         return import_module(name)
 
     monkeypatch.setattr(
-        "simple_syrup.runtime.prompt_control_batch_graph.import_module",
+        "simple_syrup.runtime.prompt_control_graph_adapter.import_module",
         fake_import_module,
     )
 
@@ -111,11 +143,14 @@ def test_prompt_control_batch_graph_reports_missing_prompt_control(
     assert PROMPT_CONTROL_MISSING_MESSAGE.startswith("Encode Prompt Batch")
 
 
-def _install_fake_prompt_control(monkeypatch: pytest.MonkeyPatch) -> None:
+def _install_fake_prompt_control(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[dict[str, Any]]:
     """Install a small Prompt Control lazy-node double for graph tests."""
 
     prompt_control = ModuleType("prompt_control")
     nodes_lazy = ModuleType("prompt_control.nodes_lazy")
+    calls: list[dict[str, Any]] = []
 
     class FakePCLazyTextEncodeAdvanced:
         """Graph-expanding stand-in for Prompt Control's lazy text encoder."""
@@ -132,6 +167,7 @@ def _install_fake_prompt_control(monkeypatch: pytest.MonkeyPatch) -> None:
             """Return one lazy text encode node output."""
 
             del tags, start, end, num_steps
+            calls.append({"clip": clip, "text": text})
             graph_utils = import_module("comfy_execution.graph_utils")
             io = import_module("comfy_api.latest").io
             graph = graph_utils.GraphBuilder()
@@ -146,3 +182,4 @@ def _install_fake_prompt_control(monkeypatch: pytest.MonkeyPatch) -> None:
     cast(Any, prompt_control).nodes_lazy = nodes_lazy
     monkeypatch.setitem(sys.modules, "prompt_control", prompt_control)
     monkeypatch.setitem(sys.modules, "prompt_control.nodes_lazy", nodes_lazy)
+    return calls

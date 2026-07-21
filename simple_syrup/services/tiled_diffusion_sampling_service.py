@@ -41,6 +41,7 @@ class TiledDiffusionSamplingService:
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
         differential_diffusion: bool = False,
+        allow_full_context_masks: bool = False,
     ) -> Latent:
         """Sample a latent with the selected tiled diffusion method."""
 
@@ -64,6 +65,7 @@ class TiledDiffusionSamplingService:
                 latent_tile_batch_size=latent_tile_batch_size,
                 preview_context=preview_context,
                 differential_diffusion=differential_diffusion,
+                allow_full_context_masks=allow_full_context_masks,
             )
         if diffusion_mode == "multidiffusion":
             return multidiffusion_sampling.sample_multidiffusion(
@@ -83,6 +85,7 @@ class TiledDiffusionSamplingService:
                 latent_tile_batch_size=latent_tile_batch_size,
                 preview_context=preview_context,
                 differential_diffusion=differential_diffusion,
+                allow_full_context_masks=allow_full_context_masks,
             )
         return mixture_of_diffusers_sampling.sample_mixture_of_diffusers(
             model=model,
@@ -101,6 +104,7 @@ class TiledDiffusionSamplingService:
             latent_tile_batch_size=latent_tile_batch_size,
             preview_context=preview_context,
             differential_diffusion=differential_diffusion,
+            allow_full_context_masks=allow_full_context_masks,
         )
 
     def _sample_conditioning_batch(
@@ -123,6 +127,7 @@ class TiledDiffusionSamplingService:
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None,
         differential_diffusion: bool,
+        allow_full_context_masks: bool,
     ) -> Latent:
         """Sample latent batch items one at a time with selected conditioning."""
 
@@ -151,6 +156,7 @@ class TiledDiffusionSamplingService:
                 latent_tile_batch_size=latent_tile_batch_size,
                 preview_context=preview_context,
                 differential_diffusion=differential_diffusion,
+                allow_full_context_masks=allow_full_context_masks,
             )
             output_samples = output["samples"]
             if not isinstance(output_samples, torch.Tensor):

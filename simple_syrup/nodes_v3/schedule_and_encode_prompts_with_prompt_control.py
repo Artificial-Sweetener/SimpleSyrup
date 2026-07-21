@@ -49,8 +49,8 @@ class ScheduleAndEncodePromptsWithPromptControl(_ComfyNodeBase):
             enable_expand=True,
             category="SimpleSyrup/Conditioning",
             description=(
-                "Schedules Prompt-Control LoRAs and encodes prompts, using [SEP] "
-                "to create SimpleSyrup conditioning batches."
+                "Schedules Prompt-Control LoRAs and encodes prompts. With [SEP], "
+                "each conditioning entry keeps only its segment's LoRA hooks."
             ),
             inputs=[
                 _comfy_io.Model.Input(
@@ -84,8 +84,8 @@ class ScheduleAndEncodePromptsWithPromptControl(_ComfyNodeBase):
                     multiline=False,
                     default="",
                     tooltip=(
-                        "Positive Prompt-Control text. [SEP] creates a "
-                        "conditioning batch for SimpleSyrup batch-aware nodes."
+                        "Positive Prompt-Control text; [SEP] creates ordered "
+                        "conditioning entries with segment-local LoRA hooks."
                     ),
                 ),
                 _comfy_io.String.Input(
@@ -93,8 +93,8 @@ class ScheduleAndEncodePromptsWithPromptControl(_ComfyNodeBase):
                     multiline=False,
                     default="",
                     tooltip=(
-                        "Negative Prompt-Control text. [SEP] creates a "
-                        "conditioning batch for SimpleSyrup batch-aware nodes."
+                        "Negative Prompt-Control text; [SEP] creates ordered "
+                        "conditioning entries sharing each index's LoRA hooks."
                     ),
                 ),
             ],
@@ -102,8 +102,8 @@ class ScheduleAndEncodePromptsWithPromptControl(_ComfyNodeBase):
                 _comfy_io.Model.Output(
                     "model",
                     tooltip=(
-                        "Model after LoRA tags from positive and negative prompts "
-                        "are scheduled."
+                        "Model with single-prompt LoRAs applied globally; SEP-local "
+                        "LoRAs travel on their conditioning entries instead."
                     ),
                 ),
                 MixedConditioningIO.Output(

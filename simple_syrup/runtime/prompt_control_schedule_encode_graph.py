@@ -2,20 +2,18 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Runtime graph expansion for Prompt-Control scheduling and prompt encoding."""
+"""Orchestrate Prompt-Control model scheduling and SEP prompt encoding."""
 
 from __future__ import annotations
 
-import sys
-from importlib import import_module
-from typing import Any, cast
+from typing import Any
 
-from ..domain.prompt_control_prompt import (
-    PreparedPromptSide,
-    apply_encode_style,
-    prepare_prompt_side,
+from ..domain.prompt_control_prompt import PreparedPromptSide, apply_encode_style
+from ..services.prompt_control_segment_planning_service import (
+    PromptControlSegmentPlan,
+    PromptControlSegmentPlanningService,
 )
-from .prompt_control_availability import find_prompt_control_install
+from .prompt_control_graph_adapter import PromptControlGraphAdapter
 
 PROMPT_CONTROL_MISSING_MESSAGE = (
     "Schedule & Encode Prompts requires comfyui-prompt-control. "
@@ -25,7 +23,10 @@ PROMPT_BATCH_SEPARATOR = "[SEP]"
 
 
 class PromptControlScheduleEncodeGraphBuilder:
-    """Build lazy Prompt-Control graphs for LoRA scheduling and prompt encoding."""
+    """Build scheduled model and hook-aware conditioning graph outputs."""
+
+    planning_service_class = PromptControlSegmentPlanningService
+    graph_adapter_class = PromptControlGraphAdapter
 
     def build(
         self,
@@ -35,161 +36,118 @@ class PromptControlScheduleEncodeGraphBuilder:
         negative_prompt: str,
         encode_style: str = "",
     ) -> Any:
-        """Return an io.NodeOutput for scheduled model and encoded prompts."""
+        """Return model plus single or SEP-batched conditioning outputs."""
 
-        io, graph_utils, lazy_nodes = self._prompt_control_dependencies()
-        positive_side = prepare_prompt_side(positive_prompt, PROMPT_BATCH_SEPARATOR)
-        negative_side = prepare_prompt_side(negative_prompt, PROMPT_BATCH_SEPARATOR)
-
+        plan = self.planning_service_class().prepare(
+            positive_prompt=positive_prompt,
+            negative_prompt=negative_prompt,
+            separator=PROMPT_BATCH_SEPARATOR,
+        )
+        adapter = self.graph_adapter_class.load(PROMPT_CONTROL_MISSING_MESSAGE)
         expand: dict[str, dict[str, Any]] = {}
-        positive_lora = lazy_nodes.PCLazyLoraLoaderAdvanced.execute(
+        scheduled_model, encoding_clip = self._sampling_inputs(
             model=model,
             clip=clip,
-            text=positive_side.lora_tags,
-            apply_hooks=True,
-            tags="",
-            start=0.0,
-            end=1.0,
-            num_steps=0,
-        )
-        self._merge_expand(expand, positive_lora.expand, "positive LoRA scheduling")
-
-        negative_lora = lazy_nodes.PCLazyLoraLoaderAdvanced.execute(
-            model=positive_lora.args[0],
-            clip=positive_lora.args[1],
-            text=negative_side.lora_tags,
-            apply_hooks=True,
-            tags="",
-            start=0.0,
-            end=1.0,
-            num_steps=0,
-        )
-        self._merge_expand(expand, negative_lora.expand, "negative LoRA scheduling")
-
-        scheduled_model = negative_lora.args[0]
-        scheduled_clip = negative_lora.args[1]
-        positive_conditioning = self._encode_side(
-            side=positive_side,
-            clip=scheduled_clip,
-            encode_style=encode_style,
-            graph_utils=graph_utils,
-            lazy_text_encoder=lazy_nodes.PCLazyTextEncodeAdvanced,
+            plan=plan,
+            adapter=adapter,
             expand=expand,
-            label="positive prompt encoding",
         )
-        negative_conditioning = self._encode_side(
-            side=negative_side,
-            clip=scheduled_clip,
-            encode_style=encode_style,
-            graph_utils=graph_utils,
-            lazy_text_encoder=lazy_nodes.PCLazyTextEncodeAdvanced,
+        segment_clips = self._segment_clips(
+            plan=plan,
+            clip=encoding_clip,
+            adapter=adapter,
             expand=expand,
-            label="negative prompt encoding",
         )
-
-        return io.NodeOutput(
+        positive = self._encode_side(
+            plan.positive,
+            segment_clips=segment_clips,
+            encode_style=encode_style,
+            adapter=adapter,
+            expand=expand,
+            label="positive",
+        )
+        negative = self._encode_side(
+            plan.negative,
+            segment_clips=segment_clips,
+            encode_style=encode_style,
+            adapter=adapter,
+            expand=expand,
+            label="negative",
+        )
+        return adapter.io.NodeOutput(
             scheduled_model,
-            positive_conditioning,
-            negative_conditioning,
+            positive,
+            negative,
             expand=expand,
+        )
+
+    def _sampling_inputs(
+        self,
+        *,
+        model: Any,
+        clip: Any,
+        plan: PromptControlSegmentPlan,
+        adapter: PromptControlGraphAdapter,
+        expand: dict[str, dict[str, Any]],
+    ) -> tuple[Any, Any]:
+        """Keep single prompts global and batched prompts segment-local."""
+
+        if plan.is_batched:
+            return model, clip
+        return adapter.schedule_global_loras(
+            model=model,
+            clip=clip,
+            positive_tags=plan.positive.chunks[0].lora_tags,
+            negative_tags=plan.negative.chunks[0].lora_tags,
+            expand=expand,
+        )
+
+    def _segment_clips(
+        self,
+        *,
+        plan: PromptControlSegmentPlan,
+        clip: Any,
+        adapter: PromptControlGraphAdapter,
+        expand: dict[str, dict[str, Any]],
+    ) -> tuple[Any, ...]:
+        """Create one shared hooked CLIP link per batched segment index."""
+
+        if not plan.is_batched:
+            return (clip,)
+        return tuple(
+            adapter.clip_with_hooks(
+                clip=clip,
+                lora_tags=hook.lora_tags,
+                expand=expand,
+                label=f"segment {index}",
+            )
+            for index, hook in enumerate(plan.hooks)
         )
 
     def _encode_side(
         self,
-        *,
         side: PreparedPromptSide,
-        clip: Any,
+        *,
+        segment_clips: tuple[Any, ...],
         encode_style: str,
-        graph_utils: Any,
-        lazy_text_encoder: Any,
+        adapter: PromptControlGraphAdapter,
         expand: dict[str, dict[str, Any]],
         label: str,
     ) -> Any:
-        """Encode one prompt side and return conditioning or conditioning batch."""
+        """Encode one side with the shared hook plan at each existing index."""
 
-        conditioning_outputs: list[Any] = []
-        for index, chunk in enumerate(side.chunks):
-            text = apply_encode_style(encode_style, chunk.text)
-            node_output = lazy_text_encoder.execute(
-                clip=clip,
-                text=text,
-                tags="",
-                start=0.0,
-                end=1.0,
-                num_steps=0,
+        outputs = [
+            adapter.encode_segment(
+                clip=segment_clips[index],
+                text=apply_encode_style(encode_style, chunk.text),
+                expand=expand,
+                label=f"{label} segment {index}",
             )
-            self._merge_expand(
-                expand,
-                node_output.expand,
-                f"{label} chunk {index}",
-            )
-            conditioning_outputs.append(node_output.args[0])
-
-        if len(conditioning_outputs) == 1:
-            return conditioning_outputs[0]
-
-        pack_graph = graph_utils.GraphBuilder()
-        current = pack_graph.node(
-            "SimpleSyrup.ConditioningBatchStart",
-            conditioning=conditioning_outputs[0],
+            for index, chunk in enumerate(side.chunks)
+        ]
+        return adapter.pack_conditionings(
+            outputs,
+            expand=expand,
+            label=label,
+            always_batch=False,
         )
-        for conditioning in conditioning_outputs[1:]:
-            current = pack_graph.node(
-                "SimpleSyrup.ConditioningBatchAppend",
-                batch=current.out(0),
-                conditioning=conditioning,
-            )
-        self._merge_expand(
-            expand,
-            cast(dict[str, dict[str, Any]], pack_graph.finalize()),
-            f"{label} batch packing",
-        )
-        return current.out(0)
-
-    def _prompt_control_dependencies(self) -> tuple[Any, Any, Any]:
-        """Import Prompt-Control and Comfy graph helpers on demand."""
-
-        try:
-            io = import_module("comfy_api.latest.io")
-        except ModuleNotFoundError:
-            comfy_api = import_module("comfy_api.latest")
-            io = comfy_api.io
-        try:
-            graph_utils = import_module("comfy_execution.graph_utils")
-            lazy_nodes = self._import_prompt_control_lazy_nodes()
-        except ModuleNotFoundError as exc:
-            raise RuntimeError(PROMPT_CONTROL_MISSING_MESSAGE) from exc
-        return io, graph_utils, lazy_nodes
-
-    def _import_prompt_control_lazy_nodes(self) -> Any:
-        """Import Prompt-Control lazy nodes from installed or sibling paths."""
-
-        try:
-            return import_module("prompt_control.nodes_lazy")
-        except ModuleNotFoundError:
-            availability = find_prompt_control_install()
-            if availability.root_path is not None:
-                root_path = str(availability.root_path)
-                if root_path not in sys.path:
-                    sys.path.insert(0, root_path)
-            return import_module("prompt_control.nodes_lazy")
-
-    def _merge_expand(
-        self,
-        target: dict[str, dict[str, Any]],
-        source: object,
-        operation: str,
-    ) -> None:
-        """Merge a lazy expand graph and reject duplicate generated node ids."""
-
-        if not source:
-            return
-        expand = cast(dict[str, dict[str, Any]], source)
-        overlap = set(target).intersection(expand)
-        if overlap:
-            overlapping_ids = ", ".join(sorted(overlap))
-            raise ValueError(
-                f"Prompt-Control graph expansion generated duplicate node ids "
-                f"during {operation}: {overlapping_ids}."
-            )
-        target.update(expand)
