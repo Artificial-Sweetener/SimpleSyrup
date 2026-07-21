@@ -191,3 +191,22 @@ def test_contains_unsupported_conditioning_key_finds_nested_values() -> None:
     conditioning = [{"model_conds": {"nested": [{"mask": torch.ones((1, 1))}]}}]
 
     assert tiled_sampling.contains_unsupported_conditioning_key(conditioning)
+
+
+def test_full_context_masks_require_explicit_tiled_support() -> None:
+    """Only explicit non-cropped masks pass the regional tiled policy."""
+
+    supported = [
+        ["tensor", {"mask": torch.ones((1, 2, 2)), "set_area_to_bounds": False}]
+    ]
+    cropped = [["tensor", {"mask": torch.ones((1, 2, 2)), "set_area_to_bounds": True}]]
+
+    assert tiled_sampling.contains_unsupported_conditioning_key(supported)
+    assert not tiled_sampling.contains_unsupported_conditioning_key(
+        supported,
+        allow_full_context_masks=True,
+    )
+    assert tiled_sampling.contains_unsupported_conditioning_key(
+        cropped,
+        allow_full_context_masks=True,
+    )

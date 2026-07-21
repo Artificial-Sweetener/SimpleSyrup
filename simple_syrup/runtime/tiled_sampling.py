@@ -21,7 +21,7 @@ Latent: TypeAlias = dict[str, Any]
 ApplyModel: TypeAlias = Callable[..., torch.Tensor]
 ModelFunctionWrapper: TypeAlias = Callable[[ApplyModel, dict[str, Any]], torch.Tensor]
 
-UNSUPPORTED_CONDITIONING_KEYS = frozenset({"area", "mask", "control", "gligen"})
+UNSUPPORTED_CONDITIONING_KEYS = frozenset({"area", "control", "gligen"})
 
 
 def validate_sampling_controls(
@@ -89,27 +89,49 @@ def reject_unsupported_conditioning(
     conditioning: object,
     *,
     sampler_label: str,
+    allow_full_context_masks: bool = False,
 ) -> None:
-    """Reject regional and external-control conditioning for basic tiled samplers."""
+    """Reject conditioning that the selected tiled path cannot preserve."""
 
-    if contains_unsupported_conditioning_key(conditioning):
+    if contains_unsupported_conditioning_key(
+        conditioning,
+        allow_full_context_masks=allow_full_context_masks,
+    ):
         raise ValueError(
             f"{sampler_label} does not support regional conditioning or "
             "ControlNet in the first implementation."
         )
 
 
-def contains_unsupported_conditioning_key(value: object) -> bool:
-    """Return whether a nested conditioning object contains unsupported keys."""
+def contains_unsupported_conditioning_key(
+    value: object,
+    *,
+    allow_full_context_masks: bool = False,
+) -> bool:
+    """Return whether nested conditioning exceeds the tiled support policy."""
 
     if isinstance(value, dict):
         if any(key in UNSUPPORTED_CONDITIONING_KEYS for key in value):
             return True
+        if "mask" in value and (
+            not allow_full_context_masks or value.get("set_area_to_bounds") is not False
+        ):
+            return True
         return any(
-            contains_unsupported_conditioning_key(item) for item in value.values()
+            contains_unsupported_conditioning_key(
+                item,
+                allow_full_context_masks=allow_full_context_masks,
+            )
+            for item in value.values()
         )
     if isinstance(value, list | tuple):
-        return any(contains_unsupported_conditioning_key(item) for item in value)
+        return any(
+            contains_unsupported_conditioning_key(
+                item,
+                allow_full_context_masks=allow_full_context_masks,
+            )
+            for item in value
+        )
     return False
 
 

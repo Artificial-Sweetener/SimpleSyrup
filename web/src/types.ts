@@ -27,6 +27,7 @@ export interface ComfySettingsApi {
 }
 
 export interface ComfyApp {
+  nodeOutputs?: Record<string, ComfyNodeExecutionOutput>;
   ui: {
     settings: ComfySettingsApi;
   };
@@ -34,7 +35,22 @@ export interface ComfyApp {
   registerExtension(extension: ComfyExtension): void;
 }
 
+/** Native Comfy event target used to publish execution-shaped node output. */
+export type ComfyExecutionEvents = Pick<EventTarget, "dispatchEvent">;
+
+export interface ComfyImageResult {
+  filename: string;
+  subfolder: string;
+  type: "input" | "output" | "temp";
+}
+
+export interface ComfyNodeExecutionOutput {
+  images?: ComfyImageResult[];
+  animated?: boolean[];
+}
+
 export interface ComfyExtension {
   name: string;
-  setup(app: ComfyApp): void | Promise<void>;
+  setup?(app: ComfyApp): void | Promise<void>;
+  nodeCreated?(node: unknown): void | Promise<void>;
 }

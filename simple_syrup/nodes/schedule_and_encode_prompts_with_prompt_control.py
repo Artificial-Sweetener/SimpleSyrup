@@ -23,15 +23,15 @@ class ScheduleAndEncodePromptsWithPromptControl:
     )
     RETURN_NAMES = ("model", "positive", "negative")
     OUTPUT_TOOLTIPS = (
-        "Model after LoRA tags from positive and negative prompts are scheduled.",
+        "Model with single-prompt LoRAs applied; SEP-local LoRAs stay on conditioning.",
         "Positive conditioning or SimpleSyrup conditioning batch.",
         "Negative conditioning or SimpleSyrup conditioning batch.",
     )
     FUNCTION = "execute"
     CATEGORY = "SimpleSyrup/Conditioning"
     DESCRIPTION = (
-        "Schedules Prompt-Control LoRAs and encodes prompts, using [SEP] to "
-        "create SimpleSyrup conditioning batches."
+        "Schedules Prompt-Control LoRAs and encodes prompts. [SEP] creates "
+        "conditioning batches with segment-local LoRA hooks."
     )
     SEARCH_ALIASES = ["prompt control", "schedule prompts", "encode prompts"]
 
@@ -67,8 +67,8 @@ class ScheduleAndEncodePromptsWithPromptControl:
                         "default": "",
                         "multiline": False,
                         "tooltip": (
-                            "Positive Prompt-Control text. [SEP] creates a "
-                            "conditioning batch for SimpleSyrup batch-aware nodes."
+                            "Positive Prompt-Control text; [SEP] creates ordered "
+                            "entries with segment-local LoRA hooks."
                         ),
                     },
                 ),
@@ -78,8 +78,8 @@ class ScheduleAndEncodePromptsWithPromptControl:
                         "default": "",
                         "multiline": False,
                         "tooltip": (
-                            "Negative Prompt-Control text. [SEP] creates a "
-                            "conditioning batch for SimpleSyrup batch-aware nodes."
+                            "Negative Prompt-Control text; [SEP] creates ordered "
+                            "entries sharing each index's LoRA hooks."
                         ),
                     },
                 ),

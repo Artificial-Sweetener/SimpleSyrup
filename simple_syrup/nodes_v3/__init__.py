@@ -14,7 +14,10 @@ def get_nodes() -> list[type[object]]:
 
     from .batch_region_conditioning import BatchRegionConditioningV3
     from .batch_segs import BatchSEGSV3
+    from .compose_regional_conditioning import ComposeRegionalConditioningV3
     from .external_llm_prompt import ExternalLLMPromptV3
+    from .ksampler_prompt_by_region import KSamplerPromptByRegionV3
+    from .ksampler_prompt_by_tiled_region import KSamplerPromptByTiledRegionV3
     from .legacy_node_wrappers import (
         ConditioningBatchAppendV3,
         ConditioningBatchStartV3,
@@ -41,6 +44,7 @@ def get_nodes() -> list[type[object]]:
         UpscaleLatentFromImageV3,
         ViTMatteModelLoaderV3,
     )
+    from .load_mask_batch import LoadMaskBatchV3
     from .mask_to_segs import MaskToSEGSV3
     from .scale_factor import ScaleFactorV3
     from .simple_load_checkpoint import SimpleLoadCheckpointV3
@@ -56,6 +60,7 @@ def get_nodes() -> list[type[object]]:
         BatchSEGSV3,
         ConditioningBatchAppendV3,
         ConditioningBatchStartV3,
+        ComposeRegionalConditioningV3,
         DetailSEGSAsRegionsV3,
         DetailSEGSByScaleFactorTiledDiffusionV3,
         DetailSEGSByScaleFactorV3,
@@ -65,10 +70,13 @@ def get_nodes() -> list[type[object]]:
         GroundedSAMModelInfoV3,
         GroundingDINOModelLoaderV3,
         KSamplerExtrasV3,
+        KSamplerPromptByRegionV3,
+        KSamplerPromptByTiledRegionV3,
         KSamplerTiledDiffusionV3,
         LatentDiagnosticsV3,
         LayerStyleSAMModelsAdapterV3,
         LoadUltralyticsModelV3,
+        LoadMaskBatchV3,
         MaskToSEGSV3,
         PromptEncodeStyleAndNormalizationV3,
         PromptEncodeStyleV3,

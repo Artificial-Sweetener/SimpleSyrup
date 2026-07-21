@@ -7,8 +7,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   deleteExternalLLMApiKey,
   getExternalLLMSettings,
+  getMaskBatchPreview,
   getSettings,
   parseExternalLLMSettings,
+  parseMaskBatchPreview,
   parseSettings,
   refreshExternalLLMModels,
   saveExternalLLMApiKey,
@@ -70,6 +72,62 @@ describe("settings API", () => {
     expect(() => parseSettings({ show_downloadable_models: "false" })).toThrow(
       "SimpleSyrup settings payload is invalid"
     );
+  });
+});
+
+describe("mask batch preview API", () => {
+  const preview = {
+    images: [
+      {
+        filename: "ComfyUI_temp_mask.png",
+        subfolder: "",
+        type: "temp" as const
+      }
+    ],
+    animated: [false]
+  };
+
+  it("requests previews for the ordered files and selected channel", async () => {
+    const fetchImpl = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(createJsonResponse(preview));
+
+    await expect(
+      getMaskBatchPreview(["right.png", "left.png"], "blue", fetchImpl)
+    ).resolves.toEqual(preview);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/simple-syrup/mask-batch/preview",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          files: ["right.png", "left.png"],
+          channel: "blue"
+        })
+      })
+    );
+  });
+
+  it("surfaces preview validation errors", async () => {
+    const fetchImpl = vi.fn<FetchLike>().mockResolvedValue(
+      createJsonResponse(
+        { error: "mask dimensions do not match" },
+        { status: 400 }
+      )
+    );
+
+    await expect(
+      getMaskBatchPreview(["right.png", "left.png"], "alpha", fetchImpl)
+    ).rejects.toThrow("mask dimensions do not match");
+  });
+
+  it("rejects malformed native preview responses", () => {
+    expect(() =>
+      parseMaskBatchPreview({
+        images: [{ filename: "mask.png", subfolder: "", type: "other" }],
+        animated: [false]
+      })
+    ).toThrow("mask batch preview payload is invalid");
   });
 });
 

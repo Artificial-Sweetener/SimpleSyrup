@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Protocol
 
@@ -43,6 +44,21 @@ class _FakeFolderPaths(ModuleType):
         """Return deterministic filenames for a model folder."""
 
         return self._files.get(folder_name, [])
+
+    def get_input_directory(self) -> str:
+        """Return an existing directory for native image-loader discovery."""
+
+        return str(Path(__file__).parent)
+
+    def filter_files_content_types(
+        self,
+        files: list[str],
+        content_types: list[str],
+    ) -> list[str]:
+        """Return no images from the test directory."""
+
+        del files, content_types
+        return []
 
 
 def test_v3_nodes_provide_tooltip_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -91,6 +107,12 @@ def test_high_impact_tooltips_explain_direction_and_units(
     assert "overlap" in tiled_inputs["latent_tile_overlap"].tooltip.lower()
     assert "seams" in tiled_inputs["latent_tile_overlap"].tooltip.lower()
     assert "memory" in tiled_inputs["latent_tile_batch_size"].tooltip.lower()
+
+    regional_inputs = _inputs_by_id(schemas["SimpleSyrup.KSamplerPromptByRegion"])
+    regional_weight_tooltip = regional_inputs["regional_prompt_weight"].tooltip.lower()
+    assert "0" in regional_weight_tooltip
+    assert "1" in regional_weight_tooltip
+    assert "overlaps" in regional_weight_tooltip
 
 
 def _inputs_by_id(schema: Any) -> dict[str, Any]:
