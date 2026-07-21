@@ -6,13 +6,10 @@
 
 from __future__ import annotations
 
-from importlib import import_module
-from typing import Any
+from typing import Any, ClassVar
 
-import torch
-
-from ..domain.conditioning_batch import ConditioningBatch, select_conditioning
 from ..runtime import sampling_samplers, sampling_schedulers
+from ..services.ksampler_sampling_service import KSamplerSamplingService
 from . import tooltips
 
 Latent = dict[str, Any]
@@ -30,6 +27,7 @@ class KSamplerExtras:
         "compatible workflows."
     )
     SEARCH_ALIASES = ["ksampler", "sampler", "ays", "gits", "lcm"]
+    service_class: ClassVar[type[KSamplerSamplingService]] = KSamplerSamplingService
 
     @classmethod
     def INPUT_TYPES(cls) -> dict[str, dict[str, tuple[Any, ...]]]:
@@ -113,151 +111,16 @@ class KSamplerExtras:
     ) -> tuple[Latent]:
         """Sample a latent with ComfyUI samplers and extra scheduler sigmas."""
 
-        sampler = sampling_samplers.resolve_sampler(sampler_name)
-        sigmas = sampling_schedulers.calculate_sigmas(
+        output = self.service_class().sample(
             model=model,
-            scheduler_name=scheduler,
-            sampler_name=sampler_name,
+            seed=seed,
             steps=steps,
+            cfg=cfg,
+            sampler_name=sampler_name,
+            scheduler=scheduler,
+            positive=positive,
+            negative=negative,
+            latent_image=latent_image,
             denoise=denoise,
-        ).to(model.load_device)
-
-        latent_samples = latent_image["samples"]
-        comfy_sample = _comfy_sample()
-        comfy_utils = _comfy_utils()
-        latent_preview = _latent_preview()
-
-        latent_samples = comfy_sample.fix_empty_latent_channels(
-            model,
-            latent_samples,
-            latent_image.get("downscale_ratio_spacial", None),
         )
-
-        batch_inds = (
-            latent_image["batch_index"] if "batch_index" in latent_image else None
-        )
-        noise = comfy_sample.prepare_noise(latent_samples, seed, batch_inds)
-        noise_mask = latent_image.get("noise_mask", None)
-
-        callback = latent_preview.prepare_callback(model, steps)
-        disable_pbar = not comfy_utils.PROGRESS_BAR_ENABLED
-        if _uses_conditioning_batch(positive, negative):
-            samples = _sample_conditioning_batch(
-                comfy_sample=comfy_sample,
-                model=model,
-                noise=noise,
-                cfg=cfg,
-                sampler=sampler,
-                sigmas=sigmas,
-                positive=positive,
-                negative=negative,
-                latent_samples=latent_samples,
-                noise_mask=noise_mask,
-                callback=callback,
-                disable_pbar=disable_pbar,
-                seed=seed,
-            )
-        else:
-            samples = comfy_sample.sample_custom(
-                model,
-                noise,
-                cfg,
-                sampler,
-                sigmas,
-                positive,
-                negative,
-                latent_samples,
-                noise_mask=noise_mask,
-                callback=callback,
-                disable_pbar=disable_pbar,
-                seed=seed,
-            )
-
-        output = latent_image.copy()
-        output.pop("downscale_ratio_spacial", None)
-        output["samples"] = samples
         return (output,)
-
-
-def _comfy_sample() -> Any:
-    """Import ComfyUI sample helpers lazily."""
-
-    import comfy.sample
-
-    return comfy.sample
-
-
-def _uses_conditioning_batch(positive: Any, negative: Any) -> bool:
-    """Return whether either conditioning input needs per-item selection."""
-
-    return isinstance(positive, ConditioningBatch) or isinstance(
-        negative,
-        ConditioningBatch,
-    )
-
-
-def _sample_conditioning_batch(
-    *,
-    comfy_sample: Any,
-    model: Any,
-    noise: torch.Tensor,
-    cfg: float,
-    sampler: Any,
-    sigmas: torch.Tensor,
-    positive: Any,
-    negative: Any,
-    latent_samples: torch.Tensor,
-    noise_mask: Any,
-    callback: Any,
-    disable_pbar: bool,
-    seed: int,
-) -> torch.Tensor:
-    """Sample each latent batch item with its selected conditioning."""
-
-    sampled: list[torch.Tensor] = []
-    for index in range(int(latent_samples.shape[0])):
-        sampled.append(
-            comfy_sample.sample_custom(
-                model,
-                noise[index : index + 1],
-                cfg,
-                sampler,
-                sigmas,
-                select_conditioning(positive, index),
-                select_conditioning(negative, index),
-                latent_samples[index : index + 1],
-                noise_mask=_slice_noise_mask(noise_mask, index, latent_samples),
-                callback=callback,
-                disable_pbar=disable_pbar,
-                seed=seed,
-            )
-        )
-    return torch.cat(sampled, dim=0)
-
-
-def _slice_noise_mask(
-    noise_mask: Any,
-    index: int,
-    latent_samples: torch.Tensor,
-) -> Any:
-    """Return the noise mask slice matching one latent batch item."""
-
-    if isinstance(noise_mask, torch.Tensor) and noise_mask.shape[0] == int(
-        latent_samples.shape[0],
-    ):
-        return noise_mask[index : index + 1]
-    return noise_mask
-
-
-def _comfy_utils() -> Any:
-    """Import ComfyUI utility state lazily."""
-
-    import comfy.utils
-
-    return comfy.utils
-
-
-def _latent_preview() -> Any:
-    """Import ComfyUI preview helpers lazily."""
-
-    return import_module("latent_preview")

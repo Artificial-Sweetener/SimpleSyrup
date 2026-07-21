@@ -269,4 +269,5 @@ def _sample_kwargs(
         "latent_tile_batch_size": 3,
         "preview_context": preview_context,
         "differential_diffusion": False,
+        "allow_full_context_masks": False,
     }

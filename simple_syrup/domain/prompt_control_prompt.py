@@ -25,9 +25,15 @@ class PreparedPromptChunk:
 
 @dataclass(frozen=True)
 class PreparedPromptSide:
-    """Store ordered prompt chunks and all scheduling tags for one prompt side."""
+    """Store ordered prompt chunks for one positive or negative prompt side."""
 
     chunks: tuple[PreparedPromptChunk, ...]
+
+
+@dataclass(frozen=True)
+class PromptSegmentHookPlan:
+    """Store the combined LoRA schedule for one aligned SEP position."""
+
     lora_tags: str
 
 
@@ -44,7 +50,7 @@ def extract_lora_tags(text: str) -> str:
 
 
 def prepare_prompt_side(text: str, separator: str) -> PreparedPromptSide:
-    """Split a prompt side into cleaned chunks and aggregate LoRA tags."""
+    """Split a prompt side into ordered cleaned chunks with local LoRA tags."""
 
     chunks = tuple(
         PreparedPromptChunk(
@@ -53,8 +59,7 @@ def prepare_prompt_side(text: str, separator: str) -> PreparedPromptSide:
         )
         for chunk in split_prompt_batch(text, separator)
     )
-    lora_tags = "\n".join(chunk.lora_tags for chunk in chunks if chunk.lora_tags)
-    return PreparedPromptSide(chunks=chunks, lora_tags=lora_tags)
+    return PreparedPromptSide(chunks=chunks)
 
 
 def apply_encode_style(encode_style: str, prompt_text: str) -> str:

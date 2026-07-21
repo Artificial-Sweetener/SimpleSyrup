@@ -6,6 +6,34 @@ var SETTINGS_ROUTE = "/simple-syrup/settings";
 var EXTERNAL_LLM_SETTINGS_ROUTE = "/simple-syrup/external-llm/settings";
 var EXTERNAL_LLM_API_KEY_ROUTE = "/simple-syrup/external-llm/api-key";
 var EXTERNAL_LLM_MODELS_REFRESH_ROUTE = "/simple-syrup/external-llm/models/refresh";
+var MASK_BATCH_PREVIEW_ROUTE = "/simple-syrup/mask-batch/preview";
+async function getMaskBatchPreview(files, channel, fetchImpl = fetch) {
+  const response = await fetchImpl(MASK_BATCH_PREVIEW_ROUTE, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ files, channel })
+  });
+  if (!response.ok) {
+    throw new Error(
+      await backendErrorMessage(
+        response,
+        `Could not render Load Mask Batch preview. Backend returned ${String(response.status)}.`
+      )
+    );
+  }
+  return parseMaskBatchPreview(await response.json());
+}
+function parseMaskBatchPreview(payload) {
+  if (!isMaskBatchPreviewPayload(payload)) {
+    throw new Error(
+      "SimpleSyrup mask batch preview payload is invalid. Expected native images and animation flags."
+    );
+  }
+  return {
+    images: payload.images.map((image) => ({ ...image })),
+    animated: [...payload.animated]
+  };
+}
 async function getSettings(fetchImpl = fetch) {
   const response = await fetchImpl(SETTINGS_ROUTE);
   if (!response.ok) {
@@ -122,6 +150,16 @@ function isExternalLLMSettingsPayload(payload) {
   return typeof payload === "object" && payload !== null && typeof payload.base_url === "string" && Array.isArray(payload.cached_models) && payload.cached_models?.every(
     (model) => typeof model === "string"
   ) === true && typeof payload.default_model === "string" && typeof payload.has_api_key === "boolean";
+}
+function isMaskBatchPreviewPayload(payload) {
+  if (typeof payload !== "object" || payload === null) return false;
+  const candidate = payload;
+  return Array.isArray(candidate.images) && candidate.images.every(isComfyImageResult) && Array.isArray(candidate.animated) && candidate.animated.every((value) => typeof value === "boolean");
+}
+function isComfyImageResult(value) {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value;
+  return typeof candidate.filename === "string" && typeof candidate.subfolder === "string" && (candidate.type === "input" || candidate.type === "output" || candidate.type === "temp");
 }
 async function backendErrorMessage(response, fallback) {
   try {
@@ -510,8 +548,356 @@ function registerExternalLLMRefreshHook(app2, api = { refreshExternalLLMModels }
   };
 }
 
+// web/src/maskBatchPreview.ts
+var EMPTY_PREVIEW = {
+  images: [],
+  animated: []
+};
+var PREVIEW_PROMPT_ID = "simple-syrup-mask-batch-preview";
+var MaskBatchPreviewController = class {
+  constructor(executionEvents, node, loadPreview = getMaskBatchPreview, logger = console, clearNativePreview2 = () => void 0) {
+    this.executionEvents = executionEvents;
+    this.node = node;
+    this.loadPreview = loadPreview;
+    this.logger = logger;
+    this.clearNativePreview = clearNativePreview2;
+  }
+  executionEvents;
+  node;
+  loadPreview;
+  logger;
+  clearNativePreview;
+  requestVersion = 0;
+  /** Replace the visible preview with the exact selected-channel mask output. */
+  refresh(files, channel) {
+    if (this.node.id === void 0 || channel === void 0) return;
+    const requestVersion = ++this.requestVersion;
+    this.clearNativePreview();
+    this.publish(EMPTY_PREVIEW);
+    if (files.length === 0) return;
+    void this.loadPreview([...files], channel).then((output) => {
+      if (requestVersion === this.requestVersion) this.publish(output);
+    }).catch((error) => {
+      if (requestVersion !== this.requestVersion) return;
+      this.logger.warn("Could not refresh Load Mask Batch preview.", error);
+    });
+  }
+  /** Publish an execution-shaped result through Comfy's native preview. */
+  publish(output) {
+    if (this.node.id === void 0) return;
+    this.executionEvents.dispatchEvent(
+      new CustomEvent("executed", {
+        detail: {
+          node: String(this.node.id),
+          output,
+          merge: false,
+          prompt_id: PREVIEW_PROMPT_ID
+        }
+      })
+    );
+    this.node.graph?.setDirtyCanvas?.(true, true);
+  }
+};
+
+// web/src/maskBatchUpload.ts
+var LOAD_MASK_BATCH_NODE_ID = "SimpleSyrup.LoadMaskBatch";
+var REPLACE_MASKS_LABEL = "Replace masks...";
+var ADD_MASKS_LABEL = "Add masks...";
+var REMOVE_MASK_LABEL = "Remove selected mask";
+var EMPTY_MASK_SELECTION_LABEL = "No masks loaded";
+function registerMaskBatchUpload(app2, executionEvents, loadPreview, logger = console) {
+  const extension = {
+    name: "SimpleSyrup.LoadMaskBatchUpload",
+    nodeCreated(node) {
+      try {
+        configureMaskBatchNode(node, executionEvents, loadPreview, logger, app2);
+      } catch (error) {
+        logger.warn(
+          `Could not configure Load Mask Batch native controls: ${errorMessage2(error)}`,
+          error
+        );
+        throw error;
+      }
+    }
+  };
+  app2.registerExtension(extension);
+}
+function errorMessage2(error) {
+  return error instanceof Error && error.message ? error.message : String(error);
+}
+function configureMaskBatchNode(candidate, executionEvents, loadPreview, logger = console, app2) {
+  if (!isMaskBatchNode(candidate)) return;
+  const imageWidget = findWidget(candidate, "image");
+  const channelWidget = findWidget(candidate, "channel");
+  const uploadWidget = findNativeUploadWidget(candidate);
+  if (!imageWidget || !channelWidget || !uploadWidget?.callback) return;
+  hideInternalWidget(imageWidget);
+  hideInternalWidget(uploadWidget);
+  const preview = new MaskBatchPreviewController(
+    executionEvents,
+    candidate,
+    loadPreview,
+    logger,
+    () => {
+      clearNativePreview(candidate, app2);
+    }
+  );
+  let selectionIntent = "replace";
+  let appendBase = [];
+  let uploadPending = false;
+  let programmaticSelectionUpdate = false;
+  let ignoredUploadCallbackFiles;
+  const nativeUploadCallback = uploadWidget.callback;
+  const replaceWidget = candidate.addWidget(
+    "button",
+    "simple_syrup_replace_masks",
+    "image",
+    () => {
+      selectionIntent = "replace";
+      appendBase = [];
+      uploadPending = true;
+      nativeUploadCallback.call(uploadWidget);
+    },
+    nativeButtonOptions(
+      "Choose one or more masks and replace the current ordered list."
+    )
+  );
+  replaceWidget.label = REPLACE_MASKS_LABEL;
+  const setSelectedMasks = (files) => {
+    programmaticSelectionUpdate = true;
+    try {
+      imageWidget.value = [...files];
+    } finally {
+      programmaticSelectionUpdate = false;
+    }
+  };
+  uploadWidget.callback = (value) => {
+    selectionIntent = "replace";
+    appendBase = [];
+    uploadPending = true;
+    nativeUploadCallback.call(uploadWidget, value);
+  };
+  const addWidget = candidate.addWidget(
+    "button",
+    "simple_syrup_add_masks",
+    "image",
+    () => {
+      selectionIntent = "append";
+      appendBase = selectedMaskFiles(imageWidget);
+      uploadPending = true;
+      nativeUploadCallback.call(uploadWidget);
+    },
+    nativeButtonOptions(
+      "Upload one or more masks and append them after the current ordered list."
+    )
+  );
+  addWidget.label = ADD_MASKS_LABEL;
+  const selectedMaskWidget = candidate.addWidget(
+    "combo",
+    "simple_syrup_selected_mask",
+    EMPTY_MASK_SELECTION_LABEL,
+    (value) => {
+      const selectedIndex = selectedMaskIndex(selectedMaskWidget, value);
+      candidate.imageIndex = selectedIndex;
+      candidate.graph?.setDirtyCanvas?.(true, true);
+    },
+    {
+      serialize: false,
+      tooltip: "Select one loaded mask by its ordered position for preview or removal.",
+      values: []
+    }
+  );
+  selectedMaskWidget.label = "selected mask";
+  const removeWidget = candidate.addWidget(
+    "button",
+    "simple_syrup_remove_mask",
+    "image",
+    () => {
+      const previous = selectedMaskFiles(imageWidget);
+      const index = activeMaskIndex(candidate, selectedMaskWidget, previous);
+      if (index === null) return;
+      const current = previous.toSpliced(index, 1);
+      setSelectedMasks(current);
+      updateMaskSelection(selectedMaskWidget, current, index);
+      candidate.imageIndex = current.length === 0 ? null : Math.min(index, current.length - 1);
+      notifySelectionChanged(candidate, imageWidget, { current, previous });
+      updateRemoveAvailability(removeWidget, current.length);
+      preview.refresh(current, selectedChannel(channelWidget));
+    },
+    nativeButtonOptions(
+      "Open a mask in the preview gallery, then remove that position from the loaded list."
+    )
+  );
+  removeWidget.label = REMOVE_MASK_LABEL;
+  imageWidget.callback = (value) => {
+    if (programmaticSelectionUpdate) return;
+    const callbackValue = value ?? imageWidget.value;
+    if (uploadPending && !Array.isArray(callbackValue)) return;
+    const incoming = normalizeMaskFiles(callbackValue);
+    if (ignoredUploadCallbackFiles && sameMaskFiles(incoming, ignoredUploadCallbackFiles)) {
+      ignoredUploadCallbackFiles = void 0;
+      return;
+    }
+    ignoredUploadCallbackFiles = uploadPending ? [...incoming] : void 0;
+    uploadPending = false;
+    const current = selectionIntent === "append" ? [...appendBase, ...incoming] : incoming;
+    const appended = selectionIntent === "append";
+    selectionIntent = "replace";
+    appendBase = [];
+    if (appended) setSelectedMasks(current);
+    candidate.imageIndex = null;
+    updateMaskSelection(selectedMaskWidget, current);
+    updateRemoveAvailability(removeWidget, current.length);
+    preview.refresh(current, selectedChannel(channelWidget));
+  };
+  const originalChannelCallback = channelWidget.callback;
+  channelWidget.callback = (value) => {
+    originalChannelCallback?.call(channelWidget, value);
+    const files = selectedMaskFiles(imageWidget);
+    if (files.length > 0) {
+      preview.refresh(files, selectedChannel(channelWidget, value));
+    }
+  };
+  resetIntentForExternalUploads(candidate, () => {
+    selectionIntent = "replace";
+    appendBase = [];
+    uploadPending = false;
+  });
+  const originalOnGraphConfigured = candidate.onGraphConfigured;
+  candidate.onGraphConfigured = function(...args) {
+    const result = originalOnGraphConfigured?.apply(this, args);
+    const restored = selectedMaskFiles(imageWidget);
+    if (!Array.isArray(imageWidget.value)) setSelectedMasks(restored);
+    updateMaskSelection(selectedMaskWidget, restored);
+    updateRemoveAvailability(removeWidget, restored.length);
+    if (restored.length > 0) {
+      preview.refresh(restored, selectedChannel(channelWidget));
+    }
+    return result;
+  };
+  const initial = selectedMaskFiles(imageWidget);
+  if (!Array.isArray(imageWidget.value)) setSelectedMasks(initial);
+  updateMaskSelection(selectedMaskWidget, initial);
+  updateRemoveAvailability(removeWidget, initial.length);
+  if (initial.length > 0) {
+    preview.refresh(initial, selectedChannel(channelWidget));
+  }
+}
+function hideInternalWidget(widget) {
+  widget.options ??= {};
+  widget.options.hidden = true;
+  widget.hidden = true;
+  widget.computeSize = () => [0, -4];
+}
+function updateMaskSelection(widget, files, preferredIndex = 0) {
+  const values = files.map(
+    (file, index) => `${String(index + 1)}. ${file}`
+  );
+  const hasMasks = values.length > 0;
+  widget.options ??= {};
+  widget.options.values = hasMasks ? values : [EMPTY_MASK_SELECTION_LABEL];
+  widget.disabled = !hasMasks;
+  widget.options.disabled = !hasMasks;
+  widget.value = hasMasks ? values[Math.min(Math.max(preferredIndex, 0), values.length - 1)] : EMPTY_MASK_SELECTION_LABEL;
+}
+function selectedMaskIndex(widget, callbackValue) {
+  if (widget.disabled) return null;
+  const value = callbackValue ?? widget.value;
+  const values = widget.options?.values ?? [];
+  const index = typeof value === "string" ? values.indexOf(value) : -1;
+  return index >= 0 ? index : null;
+}
+function clearNativePreview(node, app2) {
+  node.imgs = void 0;
+  node.images = [];
+  if (node.id !== void 0) delete app2?.nodeOutputs?.[String(node.id)];
+  node.graph?.setDirtyCanvas?.(true, true);
+}
+function activeMaskIndex(node, selectedMaskWidget, files) {
+  const galleryIndex = node.imageIndex;
+  if (galleryIndex !== null && galleryIndex !== void 0 && galleryIndex >= 0 && galleryIndex < files.length) {
+    return galleryIndex;
+  }
+  const selectedIndex = selectedMaskIndex(selectedMaskWidget);
+  return selectedIndex !== null && selectedIndex < files.length ? selectedIndex : null;
+}
+function findWidget(node, name) {
+  return node.widgets?.find((widget) => widget.name === name);
+}
+function findNativeUploadWidget(node) {
+  return node.widgets?.find(
+    (widget) => widget.type === "button" && widget.value === "image" && widget.options?.serialize === false && widget.options.canvasOnly === true
+  );
+}
+function nativeButtonOptions(tooltip) {
+  return { serialize: false, tooltip };
+}
+function selectedChannel(channelWidget, callbackValue) {
+  const value = callbackValue ?? channelWidget.value;
+  return typeof value === "string" && value.length > 0 ? value : void 0;
+}
+function selectedMaskFiles(widget) {
+  return normalizeMaskFiles(widget.value);
+}
+function normalizeMaskFiles(value) {
+  const values = Array.isArray(value) ? value : [value];
+  return values.filter(
+    (item) => typeof item === "string" && item.length > 0
+  );
+}
+function sameMaskFiles(left, right) {
+  return left.length === right.length && left.every((file, index) => file === right[index]);
+}
+function updateRemoveAvailability(widget, count) {
+  const disabled = count === 0;
+  widget.disabled = disabled;
+  widget.options ??= {};
+  widget.options.disabled = disabled;
+}
+function notifySelectionChanged(node, imageWidget, change) {
+  node.onWidgetChanged?.(
+    imageWidget.name,
+    [...change.current],
+    [...change.previous],
+    imageWidget
+  );
+  node.graph?.setDirtyCanvas?.(true, true);
+}
+function resetIntentForExternalUploads(node, reset) {
+  const originalPasteFiles = node.pasteFiles;
+  const originalOnDragDrop = node.onDragDrop;
+  const originalOnRemoved = node.onRemoved;
+  const wrappedPasteFiles = originalPasteFiles ? (...args) => {
+    reset();
+    return originalPasteFiles.apply(node, args);
+  } : void 0;
+  const wrappedOnDragDrop = originalOnDragDrop ? (...args) => {
+    reset();
+    return originalOnDragDrop.apply(node, args);
+  } : void 0;
+  if (wrappedPasteFiles) node.pasteFiles = wrappedPasteFiles;
+  if (wrappedOnDragDrop) node.onDragDrop = wrappedOnDragDrop;
+  node.onRemoved = function(...args) {
+    if (node.pasteFiles === wrappedPasteFiles) {
+      if (originalPasteFiles) node.pasteFiles = originalPasteFiles;
+      else delete node.pasteFiles;
+    }
+    if (node.onDragDrop === wrappedOnDragDrop) {
+      if (originalOnDragDrop) node.onDragDrop = originalOnDragDrop;
+      else delete node.onDragDrop;
+    }
+    return originalOnRemoved?.apply(this, args);
+  };
+}
+function isMaskBatchNode(candidate) {
+  if (typeof candidate !== "object" || candidate === null) return false;
+  const node = candidate;
+  return node.constructor?.comfyClass === LOAD_MASK_BATCH_NODE_ID && typeof node.addWidget === "function";
+}
+
 // web/src/main.ts
 var comfyApp = app;
+var comfyExecutionEvents = window.comfyAPI.api.api;
 comfyApp.registerExtension({
   name: "SimpleSyrup.Settings",
   async setup(appInstance) {
@@ -519,3 +905,4 @@ comfyApp.registerExtension({
     registerExternalLLMRefreshHook(appInstance);
   }
 });
+registerMaskBatchUpload(comfyApp, comfyExecutionEvents);

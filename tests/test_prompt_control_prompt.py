@@ -38,8 +38,8 @@ def test_extract_lora_tags_returns_angle_tags_joined_with_newlines() -> None:
     assert extract_lora_tags(text) == "<lora:face:1.0>\n<lora:light:0.5>"
 
 
-def test_prepare_prompt_side_splits_ordered_chunks_and_aggregates_loras() -> None:
-    """Separator-delimited chunks preserve order and collect all tags."""
+def test_prepare_prompt_side_preserves_ordered_segment_local_loras() -> None:
+    """Separator-delimited chunks retain their own tags without aggregation."""
 
     side = prepare_prompt_side(
         "face <lora:a:1.0> [SEP] hair <lora:b:0.5>",
@@ -51,7 +51,6 @@ def test_prepare_prompt_side_splits_ordered_chunks_and_aggregates_loras() -> Non
         "<lora:a:1.0>",
         "<lora:b:0.5>",
     ]
-    assert side.lora_tags == "<lora:a:1.0>\n<lora:b:0.5>"
 
 
 def test_prepare_prompt_side_preserves_empty_chunks() -> None:
@@ -61,7 +60,6 @@ def test_prepare_prompt_side_preserves_empty_chunks() -> None:
 
     assert [chunk.text for chunk in side.chunks] == ["face", ""]
     assert [chunk.lora_tags for chunk in side.chunks] == ["", ""]
-    assert side.lora_tags == ""
 
 
 def test_prepare_prompt_side_rejects_empty_separator() -> None:
