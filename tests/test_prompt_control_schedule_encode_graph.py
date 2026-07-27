@@ -60,12 +60,12 @@ def test_schedule_encode_graph_builds_single_conditioning_outputs(
     ]
 
 
-def test_schedule_encode_graph_packs_only_multichunk_sides(
+def test_schedule_encode_graph_packs_both_sides_to_matched_segment_counts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A side with multiple chunks becomes a conditioning batch."""
+    """A missing negative region is encoded and packed from global text."""
 
-    _install_fake_prompt_control(monkeypatch)
+    calls = _install_fake_prompt_control(monkeypatch)
 
     output = PromptControlScheduleEncodeGraphBuilder().build(
         model=["model", 0],
@@ -75,7 +75,13 @@ def test_schedule_encode_graph_packs_only_multichunk_sides(
     )
 
     assert output.args[1] != ["encode_0", 0]
-    assert output.args[2] == ["encode_2", 0]
+    assert output.args[2] != ["encode_2", 0]
+    assert [call["text"] for call in calls["encode"]] == [
+        "face",
+        "hair",
+        "blur",
+        "blur",
+    ]
     assert output.expand is not None
     pack_nodes = [
         node
@@ -85,7 +91,39 @@ def test_schedule_encode_graph_packs_only_multichunk_sides(
     assert [node["class_type"] for node in pack_nodes] == [
         "SimpleSyrup.ConditioningBatchStart",
         "SimpleSyrup.ConditioningBatchAppend",
+        "SimpleSyrup.ConditioningBatchStart",
+        "SimpleSyrup.ConditioningBatchAppend",
     ]
+
+
+def test_schedule_encode_graph_matches_lora_region_on_both_cfg_sides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regional LoRA hooks apply to positive and synthesized negative entries."""
+
+    calls = _install_fake_prompt_control(monkeypatch)
+
+    PromptControlScheduleEncodeGraphBuilder().build(
+        model=["model", 0],
+        clip=["clip", 0],
+        positive_prompt="global [SEP] left <lora:regional:1> [SEP] right",
+        negative_prompt="bad quality",
+    )
+
+    assert [call["text"] for call in calls["encode"]] == [
+        "global",
+        "left ",
+        "right",
+        "global",
+        "bad quality",
+        "bad quality",
+        "bad quality",
+        "bad quality",
+    ]
+    assert calls["encode"][1]["clip"] == calls["encode"][5]["clip"]
+    assert calls["encode"][3]["clip"] == calls["encode"][7]["clip"]
+    assert calls["encode"][0]["clip"] == calls["encode"][4]["clip"]
+    assert calls["encode"][2]["clip"] == calls["encode"][6]["clip"]
 
 
 def test_schedule_encode_graph_keeps_loras_local_to_aligned_segments(
@@ -105,23 +143,44 @@ def test_schedule_encode_graph_keeps_loras_local_to_aligned_segments(
     assert output.args[0] == ["model", 0]
     assert calls["lora"] == []
     assert output.expand is not None
-    hook_nodes = [
+    parsed_hook_nodes = [
         node
         for node in output.expand.values()
         if node["class_type"] == "PCLoraHooksFromText"
     ]
-    assert [node["inputs"]["text"] for node in hook_nodes] == [
+    assert [node["inputs"]["text"] for node in parsed_hook_nodes] == [
         "<lora:a:1>\n<lora:c:1>",
         "<lora:b:1>\n<lora:d:[0:1:0.5]>",
     ]
+    regional_hook_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "SimpleSyrup.PrepareRegionalLoraHooks"
+    ]
+    assert len(regional_hook_nodes) == 2
     clip_nodes = [
         node for node in output.expand.values() if node["class_type"] == "SetClipHooks"
     ]
-    assert len(clip_nodes) == 2
-    assert all(node["inputs"]["apply_to_conds"] is True for node in clip_nodes)
-    assert all(node["inputs"]["schedule_clip"] is True for node in clip_nodes)
-    assert calls["encode"][0]["clip"] == calls["encode"][2]["clip"]
-    assert calls["encode"][1]["clip"] == calls["encode"][3]["clip"]
+    assert clip_nodes == []
+    attachment_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "ConditioningSetProperties"
+    ]
+    assert len(attachment_nodes) == 6
+    assert all(node["inputs"]["strength"] == 1.0 for node in attachment_nodes)
+    assert all(
+        node["inputs"]["set_cond_area"] == "default" for node in attachment_nodes
+    )
+    companion_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "SimpleSyrup.AttachRegionalGlobalConditioning"
+    ]
+    assert len(companion_nodes) == 2
+    assert calls["encode"][0]["clip"] == calls["encode"][3]["clip"]
+    assert calls["encode"][1]["clip"] == calls["encode"][4]["clip"]
+    assert calls["encode"][2]["clip"] == calls["encode"][5]["clip"]
     assert calls["encode"][0]["clip"] != calls["encode"][1]["clip"]
 
 
@@ -176,7 +235,11 @@ def _install_fake_prompt_control(
     prompt_control = ModuleType("prompt_control")
     nodes_lazy = ModuleType("prompt_control.nodes_lazy")
     io = import_module("comfy_api.latest").io
-    calls: dict[str, list[dict[str, Any]]] = {"lora": [], "encode": []}
+    calls: dict[str, list[dict[str, Any]]] = {
+        "lora": [],
+        "hook": [],
+        "encode": [],
+    }
 
     class FakePCLazyLoraLoaderAdvanced:
         """Prompt-Control LoRA scheduler test double."""
@@ -199,6 +262,29 @@ def _install_fake_prompt_control(
             assert start == 0.0
             assert end == 1.0
             assert num_steps == 0
+            if model is None:
+                calls["hook"].append({"clip": clip, "text": text})
+                graph_utils = import_module("comfy_execution.graph_utils")
+                graph = graph_utils.GraphBuilder()
+                hooks = graph.node(
+                    "CreateHookLora",
+                    lora_name=text,
+                    strength_model=1.0,
+                    strength_clip=1.0,
+                )
+                hooked_clip = graph.node(
+                    "SetClipHooks",
+                    clip=clip,
+                    hooks=hooks.out(0),
+                    apply_to_conds=True,
+                    schedule_clip=True,
+                )
+                return io.NodeOutput(
+                    None,
+                    hooked_clip.out(0),
+                    hooks.out(0),
+                    expand=graph.finalize(),
+                )
             side = "positive" if not calls["lora"] else "negative"
             calls["lora"].append({"model": model, "clip": clip, "text": text})
             node_id = "duplicate_lora" if duplicate_lora_ids else f"lora_{side}"

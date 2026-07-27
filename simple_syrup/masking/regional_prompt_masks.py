@@ -6,8 +6,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 import torch
 
 from .detailer_masks import gaussian_feather_mask
@@ -43,19 +41,3 @@ def regional_mask(mask_batch: torch.Tensor, index: int) -> torch.Tensor:
     if index < 0 or index >= int(mask_batch.shape[0]):
         raise IndexError(f"regional mask index {index} is out of range.")
     return mask_batch[index : index + 1]
-
-
-def complementary_global_prompt_mask(
-    mask_batch: torch.Tensor,
-    mask_indices: Sequence[int],
-    regional_prompt_weight: float,
-) -> torch.Tensor:
-    """Return global influence that recedes across accumulated region coverage."""
-
-    if not mask_indices:
-        raise ValueError("global prompt masking requires at least one regional mask.")
-    coverage = torch.zeros_like(mask_batch[0:1])
-    for index in mask_indices:
-        coverage.add_(regional_mask(mask_batch, index))
-    coverage.clamp_(0.0, 1.0)
-    return 1.0 - coverage * regional_prompt_weight

@@ -13,7 +13,10 @@ from ..services.prompt_control_segment_planning_service import (
     PromptControlSegmentPlan,
     PromptControlSegmentPlanningService,
 )
-from .prompt_control_graph_adapter import PromptControlGraphAdapter
+from .prompt_control_graph_adapter import (
+    PromptControlGraphAdapter,
+    RegionalSegmentEncoding,
+)
 
 PROMPT_CONTROL_MISSING_MESSAGE = (
     "Schedule & Encode Prompts requires comfyui-prompt-control. "
@@ -52,7 +55,7 @@ class PromptControlScheduleEncodeGraphBuilder:
             adapter=adapter,
             expand=expand,
         )
-        segment_clips = self._segment_clips(
+        segment_encodings = self._segment_encodings(
             plan=plan,
             clip=encoding_clip,
             adapter=adapter,
@@ -60,7 +63,7 @@ class PromptControlScheduleEncodeGraphBuilder:
         )
         positive = self._encode_side(
             plan.positive,
-            segment_clips=segment_clips,
+            segment_encodings=segment_encodings,
             encode_style=encode_style,
             adapter=adapter,
             expand=expand,
@@ -68,7 +71,7 @@ class PromptControlScheduleEncodeGraphBuilder:
         )
         negative = self._encode_side(
             plan.negative,
-            segment_clips=segment_clips,
+            segment_encodings=segment_encodings,
             encode_style=encode_style,
             adapter=adapter,
             expand=expand,
@@ -102,18 +105,18 @@ class PromptControlScheduleEncodeGraphBuilder:
             expand=expand,
         )
 
-    def _segment_clips(
+    def _segment_encodings(
         self,
         *,
         plan: PromptControlSegmentPlan,
         clip: Any,
         adapter: PromptControlGraphAdapter,
         expand: dict[str, dict[str, Any]],
-    ) -> tuple[Any, ...]:
-        """Create one shared hooked CLIP link per batched segment index."""
+    ) -> tuple[RegionalSegmentEncoding, ...]:
+        """Create one shared encoding context per batched segment index."""
 
         if not plan.is_batched:
-            return (clip,)
+            return (RegionalSegmentEncoding(clip=clip),)
         return tuple(
             adapter.clip_with_hooks(
                 clip=clip,
@@ -128,7 +131,7 @@ class PromptControlScheduleEncodeGraphBuilder:
         self,
         side: PreparedPromptSide,
         *,
-        segment_clips: tuple[Any, ...],
+        segment_encodings: tuple[RegionalSegmentEncoding, ...],
         encode_style: str,
         adapter: PromptControlGraphAdapter,
         expand: dict[str, dict[str, Any]],
@@ -138,13 +141,29 @@ class PromptControlScheduleEncodeGraphBuilder:
 
         outputs = [
             adapter.encode_segment(
-                clip=segment_clips[index],
+                segment=segment_encodings[index],
                 text=apply_encode_style(encode_style, chunk.text),
                 expand=expand,
                 label=f"{label} segment {index}",
             )
             for index, chunk in enumerate(side.chunks)
         ]
+        for index in range(1, len(outputs)):
+            segment = segment_encodings[index]
+            if segment.hooks is None:
+                continue
+            global_companion = adapter.encode_segment(
+                segment=segment,
+                text=apply_encode_style(encode_style, side.chunks[0].text),
+                expand=expand,
+                label=f"{label} segment {index} global companion",
+            )
+            outputs[index] = adapter.attach_global_companion(
+                conditioning=outputs[index],
+                global_conditioning=global_companion,
+                expand=expand,
+                label=f"{label} segment {index}",
+            )
         return adapter.pack_conditionings(
             outputs,
             expand=expand,

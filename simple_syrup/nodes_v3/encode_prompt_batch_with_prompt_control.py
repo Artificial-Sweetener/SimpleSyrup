@@ -47,8 +47,8 @@ class EncodePromptBatchWithPromptControl(_ComfyNodeBase):
             enable_expand=True,
             category="SimpleSyrup/Conditioning",
             description=(
-                "Encodes [SEP]-separated prompts into per-segment Prompt Control "
-                "conditioning batches with segment-local LoRA hooks."
+                "Encodes [SEP]-separated prompts into matched Prompt Control "
+                "batches, reusing each side's global text for missing regions."
             ),
             inputs=[
                 _comfy_io.Clip.Input(
@@ -65,7 +65,8 @@ class EncodePromptBatchWithPromptControl(_ComfyNodeBase):
                     default="",
                     tooltip=(
                         "Positive Prompt Control prompts in positional order; each "
-                        "segment keeps its aligned LoRA hooks."
+                        "segment keeps its aligned LoRA hooks, and global text "
+                        "fills missing positive regions."
                     ),
                 ),
                 _comfy_io.String.Input(
@@ -74,7 +75,8 @@ class EncodePromptBatchWithPromptControl(_ComfyNodeBase):
                     default="",
                     tooltip=(
                         "Negative Prompt Control prompts in positional order; each "
-                        "segment shares hooks with the matching positive index."
+                        "segment shares hooks with the matching positive index, "
+                        "and global text fills missing negative regions."
                     ),
                 ),
                 _comfy_io.String.Input(

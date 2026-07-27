@@ -38,8 +38,8 @@ def test_planner_combines_lora_tags_only_at_aligned_indexes() -> None:
     ]
 
 
-def test_planner_preserves_explicit_empties_without_padding_shorter_side() -> None:
-    """Empty chunks remain positional while unequal side lengths remain unequal."""
+def test_planner_preserves_empties_and_fills_missing_side_from_global() -> None:
+    """Authored empties remain while missing negative positions reuse global text."""
 
     plan = PromptControlSegmentPlanningService().prepare(
         positive_prompt="global [SEP]  [SEP] right <lora:right:1>",
@@ -52,8 +52,60 @@ def test_planner_preserves_explicit_empties_without_padding_shorter_side() -> No
         "",
         "right ",
     ]
-    assert [chunk.text for chunk in plan.negative.chunks] == ["negative"]
+    assert [chunk.text for chunk in plan.negative.chunks] == [
+        "negative",
+        "negative",
+        "negative",
+    ]
     assert [hook.lora_tags for hook in plan.hooks] == ["", "", "<lora:right:1>"]
+
+
+def test_planner_fallback_text_does_not_repeat_global_lora_tags() -> None:
+    """Synthetic segments inherit global text but not global SEP-local tags."""
+
+    plan = PromptControlSegmentPlanningService().prepare(
+        positive_prompt="global [SEP] left <lora:left:1> [SEP] right",
+        negative_prompt="bad <lora:global-negative:1>",
+        separator="[SEP]",
+    )
+
+    assert [chunk.text for chunk in plan.negative.chunks] == ["bad ", "bad ", "bad "]
+    assert [chunk.lora_tags for chunk in plan.negative.chunks] == [
+        "<lora:global-negative:1>",
+        "",
+        "",
+    ]
+    assert [hook.lora_tags for hook in plan.hooks] == [
+        "<lora:global-negative:1>",
+        "<lora:left:1>",
+        "",
+    ]
+
+
+def test_planner_fills_missing_positive_side_symmetrically() -> None:
+    """Negative-authored regions reuse global positive text with local hooks."""
+
+    plan = PromptControlSegmentPlanningService().prepare(
+        positive_prompt="subject <lora:global-positive:1>",
+        negative_prompt="bad [SEP] hands <lora:hands:1> [SEP] text",
+        separator="[SEP]",
+    )
+
+    assert [chunk.text for chunk in plan.positive.chunks] == [
+        "subject ",
+        "subject ",
+        "subject ",
+    ]
+    assert [chunk.lora_tags for chunk in plan.positive.chunks] == [
+        "<lora:global-positive:1>",
+        "",
+        "",
+    ]
+    assert [hook.lora_tags for hook in plan.hooks] == [
+        "<lora:global-positive:1>",
+        "<lora:hands:1>",
+        "",
+    ]
 
 
 def test_planner_marks_single_segment_prompts_as_unbatched() -> None:

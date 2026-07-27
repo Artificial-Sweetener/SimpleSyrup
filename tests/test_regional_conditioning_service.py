@@ -10,6 +10,9 @@ import pytest
 import torch
 
 from simple_syrup.domain.conditioning_batch import ConditioningBatch
+from simple_syrup.runtime.regional_conditioning_companion import (
+    attach_global_companion,
+)
 from simple_syrup.services.regional_conditioning_service import (
     RegionalConditioningService,
 )
@@ -75,16 +78,10 @@ def test_batches_pair_global_and_regions_independently() -> None:
         "negative global",
         "negative region 0",
     ]
-    assert torch.equal(
-        assembled_positive[0][1]["mask"],
-        torch.full((1, 3, 3), 0.25),
-    )
-    assert torch.equal(
-        assembled_negative[0][1]["mask"],
-        torch.ones((1, 3, 3)),
-    )
-    assert assembled_positive[0][1]["mask_strength"] == 1.0
-    assert assembled_negative[0][1]["mask_strength"] == 1.0
+    assert assembled_positive[0][1]["default"] is True
+    assert assembled_negative[0][1]["default"] is True
+    assert "mask" not in assembled_positive[0][1]
+    assert "mask" not in assembled_negative[0][1]
     assert torch.equal(assembled_positive[1][1]["mask"], masks[0:1])
     assert torch.equal(assembled_positive[2][1]["mask"], masks[1:2])
     assert torch.equal(assembled_negative[1][1]["mask"], masks[0:1])
@@ -169,6 +166,42 @@ def test_mask_composition_preserves_segment_lora_hook_metadata() -> None:
     assert assembled[1][1]["other"] == "region metadata"
 
 
+@pytest.mark.parametrize(
+    ("regional_prompt_weight", "expected_sources", "expected_strengths"),
+    [
+        (0.0, ["global", "hooked global"], [1.0]),
+        (0.5, ["global", "hooked global", "region"], [0.5, 0.5]),
+        (1.0, ["global", "region"], [1.0]),
+    ],
+)
+def test_hooked_global_companion_keeps_lora_full_while_prompt_weight_changes(
+    regional_prompt_weight: float,
+    expected_sources: list[str],
+    expected_strengths: list[float],
+) -> None:
+    """Global and local prompt shares use one regional LoRA model state."""
+
+    regional = attach_global_companion(
+        [["region", {"hooks": "regional hooks"}]],
+        [["hooked global", {"hooks": "regional hooks"}]],
+    )
+
+    assembled, _ = RegionalConditioningService().assemble(
+        positive=ConditioningBatch((_conditioning("global"), regional)),
+        negative=_conditioning("negative"),
+        masks=torch.ones((1, 2, 2)),
+        regional_prompt_weight=regional_prompt_weight,
+        region_mask_feather=0,
+    )
+
+    assert [item[0] for item in assembled] == expected_sources
+    assert [item[1]["mask_strength"] for item in assembled[1:]] == expected_strengths
+    assert all(item[1]["hooks"] == "regional hooks" for item in assembled[1:])
+    assert all(
+        "simple_syrup.regional_global_companion" not in item[1] for item in assembled
+    )
+
+
 def test_zero_regional_prompt_weight_returns_only_unchanged_global_entries() -> None:
     """The zero endpoint disables regional conditioning completely."""
 
@@ -200,10 +233,38 @@ def test_full_regional_prompt_weight_complements_global_inside_mask() -> None:
         region_mask_feather=0,
     )
 
-    assert torch.equal(positive[0][1]["mask"], 1.0 - mask)
-    assert positive[0][1]["mask_strength"] == 1.0
+    assert positive[0][1]["default"] is True
+    assert "mask" not in positive[0][1]
     assert torch.equal(positive[1][1]["mask"], mask)
     assert positive[1][1]["mask_strength"] == 1.0
+
+
+@pytest.mark.parametrize("regional_prompt_weight", [0.25, 0.5, 1.0])
+def test_matched_global_negative_retains_full_regional_influence(
+    regional_prompt_weight: float,
+) -> None:
+    """Global and fallback negative shares sum to full strength in a region."""
+
+    negative = ConditioningBatch(
+        (_conditioning("global negative"), _conditioning("global negative"))
+    )
+
+    _, assembled_negative = RegionalConditioningService().assemble(
+        positive=ConditioningBatch(
+            (_conditioning("global positive"), _conditioning("regional positive"))
+        ),
+        negative=negative,
+        masks=torch.ones((1, 2, 2)),
+        regional_prompt_weight=regional_prompt_weight,
+        region_mask_feather=0,
+    )
+
+    assert assembled_negative[0][1]["default"] is True
+    assert assembled_negative[1][1]["mask_strength"] == regional_prompt_weight
+    assert torch.equal(
+        assembled_negative[1][1]["mask"],
+        torch.ones((1, 2, 2)),
+    )
 
 
 @pytest.mark.parametrize("weight", [-0.01, 1.01, float("nan")])

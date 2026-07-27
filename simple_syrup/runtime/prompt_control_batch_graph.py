@@ -12,7 +12,10 @@ from ..domain.prompt_control_prompt import PreparedPromptSide
 from ..services.prompt_control_segment_planning_service import (
     PromptControlSegmentPlanningService,
 )
-from .prompt_control_graph_adapter import PromptControlGraphAdapter
+from .prompt_control_graph_adapter import (
+    PromptControlGraphAdapter,
+    RegionalSegmentEncoding,
+)
 
 PROMPT_CONTROL_MISSING_MESSAGE = (
     "Encode Prompt Batch w/ Prompt Control requires comfyui-prompt-control. "
@@ -42,7 +45,7 @@ class PromptControlBatchGraphBuilder:
         )
         adapter = self.graph_adapter_class.load(PROMPT_CONTROL_MISSING_MESSAGE)
         expand: dict[str, dict[str, Any]] = {}
-        segment_clips = tuple(
+        segment_encodings = tuple(
             adapter.clip_with_hooks(
                 clip=clip,
                 lora_tags=hook.lora_tags,
@@ -53,14 +56,14 @@ class PromptControlBatchGraphBuilder:
         )
         positive = self._encode_side(
             plan.positive,
-            segment_clips=segment_clips,
+            segment_encodings=segment_encodings,
             adapter=adapter,
             expand=expand,
             label="positive",
         )
         negative = self._encode_side(
             plan.negative,
-            segment_clips=segment_clips,
+            segment_encodings=segment_encodings,
             adapter=adapter,
             expand=expand,
             label="negative",
@@ -71,7 +74,7 @@ class PromptControlBatchGraphBuilder:
         self,
         side: PreparedPromptSide,
         *,
-        segment_clips: tuple[Any, ...],
+        segment_encodings: tuple[RegionalSegmentEncoding, ...],
         adapter: PromptControlGraphAdapter,
         expand: dict[str, dict[str, Any]],
         label: str,
@@ -80,13 +83,29 @@ class PromptControlBatchGraphBuilder:
 
         outputs = [
             adapter.encode_segment(
-                clip=segment_clips[index],
+                segment=segment_encodings[index],
                 text=chunk.text,
                 expand=expand,
                 label=f"{label} segment {index}",
             )
             for index, chunk in enumerate(side.chunks)
         ]
+        for index in range(1, len(outputs)):
+            segment = segment_encodings[index]
+            if segment.hooks is None:
+                continue
+            global_companion = adapter.encode_segment(
+                segment=segment,
+                text=side.chunks[0].text,
+                expand=expand,
+                label=f"{label} segment {index} global companion",
+            )
+            outputs[index] = adapter.attach_global_companion(
+                conditioning=outputs[index],
+                global_conditioning=global_companion,
+                expand=expand,
+                label=f"{label} segment {index}",
+            )
         return adapter.pack_conditionings(
             outputs,
             expand=expand,
