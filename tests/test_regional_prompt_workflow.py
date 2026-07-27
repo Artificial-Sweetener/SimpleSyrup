@@ -133,10 +133,15 @@ def test_sep_prompts_and_disk_masks_flow_into_regional_sampler(
     assert [item[0] for item in assembled_negative] == [
         "global negative",
         "left negative",
+        "global negative",
     ]
     assert torch.equal(assembled_positive[1][1]["mask"], masks[0:1])
     assert torch.equal(assembled_positive[2][1]["mask"], masks[1:2])
     assert assembled_positive[1][1]["mask_strength"] == 0.8
     assert assembled_positive[2][1]["mask_strength"] == 0.8
     assert assembled_negative[1][1]["mask_strength"] == 0.8
+    assert torch.equal(assembled_negative[2][1]["mask"], masks[1:2])
+    assert assembled_negative[2][1]["mask_strength"] == 0.8
+    assert assembled_negative[0][1]["default"] is True
+    assert "mask" not in assembled_negative[0][1]
     assert call["latent_image"]["samples"].shape[0] == 2

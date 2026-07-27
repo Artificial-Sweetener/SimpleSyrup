@@ -101,16 +101,22 @@ def get_nodes() -> list[type[object]]:
     if not prompt_control_is_available():
         return nodes
 
+    from .attach_regional_global_conditioning import (
+        AttachRegionalGlobalConditioningV3,
+    )
     from .encode_prompt_batch_with_prompt_control import (
         EncodePromptBatchWithPromptControl,
     )
+    from .prepare_regional_lora_hooks import PrepareRegionalLoraHooksV3
     from .schedule_and_encode_prompts_with_prompt_control import (
         ScheduleAndEncodePromptsWithPromptControl,
     )
 
     return [
         *nodes,
+        AttachRegionalGlobalConditioningV3,
         EncodePromptBatchWithPromptControl,
+        PrepareRegionalLoraHooksV3,
         ScheduleAndEncodePromptsWithPromptControl,
     ]
 

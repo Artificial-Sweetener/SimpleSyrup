@@ -31,7 +31,7 @@ class ScheduleAndEncodePromptsWithPromptControl:
     CATEGORY = "SimpleSyrup/Conditioning"
     DESCRIPTION = (
         "Schedules Prompt-Control LoRAs and encodes prompts. [SEP] creates "
-        "conditioning batches with segment-local LoRA hooks."
+        "matched conditioning batches using global text for missing regions."
     )
     SEARCH_ALIASES = ["prompt control", "schedule prompts", "encode prompts"]
 
@@ -68,7 +68,7 @@ class ScheduleAndEncodePromptsWithPromptControl:
                         "multiline": False,
                         "tooltip": (
                             "Positive Prompt-Control text; [SEP] creates ordered "
-                            "entries with segment-local LoRA hooks."
+                            "entries, and global text fills missing positive regions."
                         ),
                     },
                 ),
@@ -79,7 +79,7 @@ class ScheduleAndEncodePromptsWithPromptControl:
                         "multiline": False,
                         "tooltip": (
                             "Negative Prompt-Control text; [SEP] creates ordered "
-                            "entries sharing each index's LoRA hooks."
+                            "entries, and global text fills missing negative regions."
                         ),
                     },
                 ),
