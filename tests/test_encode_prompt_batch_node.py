@@ -25,6 +25,7 @@ def test_encode_prompt_batch_contract() -> None:
     )
     assert EncodePromptBatch.RETURN_NAMES == ("positive", "negative")
     assert EncodePromptBatch.CATEGORY == "SimpleSyrup/Conditioning"
+    assert "global" in EncodePromptBatch.DESCRIPTION.lower()
     assert list(inputs["required"]) == [
         "clip",
         "positive_prompt",
@@ -35,12 +36,14 @@ def test_encode_prompt_batch_contract() -> None:
     assert inputs["required"]["positive_prompt"][1]["default"] == ""
     assert inputs["required"]["negative_prompt"][1]["default"] == ""
     assert inputs["required"]["separator"][1]["default"] == "[SEP]"
+    assert "global" in inputs["required"]["positive_prompt"][1]["tooltip"].lower()
+    assert "global" in inputs["required"]["negative_prompt"][1]["tooltip"].lower()
 
 
-def test_encode_prompt_batch_splits_and_encodes_each_chunk(
+def test_encode_prompt_batch_aligns_missing_negative_chunks_to_global(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Standard encoder batches positive and negative chunks independently."""
+    """Standard encoder creates matched negative regions from global text."""
 
     monkeypatch.setattr(EncodePromptBatch, "encoder_class", _FakeEncoder)
 
@@ -54,7 +57,7 @@ def test_encode_prompt_batch_splits_and_encodes_each_chunk(
     assert isinstance(positive, ConditioningBatch)
     assert isinstance(negative, ConditioningBatch)
     assert positive.entries == ("clip:face", "clip:hair")
-    assert negative.entries == ("clip:blur",)
+    assert negative.entries == ("clip:blur", "clip:blur")
 
 
 def test_encode_prompt_batch_encodes_blank_and_empty_chunks(
@@ -73,8 +76,28 @@ def test_encode_prompt_batch_encodes_blank_and_empty_chunks(
 
     assert isinstance(positive, ConditioningBatch)
     assert isinstance(negative, ConditioningBatch)
-    assert positive.entries == ("clip:",)
+    assert positive.entries == ("clip:", "clip:")
     assert negative.entries == ("clip:bad", "clip:")
+
+
+def test_encode_prompt_batch_uses_global_positive_for_missing_regions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Negative-authored regions receive matched global positive entries."""
+
+    monkeypatch.setattr(EncodePromptBatch, "encoder_class", _FakeEncoder)
+
+    positive, negative = EncodePromptBatch().encode(
+        clip="clip",
+        positive_prompt="subject",
+        negative_prompt="bad [SEP] hands [SEP] text",
+        separator="[SEP]",
+    )
+
+    assert isinstance(positive, ConditioningBatch)
+    assert isinstance(negative, ConditioningBatch)
+    assert positive.entries == ("clip:subject",) * 3
+    assert negative.entries == ("clip:bad", "clip:hands", "clip:text")
 
 
 class _FakeEncoder:

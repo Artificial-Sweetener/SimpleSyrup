@@ -7,10 +7,19 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
 from importlib import import_module
 from typing import Any, cast
 
 from .prompt_control_availability import find_prompt_control_install
+
+
+@dataclass(frozen=True)
+class RegionalSegmentEncoding:
+    """Carry one segment's encoding CLIP and post-encode model hooks."""
+
+    clip: Any
+    hooks: Any | None = None
 
 
 class PromptControlGraphAdapter:
@@ -76,7 +85,7 @@ class PromptControlGraphAdapter:
     def encode_segment(
         self,
         *,
-        clip: Any,
+        segment: RegionalSegmentEncoding,
         text: str,
         expand: dict[str, dict[str, Any]],
         label: str,
@@ -84,7 +93,7 @@ class PromptControlGraphAdapter:
         """Encode one segment with a previously prepared CLIP link."""
 
         output = self._lazy_nodes.PCLazyTextEncodeAdvanced.execute(
-            clip=clip,
+            clip=segment.clip,
             text=text,
             tags="",
             start=0.0,
@@ -92,7 +101,24 @@ class PromptControlGraphAdapter:
             num_steps=0,
         )
         self.merge_expand(expand, output.expand, f"{label} text encoding")
-        return output.args[0]
+        conditioning = output.args[0]
+        if segment.hooks is None:
+            return conditioning
+
+        graph = self._graph_utils.GraphBuilder()
+        conditioned = graph.node(
+            "ConditioningSetProperties",
+            cond_NEW=conditioning,
+            hooks=segment.hooks,
+            strength=1.0,
+            set_cond_area="default",
+        )
+        self.merge_expand(
+            expand,
+            cast(dict[str, dict[str, Any]], graph.finalize()),
+            f"{label} model hook attachment",
+        )
+        return conditioned.out(0)
 
     def clip_with_hooks(
         self,
@@ -101,26 +127,30 @@ class PromptControlGraphAdapter:
         lora_tags: str,
         expand: dict[str, dict[str, Any]],
         label: str,
-    ) -> Any:
-        """Return a CLIP link sharing one segment's hooks across prompt sides."""
+    ) -> RegionalSegmentEncoding:
+        """Return separate encoding-CLIP and post-encode model-hook links."""
 
         if not lora_tags:
-            return clip
+            return RegionalSegmentEncoding(clip=clip)
         graph = self._graph_utils.GraphBuilder()
-        hooks = graph.node("PCLoraHooksFromText", text=lora_tags)
-        hooked_clip = graph.node(
-            "SetClipHooks",
+        parsed_hooks = graph.node(
+            "PCLoraHooksFromText",
+            text=lora_tags,
+        )
+        regional_hooks = graph.node(
+            "SimpleSyrup.PrepareRegionalLoraHooks",
             clip=clip,
-            hooks=hooks.out(0),
-            apply_to_conds=True,
-            schedule_clip=True,
+            hooks=parsed_hooks.out(0),
         )
         self.merge_expand(
             expand,
             cast(dict[str, dict[str, Any]], graph.finalize()),
             f"{label} LoRA hooks",
         )
-        return hooked_clip.out(0)
+        return RegionalSegmentEncoding(
+            clip=regional_hooks.out(0),
+            hooks=regional_hooks.out(1),
+        )
 
     def pack_conditionings(
         self,
@@ -151,6 +181,29 @@ class PromptControlGraphAdapter:
             f"{label} batch packing",
         )
         return current.out(0)
+
+    def attach_global_companion(
+        self,
+        *,
+        conditioning: Any,
+        global_conditioning: Any,
+        expand: dict[str, dict[str, Any]],
+        label: str,
+    ) -> Any:
+        """Attach one hooked global prompt share to a regional conditioning."""
+
+        graph = self._graph_utils.GraphBuilder()
+        attached = graph.node(
+            "SimpleSyrup.AttachRegionalGlobalConditioning",
+            conditioning=conditioning,
+            global_conditioning=global_conditioning,
+        )
+        self.merge_expand(
+            expand,
+            cast(dict[str, dict[str, Any]], graph.finalize()),
+            f"{label} global companion attachment",
+        )
+        return attached.out(0)
 
     def merge_expand(
         self,
