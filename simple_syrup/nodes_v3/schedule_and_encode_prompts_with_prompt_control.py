@@ -50,7 +50,8 @@ class ScheduleAndEncodePromptsWithPromptControl(_ComfyNodeBase):
             category="SimpleSyrup/Conditioning",
             description=(
                 "Schedules Prompt-Control LoRAs and encodes prompts. With [SEP], "
-                "each conditioning entry keeps only its segment's LoRA hooks."
+                "both sides are matched using global text for missing regions and "
+                "share each segment's LoRA hooks."
             ),
             inputs=[
                 _comfy_io.Model.Input(
@@ -85,7 +86,8 @@ class ScheduleAndEncodePromptsWithPromptControl(_ComfyNodeBase):
                     default="",
                     tooltip=(
                         "Positive Prompt-Control text; [SEP] creates ordered "
-                        "conditioning entries with segment-local LoRA hooks."
+                        "conditioning entries, and global text fills missing "
+                        "positive regions."
                     ),
                 ),
                 _comfy_io.String.Input(
@@ -94,7 +96,8 @@ class ScheduleAndEncodePromptsWithPromptControl(_ComfyNodeBase):
                     default="",
                     tooltip=(
                         "Negative Prompt-Control text; [SEP] creates ordered "
-                        "conditioning entries sharing each index's LoRA hooks."
+                        "conditioning entries, and global text fills missing "
+                        "negative regions."
                     ),
                 ),
             ],

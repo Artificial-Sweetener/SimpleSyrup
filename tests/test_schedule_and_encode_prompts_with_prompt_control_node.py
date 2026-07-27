@@ -140,6 +140,7 @@ def test_schedule_and_encode_prompt_control_node_schema() -> None:
     assert schema.display_name == "Schedule & Encode Prompts"
     assert schema.enable_expand is True
     assert schema.category == "SimpleSyrup/Conditioning"
+    assert "global" in schema.description.lower()
     assert [output.io_type for output in schema.outputs] == [
         "MODEL",
         "CONDITIONING,CONDITIONING_BATCH",

@@ -103,19 +103,79 @@ def test_prompt_control_batch_graph_attaches_segment_local_lora_hooks(
     )
 
     assert output.expand is not None
-    hook_nodes = [
+    parsed_hook_nodes = [
         node
         for node in output.expand.values()
         if node["class_type"] == "PCLoraHooksFromText"
     ]
-    assert [node["inputs"]["text"] for node in hook_nodes] == [
+    assert [node["inputs"]["text"] for node in parsed_hook_nodes] == [
         "<lora:a:1>\n<lora:c:1>",
         "<lora:b:1>",
     ]
-    assert [call["text"] for call in calls] == ["face ", "hair ", "blur ", "noise"]
-    assert calls[0]["clip"] == calls[2]["clip"]
-    assert calls[1]["clip"] == calls[3]["clip"]
+    regional_hook_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "SimpleSyrup.PrepareRegionalLoraHooks"
+    ]
+    assert len(regional_hook_nodes) == 2
+    assert not any(
+        node["class_type"] == "SetClipHooks" for node in output.expand.values()
+    )
+    attachment_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "ConditioningSetProperties"
+    ]
+    assert len(attachment_nodes) == 6
+    companion_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "SimpleSyrup.AttachRegionalGlobalConditioning"
+    ]
+    assert len(companion_nodes) == 2
+    assert [call["text"] for call in calls] == [
+        "face ",
+        "hair ",
+        "face ",
+        "blur ",
+        "noise",
+        "blur ",
+    ]
+    assert calls[0]["clip"] == calls[3]["clip"]
+    assert calls[1]["clip"] == calls[4]["clip"]
     assert calls[0]["clip"] != calls[1]["clip"]
+
+
+def test_prompt_control_batch_graph_matches_missing_negative_with_region_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A sole global negative is re-encoded under each regional hook plan."""
+
+    calls = _install_fake_prompt_control(monkeypatch)
+    graph_utils = import_module("comfy_execution.graph_utils")
+    graph_utils.GraphBuilder.set_default_prefix("REGRESSION", 0, 0)
+
+    PromptControlBatchGraphBuilder().build(
+        clip=[0, 0],
+        positive_prompt=("global [SEP] left <lora:regional:1> [SEP] right"),
+        negative_prompt="bad quality",
+        separator="[SEP]",
+    )
+
+    assert [call["text"] for call in calls] == [
+        "global",
+        "left ",
+        "right",
+        "global",
+        "bad quality",
+        "bad quality",
+        "bad quality",
+        "bad quality",
+    ]
+    assert calls[1]["clip"] == calls[5]["clip"]
+    assert calls[3]["clip"] == calls[7]["clip"]
+    assert calls[0]["clip"] == calls[4]["clip"]
+    assert calls[2]["clip"] == calls[6]["clip"]
 
 
 def test_prompt_control_batch_graph_reports_missing_prompt_control(
@@ -152,6 +212,51 @@ def _install_fake_prompt_control(
     nodes_lazy = ModuleType("prompt_control.nodes_lazy")
     calls: list[dict[str, Any]] = []
 
+    class FakePCLazyLoraLoaderAdvanced:
+        """Expand segment LoRAs through Comfy's native hook nodes."""
+
+        @staticmethod
+        def execute(
+            model: Any,
+            clip: Any,
+            text: str,
+            apply_hooks: bool,
+            tags: str,
+            start: float,
+            end: float,
+            num_steps: int,
+        ) -> Any:
+            """Return a hooked CLIP link built from native graph components."""
+
+            assert model is None
+            assert apply_hooks is True
+            assert tags == ""
+            assert start == 0.0
+            assert end == 1.0
+            assert num_steps == 0
+            graph_utils = import_module("comfy_execution.graph_utils")
+            io = import_module("comfy_api.latest").io
+            graph = graph_utils.GraphBuilder()
+            hooks = graph.node(
+                "CreateHookLora",
+                lora_name=text,
+                strength_model=1.0,
+                strength_clip=1.0,
+            )
+            hooked_clip = graph.node(
+                "SetClipHooks",
+                clip=clip,
+                hooks=hooks.out(0),
+                apply_to_conds=True,
+                schedule_clip=True,
+            )
+            return io.NodeOutput(
+                None,
+                hooked_clip.out(0),
+                hooks.out(0),
+                expand=graph.finalize(),
+            )
+
     class FakePCLazyTextEncodeAdvanced:
         """Graph-expanding stand-in for Prompt Control's lazy text encoder."""
 
@@ -178,6 +283,7 @@ def _install_fake_prompt_control(
             )
             return io.NodeOutput(node.out(0), expand=graph.finalize())
 
+    cast(Any, nodes_lazy).PCLazyLoraLoaderAdvanced = FakePCLazyLoraLoaderAdvanced
     cast(Any, nodes_lazy).PCLazyTextEncodeAdvanced = FakePCLazyTextEncodeAdvanced
     cast(Any, prompt_control).nodes_lazy = nodes_lazy
     monkeypatch.setitem(sys.modules, "prompt_control", prompt_control)

@@ -16,10 +16,10 @@ from ..domain.regional_prompting import (
     validate_regional_prompt_weight,
 )
 from ..masking.regional_prompt_masks import (
-    complementary_global_prompt_mask,
     prepare_regional_mask_batch,
     regional_mask,
 )
+from ..runtime.regional_conditioning_companion import detach_global_companion
 from ..shared.logging import get_logger
 
 Conditioning: TypeAlias = list[list[Any]]
@@ -90,33 +90,46 @@ class RegionalConditioningService:
             entries[0],
             input_name=f"{input_name} global",
         )
-        if not plan.pairs or regional_prompt_weight == 0.0:
+        if not plan.pairs:
             return self._copy_conditioning(global_conditioning)
 
-        global_mask = complementary_global_prompt_mask(
-            mask_batch,
-            tuple(pair.mask_index for pair in plan.pairs),
-            regional_prompt_weight,
-        )
-        assembled = self._with_mask(
-            global_conditioning,
-            global_mask,
-            mask_strength=1.0,
-        )
+        assembled = self._as_default(global_conditioning)
         for pair in plan.pairs:
             conditioning = self._validate_conditioning(
                 entries[pair.conditioning_index],
                 input_name=(f"{input_name} regional entry {pair.conditioning_index}"),
             )
+            conditioning, global_companion = detach_global_companion(conditioning)
             mask = regional_mask(mask_batch, pair.mask_index)
-            assembled.extend(
-                self._with_mask(
-                    conditioning,
-                    mask,
-                    mask_strength=regional_prompt_weight,
+            if global_companion is not None and regional_prompt_weight < 1.0:
+                assembled.extend(
+                    self._with_mask(
+                        global_companion,
+                        mask,
+                        mask_strength=1.0 - regional_prompt_weight,
+                    )
                 )
-            )
+            if regional_prompt_weight > 0.0:
+                assembled.extend(
+                    self._with_mask(
+                        conditioning,
+                        mask,
+                        mask_strength=regional_prompt_weight,
+                    )
+                )
+        if len(assembled) == len(global_conditioning):
+            return self._copy_conditioning(global_conditioning)
         return assembled
+
+    def _as_default(self, conditioning: Conditioning) -> Conditioning:
+        """Mark global conditioning to fill Comfy's remaining regional weight."""
+
+        default_conditioning: Conditioning = []
+        for item in conditioning:
+            metadata = dict(item[1])
+            metadata["default"] = True
+            default_conditioning.append([item[0], metadata])
+        return default_conditioning
 
     def _validate_conditioning(
         self,

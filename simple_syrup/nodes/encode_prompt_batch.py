@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from ..domain.conditioning_batch import split_prompt_batch
 from ..runtime.conditioning_encoding import ComfyConditioningEncoder
+from ..services.prompt_batch_encoding_service import PromptBatchEncodingService
 
 
 class EncodePromptBatch:
@@ -23,10 +23,16 @@ class EncodePromptBatch:
     )
     FUNCTION = "encode"
     CATEGORY = "SimpleSyrup/Conditioning"
-    DESCRIPTION = "Encodes [SEP]-separated prompts into ordered conditioning batches."
+    DESCRIPTION = (
+        "Encodes [SEP]-separated prompts into matched conditioning batches, "
+        "reusing each side's global prompt when a regional entry is missing."
+    )
     SEARCH_ALIASES = ["conditioning batch", "prompt batch", "segs prompts"]
 
     encoder_class: ClassVar[type[ComfyConditioningEncoder]] = ComfyConditioningEncoder
+    service_class: ClassVar[type[PromptBatchEncodingService]] = (
+        PromptBatchEncodingService
+    )
 
     @classmethod
     def INPUT_TYPES(cls) -> dict[str, dict[str, tuple[Any, ...]]]:
@@ -49,7 +55,8 @@ class EncodePromptBatch:
                         "default": "",
                         "multiline": True,
                         "tooltip": (
-                            "Ordered positive prompt entries separated by [SEP]."
+                            "Ordered positive prompt entries separated by [SEP]; "
+                            "the global entry fills missing positive regions."
                         ),
                     },
                 ),
@@ -59,7 +66,8 @@ class EncodePromptBatch:
                         "default": "",
                         "multiline": True,
                         "tooltip": (
-                            "Ordered negative prompt entries separated by [SEP]."
+                            "Ordered negative prompt entries separated by [SEP]; "
+                            "the global entry fills missing negative regions."
                         ),
                     },
                 ),
@@ -82,10 +90,9 @@ class EncodePromptBatch:
     ) -> tuple[object, object]:
         """Encode positive and negative prompt batches."""
 
-        encoder = self.encoder_class()
-        positive_chunks = split_prompt_batch(positive_prompt, separator)
-        negative_chunks = split_prompt_batch(negative_prompt, separator)
-        return (
-            encoder.encode_batch(clip, positive_chunks),
-            encoder.encode_batch(clip, negative_chunks),
+        return self.service_class(self.encoder_class()).encode(
+            clip=clip,
+            positive_prompt=positive_prompt,
+            negative_prompt=negative_prompt,
+            separator=separator,
         )

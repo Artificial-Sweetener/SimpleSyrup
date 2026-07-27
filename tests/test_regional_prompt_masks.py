@@ -10,40 +10,36 @@ import pytest
 import torch
 
 from simple_syrup.masking.regional_prompt_masks import (
-    complementary_global_prompt_mask,
+    prepare_regional_mask_batch,
+    regional_mask,
 )
 
 
-def test_complementary_global_mask_uses_clamped_accumulated_coverage() -> None:
-    """Overlapping regions accumulate while global coverage remains normalized."""
+def test_prepare_regional_mask_batch_clamps_without_mutating_input() -> None:
+    """Mask preparation normalizes authored values on a separate tensor."""
 
-    masks = torch.tensor(
-        [
-            [[1.0, 1.0, 0.0]],
-            [[0.0, 1.0, 1.0]],
-        ]
-    )
+    masks = torch.tensor([[[-1.0, 0.5, 2.0]]])
+    original = masks.clone()
 
-    global_mask = complementary_global_prompt_mask(masks, (0, 1), 0.5)
-    regional_total = masks.sum(dim=0, keepdim=True) * 0.5
-    global_share = global_mask / (global_mask + regional_total)
+    prepared = prepare_regional_mask_batch(masks, feather=0)
 
-    assert torch.equal(global_mask, torch.tensor([[[0.5, 0.5, 0.5]]]))
-    assert torch.allclose(global_share, torch.tensor([[[0.5, 1.0 / 3.0, 0.5]]]))
+    assert torch.equal(prepared, torch.tensor([[[0.0, 0.5, 1.0]]]))
+    assert torch.equal(masks, original)
 
 
-def test_complementary_global_mask_uses_only_paired_indices() -> None:
-    """Extra authored masks do not reduce global prompt influence."""
+def test_regional_mask_returns_one_ordered_batch_entry() -> None:
+    """Positional selection preserves authored mask order and BHW shape."""
 
     masks = torch.stack([torch.zeros((2, 2)), torch.ones((2, 2))])
 
-    global_mask = complementary_global_prompt_mask(masks, (0,), 1.0)
+    selected = regional_mask(masks, 1)
 
-    assert torch.equal(global_mask, torch.ones((1, 2, 2)))
+    assert selected.shape == (1, 2, 2)
+    assert torch.equal(selected, masks[1:2])
 
 
-def test_complementary_global_mask_requires_a_regional_pair() -> None:
-    """Coverage cannot be calculated without a paired regional prompt."""
+def test_regional_mask_rejects_out_of_range_index() -> None:
+    """Selection fails explicitly when prompt and mask planning diverge."""
 
-    with pytest.raises(ValueError, match="at least one regional mask"):
-        complementary_global_prompt_mask(torch.ones((1, 2, 2)), (), 0.5)
+    with pytest.raises(IndexError, match="out of range"):
+        regional_mask(torch.ones((1, 2, 2)), 1)
