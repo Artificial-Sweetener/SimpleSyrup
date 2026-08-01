@@ -44,6 +44,7 @@ BASE_NODE_IDS = [
     "SimpleSyrup.PromptSEGSWithSAM",
     "SimpleSyrup.ResizeImageToTarget",
     "SimpleSyrup.SAMModelLoader",
+    "SimpleSyrup.SEGSFromSAMOutput",
     "SimpleSyrup.ScaleFactor",
     "SimpleSyrup.Seed",
     "SimpleSyrup.SimpleLoadAnima",

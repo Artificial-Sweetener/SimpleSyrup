@@ -31,6 +31,7 @@ def test_sam_model_loader_declares_expected_inputs() -> None:
 
     assert set(required) == {"sam_model"}
     assert "sam_vit_b (375MB)" in required["sam_model"][0]
+    assert "FastSAM-s (23MB)" in required["sam_model"][0]
 
 
 def test_sam_model_loader_uses_settings_aware_choices() -> None:

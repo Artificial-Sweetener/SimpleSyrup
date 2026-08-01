@@ -27,6 +27,7 @@ def test_input_types_match_tiled_diffusion_contract(
         lambda: ("normal",),
     )
     required = KSamplerTiledDiffusion.INPUT_TYPES()["required"]
+    optional = KSamplerTiledDiffusion.INPUT_TYPES()["optional"]
 
     assert tuple(required) == (
         "model",
@@ -58,6 +59,7 @@ def test_input_types_match_tiled_diffusion_contract(
     assert required["latent_tile_height"][1]["max"] == 512
     assert required["latent_tile_overlap"][1]["default"] == 16
     assert required["latent_tile_batch_size"][1]["default"] == 4
+    assert optional["segs"][0] == "SEGS"
 
 
 def test_node_metadata_matches_contract() -> None:
@@ -118,6 +120,7 @@ def test_sample_delegates_to_shared_service(
     assert call["latent_tile_overlap"] == 24
     assert call["latent_tile_batch_size"] == 3
     assert call["preview_context"] is None
+    assert call["segs"] is None
 
 
 def test_invalid_diffusion_mode_fails_before_runtime_sampling() -> None:
@@ -171,6 +174,7 @@ class _FakeTiledDiffusionSamplingService:
         latent_tile_overlap: int,
         latent_tile_batch_size: int,
         preview_context: Any | None = None,
+        segs: object | None = None,
     ) -> dict[str, Any]:
         """Record sampling arguments and return a fixed latent."""
 
@@ -192,6 +196,7 @@ class _FakeTiledDiffusionSamplingService:
                 "latent_tile_overlap": latent_tile_overlap,
                 "latent_tile_batch_size": latent_tile_batch_size,
                 "preview_context": preview_context,
+                "segs": segs,
             }
         )
         return self.output

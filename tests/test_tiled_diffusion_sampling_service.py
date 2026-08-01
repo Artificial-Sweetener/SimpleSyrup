@@ -12,6 +12,7 @@ import pytest
 import torch
 
 from simple_syrup.domain.conditioning_batch import ConditioningBatch
+from simple_syrup.domain.segs import BoundingBox, CropRegion, Segment
 from simple_syrup.services.tiled_diffusion_sampling_service import (
     TiledDiffusionSamplingService,
 )
@@ -127,7 +128,7 @@ def test_service_forwards_sampling_arguments_unchanged(
     assert result is output
     assert calls == {
         key: value for key, value in kwargs.items() if key != "diffusion_mode"
-    }
+    } | {"tiled_plan": None}
 
 
 def test_service_forwards_differential_diffusion_request(
@@ -216,6 +217,38 @@ def test_service_selects_conditioning_batch_per_latent_item(
     assert torch.equal(result["samples"][1], torch.full((4, 4, 4), 2.0))
 
 
+def test_service_builds_and_forwards_a_segs_guided_plan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Connected SEGS replace the regular grid with a semantic tile plan."""
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_multidiffusion(**kwargs: Any) -> dict[str, Any]:
+        """Record the semantic plan and return the item unchanged."""
+
+        calls.append(kwargs)
+        return {"samples": kwargs["latent_image"]["samples"]}
+
+    monkeypatch.setattr(
+        "simple_syrup.services.tiled_diffusion_sampling_service."
+        "multidiffusion_sampling.sample_multidiffusion",
+        fake_multidiffusion,
+    )
+    segs = ((4, 4), (_full_segment(4, 4),))
+
+    TiledDiffusionSamplingService().sample(
+        **(_sample_kwargs(diffusion_mode="multidiffusion") | {"segs": segs})
+    )
+
+    assert len(calls) == 1
+    plan = calls[0]["tiled_plan"]
+    assert plan is not None
+    assert plan.latent_width == 4
+    assert plan.latent_height == 4
+    assert all(tile.weight_mask is not None for tile in plan.tiles)
+
+
 def test_invalid_mode_fails_before_runtime_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -271,3 +304,17 @@ def _sample_kwargs(
         "differential_diffusion": False,
         "allow_full_context_masks": False,
     }
+
+
+def _full_segment(height: int, width: int) -> Segment:
+    """Return one full-image SEG compatible with the sample latent dimensions."""
+
+    region = CropRegion(0, 0, width, height)
+    return Segment(
+        cropped_image=None,
+        cropped_mask=torch.ones((height, width), dtype=torch.float32),
+        confidence=1.0,
+        crop_region=region,
+        bbox=BoundingBox(0, 0, width, height),
+        label="region",
+    )
