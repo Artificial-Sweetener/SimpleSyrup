@@ -11,7 +11,7 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 from ..shared.logging import get_logger
 from .loaded_models import LoadedSAMModel
@@ -118,7 +118,7 @@ class SAMLoaderService:
         """Load and wrap a SAM model after artifact resolution and cache lookup."""
 
         phase_progress.advance("loading_checkpoint")
-        model = self._load_segment_anything_model(entry, checkpoint_path)
+        model = self._load_model(entry, checkpoint_path)
         phase_progress.advance("registering_device_management")
         managed_model = self._device_manager.manage(
             model,
@@ -184,12 +184,15 @@ class SAMLoaderService:
             paths.append(result.path)
         return paths
 
-    def _load_segment_anything_model(
+    def _load_model(
         self,
         entry: ModelEntry,
         checkpoint_path: Path,
     ) -> object:
-        """Load a SAM model from the segment-anything registry."""
+        """Load one SAM-compatible model from its owning runtime."""
+
+        if entry.model_type == "fast_sam":
+            return self._load_fast_sam_model(checkpoint_path)
 
         try:
             importlib.invalidate_caches()
@@ -205,6 +208,19 @@ class SAMLoaderService:
         model = registry[entry.model_type](checkpoint=str(checkpoint_path))
         model.model_name = checkpoint_path.name
         return model
+
+    def _load_fast_sam_model(self, checkpoint_path: Path) -> object:
+        """Load FastSAM without delegating checkpoint download to Ultralytics."""
+
+        try:
+            ultralytics = importlib.import_module("ultralytics")
+            fast_sam_class = cast(Any, ultralytics).FastSAM
+        except (ImportError, AttributeError) as error:
+            raise RuntimeError(
+                "FastSAM support requires the installed ultralytics package. "
+                f"Import failed: {error}."
+            ) from error
+        return fast_sam_class(str(checkpoint_path))
 
 
 def _registry_module_name(model_type: str) -> str:
@@ -230,4 +246,6 @@ def _registry_import_error_message(model_type: str, error: ImportError) -> str:
             "runtime and its dependencies. Reinstall SimpleSyrup or restore "
             f"{SAM_HQ_RUNTIME_PACKAGE}. Import failed: {error}."
         )
+    if model_type == "fast_sam":
+        return "FastSAM support requires the installed ultralytics package."
     return f"segment-anything is required to load SAM models. Import failed: {error}."

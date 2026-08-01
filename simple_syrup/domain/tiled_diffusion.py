@@ -20,12 +20,13 @@ TILED_DIFFUSION_MODES = ("multidiffusion", "mixture_of_diffusers")
 
 @dataclass(frozen=True)
 class LatentTile:
-    """Describe one rectangular latent-space tile."""
+    """Describe one rectangular latent-space tile and optional local blend weights."""
 
     x: int
     y: int
     width: int
     height: int
+    weight_mask: torch.Tensor | None = None
 
     @property
     def slicer(self) -> tuple[slice, slice, slice, slice]:
@@ -83,7 +84,7 @@ def build_tiled_diffusion_plan(
         tile_height=effective_tile_height,
         overlap=effective_overlap,
     )
-    batches, effective_tile_batch_size = _batch_tiles(tiles, tile_batch_size)
+    batches, effective_tile_batch_size = batch_latent_tiles(tiles, tile_batch_size)
     return TiledDiffusionPlan(
         latent_width=latent_width,
         latent_height=latent_height,
@@ -214,7 +215,7 @@ def _split_tiles(
     return tuple(tiles)
 
 
-def _batch_tiles(
+def batch_latent_tiles(
     tiles: tuple[LatentTile, ...],
     requested_tile_batch_size: int,
 ) -> tuple[tuple[tuple[LatentTile, ...], ...], int]:

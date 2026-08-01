@@ -185,6 +185,30 @@ def test_new_spatial_weight_buffer_broadcasts_over_spatial_axes() -> None:
     ).shape == (1, 1, 1, 4, 8)
 
 
+def test_semantic_tile_weight_cache_reuses_resident_weights() -> None:
+    """Semantic tile weights are materialized once for repeated model outputs."""
+
+    tile = LatentTile(
+        x=0,
+        y=0,
+        width=4,
+        height=4,
+        weight_mask=torch.ones((4, 4), dtype=torch.float32),
+    )
+    cache = tiled_sampling.SemanticTileWeightCache((tile,))
+    output = torch.zeros((1, 4, 4, 4), dtype=torch.float16)
+
+    first = cache.for_output(output)
+    second = cache.for_output(output)
+    model_weight, accumulation_weight = cache.for_tile(first, tile)
+
+    assert first is second
+    assert model_weight is first.model[0]
+    assert accumulation_weight is first.accumulation[0]
+    assert model_weight.dtype == torch.float16
+    assert accumulation_weight.dtype == torch.float32
+
+
 def test_contains_unsupported_conditioning_key_finds_nested_values() -> None:
     """Unsupported regional and control keys are detected recursively."""
 
