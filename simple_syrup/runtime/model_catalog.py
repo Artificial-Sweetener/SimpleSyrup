@@ -190,6 +190,25 @@ SAM_ENTRIES: tuple[ModelEntry, ...] = (
             ),
         ),
     ),
+    ModelEntry(
+        entry_id="fast_sam_s",
+        display_name="FastSAM-s (23MB)",
+        family=ModelFamily.SAM,
+        model_type="fast_sam",
+        source_repo="ultralytics/assets",
+        artifacts=(
+            ModelArtifact(
+                artifact_id="fast_sam_s_checkpoint",
+                filename="FastSAM-s.pt",
+                folder_name="sams",
+                source_url=(
+                    "https://github.com/ultralytics/assets/releases/latest/download/"
+                    "FastSAM-s.pt"
+                ),
+                description="FastSAM-s checkpoint",
+            ),
+        ),
+    ),
 )
 
 GROUNDING_DINO_ENTRIES: tuple[ModelEntry, ...] = (

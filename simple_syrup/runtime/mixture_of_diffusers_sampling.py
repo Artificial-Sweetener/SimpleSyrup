@@ -31,6 +31,7 @@ from .tiled_sampling import (
     ApplyModel,
     Latent,
     ModelFunctionWrapper,
+    SemanticTileWeightCache,
     make_tiled_model_args,
     new_spatial_weight_buffer,
     reject_unsupported_conditioning,
@@ -63,6 +64,7 @@ def sample_mixture_of_diffusers(
     preview_context: DetailPreviewContext | None = None,
     differential_diffusion: bool = False,
     allow_full_context_masks: bool = False,
+    tiled_plan: TiledDiffusionPlan | None = None,
 ) -> Latent:
     """Sample a latent with a cloned model patched for Mixture of Diffusers."""
 
@@ -117,6 +119,7 @@ def sample_mixture_of_diffusers(
         overlap=latent_tile_overlap,
         tile_batch_size=latent_tile_batch_size,
         differential_diffusion=differential_diffusion,
+        tiled_plan=tiled_plan,
     )
 
     batch_inds = latent_image["batch_index"] if "batch_index" in latent_image else None
@@ -173,10 +176,11 @@ def clone_model_with_mixture_of_diffusers(
     overlap: int,
     tile_batch_size: int,
     differential_diffusion: bool = False,
+    tiled_plan: TiledDiffusionPlan | None = None,
 ) -> tuple[Any, TiledDiffusionPlan]:
     """Return a model clone patched with a pre-CFG Mixture wrapper."""
 
-    plan = build_tiled_diffusion_plan(
+    plan = tiled_plan or build_tiled_diffusion_plan(
         latent_width=latent_width,
         latent_height=latent_height,
         tile_width=tile_width,
@@ -184,6 +188,7 @@ def clone_model_with_mixture_of_diffusers(
         overlap=overlap,
         tile_batch_size=tile_batch_size,
     )
+    _validate_supplied_plan(plan, latent_width, latent_height)
     cloned_model = model.clone()
     if differential_diffusion:
         install_differential_diffusion(cloned_model)
@@ -213,6 +218,7 @@ class MixtureOfDiffusersModelWrapper:
         self._plan = plan
         self._existing_wrapper = existing_wrapper
         self._tile_weights_2d: torch.Tensor | None = None
+        self._semantic_tile_weights = SemanticTileWeightCache(plan.tiles)
 
     def __call__(
         self,
@@ -245,7 +251,6 @@ class MixtureOfDiffusersModelWrapper:
         output_buffer = torch.zeros_like(x)
         weight_buffer = new_spatial_weight_buffer(x, self._plan)
         input_batch_size = int(x.shape[0])
-        weights = self._weights_for(x)
 
         for batch in self._plan.batches:
             tiled_args = self._make_tiled_args(
@@ -254,14 +259,22 @@ class MixtureOfDiffusersModelWrapper:
                 input_batch_size=input_batch_size,
             )
             tile_output = self._call_original(apply_model, tiled_args)
+            weights = self._weights_for(tile_output)
+            accumulation_weights = weights.to(dtype=weight_buffer.dtype)
+            semantic_weights = self._semantic_tile_weights.for_output(tile_output)
             for index, tile in enumerate(batch):
                 tile_slice = spatial_tile_slicer(tile, x.ndim)
                 start = index * input_batch_size
                 end = start + input_batch_size
-                output_buffer[tile_slice] += tile_output[start:end] * weights.to(
-                    dtype=tile_output.dtype
+                model_weight, accumulation_weight = (
+                    self._semantic_tile_weights.for_tile(
+                        semantic_weights,
+                        tile,
+                    )
                 )
-                weight_buffer[tile_slice] += weights.to(dtype=weight_buffer.dtype)
+                tile_weight = weights * model_weight
+                output_buffer[tile_slice] += tile_output[start:end] * tile_weight
+                weight_buffer[tile_slice] += accumulation_weights * accumulation_weight
 
         return output_buffer / weight_buffer.to(dtype=output_buffer.dtype)
 
@@ -313,6 +326,21 @@ class MixtureOfDiffusersModelWrapper:
         return self._tile_weights_2d.reshape(
             (1,) * (x.ndim - 2) + (self._plan.tile_height, self._plan.tile_width)
         )
+
+
+def _validate_supplied_plan(
+    plan: TiledDiffusionPlan,
+    latent_width: int,
+    latent_height: int,
+) -> None:
+    """Reject a semantic tile plan that belongs to another latent shape."""
+
+    if (plan.latent_width, plan.latent_height) == (latent_width, latent_height):
+        return
+    raise ValueError(
+        "Mixture of Diffusers tiled plan dimensions must match the sampled latent "
+        "shape."
+    )
 
 
 def _comfy_sample() -> ModuleType:

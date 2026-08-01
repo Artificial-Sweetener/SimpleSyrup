@@ -212,6 +212,45 @@ def test_sam_loader_loads_sam_hq_from_owned_runtime(
     assert state.checkpoints == [str(tmp_path / "sams" / "sam_hq_vit_b.pth")]
 
 
+def test_sam_loader_downloads_and_loads_fast_sam_s(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FastSAM-s uses the existing SAM download, cache, and model wrapper path."""
+
+    downloader = RecordingDownloader()
+    constructed: list[str] = []
+
+    class FakeFastSAM:
+        """Minimal FastSAM-compatible model fake."""
+
+        def __init__(self, checkpoint: str) -> None:
+            """Record the checkpoint passed by the shared SAM loader."""
+
+            constructed.append(checkpoint)
+
+        def to(self, device: object) -> None:
+            """Accept device management."""
+
+        def eval(self) -> None:
+            """Accept evaluation mode."""
+
+    ultralytics = ModuleType("ultralytics")
+    ultralytics.FastSAM = FakeFastSAM  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "ultralytics", ultralytics)
+
+    loaded = SAMLoaderService(
+        downloader=downloader,  # type: ignore[arg-type]
+        folder_paths_module=FakeFolderPaths(tmp_path),
+    ).load_model("FastSAM-s (23MB)", auto_download=True)
+
+    expected = str(tmp_path / "sams" / "FastSAM-s.pt")
+    assert downloader.requests[0].destination_path == Path(expected)
+    assert constructed == [expected]
+    assert loaded.model_id == "fast_sam_s"
+    assert loaded.managed_model is not None
+
+
 def test_sam_loader_errors_when_missing_and_download_disabled(tmp_path: Path) -> None:
     """SAM loader fails clearly when downloads are disabled."""
 

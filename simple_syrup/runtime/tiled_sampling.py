@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Any, TypeAlias
 
 import torch
@@ -22,6 +23,72 @@ ApplyModel: TypeAlias = Callable[..., torch.Tensor]
 ModelFunctionWrapper: TypeAlias = Callable[[ApplyModel, dict[str, Any]], torch.Tensor]
 
 UNSUPPORTED_CONDITIONING_KEYS = frozenset({"area", "control", "gligen"})
+
+
+@dataclass(frozen=True)
+class CachedTileWeights:
+    """Store model-output and float32 accumulation weights for one tensor layout."""
+
+    model: tuple[torch.Tensor, ...]
+    accumulation: tuple[torch.Tensor, ...]
+
+
+class SemanticTileWeightCache:
+    """Keep semantic tile weights resident on the active sampling device."""
+
+    def __init__(self, tiles: Sequence[LatentTile]) -> None:
+        """Create an empty cache associated with one immutable tile plan."""
+
+        self._tiles = tuple(tiles)
+        self._tile_indexes = {id(tile): index for index, tile in enumerate(self._tiles)}
+        self._cache_key: tuple[torch.device, torch.dtype, int] | None = None
+        self._weights: CachedTileWeights | None = None
+
+    def for_output(self, output: torch.Tensor) -> CachedTileWeights:
+        """Return tile weights shaped and typed for one model output tensor."""
+
+        cache_key = (output.device, output.dtype, output.ndim)
+        if self._cache_key == cache_key and self._weights is not None:
+            return self._weights
+        output_weights: list[torch.Tensor] = []
+        accumulation_weights: list[torch.Tensor] = []
+        for tile in self._tiles:
+            shape = (1,) * (output.ndim - 2) + (tile.height, tile.width)
+            if tile.weight_mask is None:
+                accumulation_weight = torch.ones(
+                    shape,
+                    device=output.device,
+                    dtype=torch.float32,
+                )
+            else:
+                if tuple(tile.weight_mask.shape) != (tile.height, tile.width):
+                    raise ValueError(
+                        "Semantic tile weight must match its tile dimensions."
+                    )
+                accumulation_weight = tile.weight_mask.to(
+                    device=output.device,
+                    dtype=torch.float32,
+                ).reshape(shape)
+            accumulation_weights.append(accumulation_weight)
+            output_weights.append(accumulation_weight.to(dtype=output.dtype))
+        self._cache_key = cache_key
+        self._weights = CachedTileWeights(
+            model=tuple(output_weights),
+            accumulation=tuple(accumulation_weights),
+        )
+        return self._weights
+
+    def for_tile(
+        self,
+        weights: CachedTileWeights,
+        tile: LatentTile,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return cached model and accumulation weights for one planned tile."""
+
+        index = self._tile_indexes.get(id(tile))
+        if index is None:
+            raise ValueError("Semantic tile weight cache received an unknown tile.")
+        return weights.model[index], weights.accumulation[index]
 
 
 def validate_sampling_controls(
