@@ -153,7 +153,18 @@ class KSamplerTiledDiffusion:
                         "tooltip": tooltips.LATENT_TILE_BATCH_SIZE,
                     },
                 ),
-            }
+            },
+            "optional": {
+                "segs": (
+                    "SEGS",
+                    {
+                        "tooltip": (
+                            "Optional image regions that guide irregular tile "
+                            "boundaries while preserving the configured overlap."
+                        ),
+                    },
+                ),
+            },
         }
 
     def sample(
@@ -173,6 +184,7 @@ class KSamplerTiledDiffusion:
         latent_tile_height: int = 128,
         latent_tile_overlap: int = 16,
         latent_tile_batch_size: int = 4,
+        segs: object | None = None,
     ) -> tuple[Latent]:
         """Sample a latent with the selected tiled diffusion method."""
 
@@ -193,5 +205,6 @@ class KSamplerTiledDiffusion:
             latent_tile_overlap=latent_tile_overlap,
             latent_tile_batch_size=latent_tile_batch_size,
             preview_context=None,
+            segs=segs,
         )
         return (output,)

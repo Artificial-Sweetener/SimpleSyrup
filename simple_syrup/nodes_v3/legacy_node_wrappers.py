@@ -37,6 +37,7 @@ from ..nodes.prompt_segs_with_sam import PromptSEGSWithSAM
 from ..nodes.provenance_latent import SimpleVAEEncode, UpscaleLatentFromImage
 from ..nodes.sam_model_loader import SAMModelLoader
 from ..nodes.seed import Seed
+from ..nodes.segs_from_sam_output import SEGSFromSAMOutput
 from ..nodes.simple_load_anima import SimpleLoadAnima
 from ..nodes.vitmatte_model_loader import ViTMatteModelLoader
 
@@ -252,6 +253,14 @@ class SAMModelLoaderV3(LegacyNodeV3Adapter):
     LEGACY_NODE_CLASS = SAMModelLoader
     NODE_ID = "SimpleSyrup.SAMModelLoader"
     DISPLAY_NAME = "SAM Model Loader"
+
+
+class SEGSFromSAMOutputV3(LegacyNodeV3Adapter):
+    """Expose automatic SAM-to-SEGS generation through Comfy v3 only."""
+
+    LEGACY_NODE_CLASS = SEGSFromSAMOutput
+    NODE_ID = "SimpleSyrup.SEGSFromSAMOutput"
+    DISPLAY_NAME = "SEGS from SAM Output"
 
 
 class SeedV3(LegacyNodeV3Adapter):
@@ -505,6 +514,7 @@ __all__ = [
     "PromptSEGSWithSAMV3",
     "ResizeImageToTargetV3",
     "SAMModelLoaderV3",
+    "SEGSFromSAMOutputV3",
     "SeedV3",
     "SimpleLoadAnimaV3",
     "SimpleVAEEncodeV3",

@@ -30,6 +30,7 @@ from .tiled_sampling import (
     ApplyModel,
     Latent,
     ModelFunctionWrapper,
+    SemanticTileWeightCache,
     make_tiled_model_args,
     new_spatial_weight_buffer,
     reject_unsupported_conditioning,
@@ -63,6 +64,7 @@ def sample_multidiffusion(
     preview_context: DetailPreviewContext | None = None,
     differential_diffusion: bool = False,
     allow_full_context_masks: bool = False,
+    tiled_plan: TiledDiffusionPlan | None = None,
 ) -> Latent:
     """Sample a latent with a cloned model patched for MultiDiffusion."""
 
@@ -118,6 +120,7 @@ def sample_multidiffusion(
         overlap=latent_tile_overlap,
         tile_batch_size=latent_tile_batch_size,
         differential_diffusion=differential_diffusion,
+        tiled_plan=tiled_plan,
     )
 
     batch_inds = latent_image["batch_index"] if "batch_index" in latent_image else None
@@ -175,10 +178,11 @@ def clone_model_with_multidiffusion(
     overlap: int,
     tile_batch_size: int,
     differential_diffusion: bool = False,
+    tiled_plan: TiledDiffusionPlan | None = None,
 ) -> tuple[Any, TiledDiffusionPlan]:
     """Return a model clone patched with a pre-CFG MultiDiffusion wrapper."""
 
-    plan = build_tiled_diffusion_plan(
+    plan = tiled_plan or build_tiled_diffusion_plan(
         latent_width=latent_width,
         latent_height=latent_height,
         tile_width=tile_width,
@@ -186,6 +190,7 @@ def clone_model_with_multidiffusion(
         overlap=overlap,
         tile_batch_size=tile_batch_size,
     )
+    _validate_supplied_plan(plan, latent_width, latent_height)
     cloned_model = model.clone()
     if differential_diffusion:
         install_differential_diffusion(cloned_model)
@@ -214,6 +219,7 @@ class MultiDiffusionModelWrapper:
 
         self._plan = plan
         self._existing_wrapper = existing_wrapper
+        self._semantic_tile_weights = SemanticTileWeightCache(plan.tiles)
 
     def __call__(
         self,
@@ -254,12 +260,19 @@ class MultiDiffusionModelWrapper:
                 input_batch_size=input_batch_size,
             )
             tile_output = self._call_original(apply_model, tiled_args)
+            tile_weights = self._semantic_tile_weights.for_output(tile_output)
             for index, tile in enumerate(batch):
                 tile_slice = spatial_tile_slicer(tile, x.ndim)
                 start = index * input_batch_size
                 end = start + input_batch_size
-                output_buffer[tile_slice] += tile_output[start:end]
-                weight_buffer[tile_slice] += 1.0
+                model_weight, accumulation_weight = (
+                    self._semantic_tile_weights.for_tile(
+                        tile_weights,
+                        tile,
+                    )
+                )
+                output_buffer[tile_slice] += tile_output[start:end] * model_weight
+                weight_buffer[tile_slice] += accumulation_weight
 
         return output_buffer / weight_buffer.to(dtype=output_buffer.dtype)
 
@@ -300,6 +313,20 @@ def _reject_unipc_sampler(sampler_name: str) -> None:
 
     if sampler_name in UNIPC_SAMPLERS:
         raise ValueError("MultiDiffusion is not compatible with UniPC samplers.")
+
+
+def _validate_supplied_plan(
+    plan: TiledDiffusionPlan,
+    latent_width: int,
+    latent_height: int,
+) -> None:
+    """Reject a semantic tile plan that belongs to another latent shape."""
+
+    if (plan.latent_width, plan.latent_height) == (latent_width, latent_height):
+        return
+    raise ValueError(
+        "MultiDiffusion tiled plan dimensions must match the sampled latent shape."
+    )
 
 
 def _sampling_callback(
