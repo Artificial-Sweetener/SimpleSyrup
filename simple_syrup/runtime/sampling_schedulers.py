@@ -10,7 +10,8 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from importlib import import_module
 from types import ModuleType
 from typing import Protocol, cast
@@ -21,7 +22,14 @@ from ..shared.logging import get_logger
 
 LOGGER = get_logger(__name__)
 
-EXTRA_SCHEDULERS = ("AYS SD1", "AYS SDXL", "GITS", "beta57", "automatic_a1111")
+EXTRA_SCHEDULERS = (
+    "AYS SD1",
+    "AYS SDXL",
+    "GITS",
+    "beta57",
+    "automatic_a1111",
+    "Flux2",
+)
 GITS_DEFAULT_COEFF = 1.20
 BETA57_ALPHA = 0.5
 BETA57_BETA = 0.7
@@ -310,6 +318,33 @@ class SamplingModel(Protocol):
         """Return a named ComfyUI model object."""
 
 
+@dataclass(frozen=True)
+class SchedulerView:
+    """Describe the spatial latent view evaluated by one model prediction."""
+
+    latent_width: int
+    latent_height: int
+
+    def __post_init__(self) -> None:
+        """Reject dimensions that cannot define a spatial schedule."""
+
+        if self.latent_width <= 0 or self.latent_height <= 0:
+            raise ValueError("Scheduler model-view dimensions must be positive.")
+
+    @classmethod
+    def from_tensor(cls, samples: torch.Tensor) -> SchedulerView:
+        """Create a scheduler view from the tensor's final spatial dimensions."""
+
+        if samples.ndim < 2:
+            raise ValueError(
+                "Scheduler model-view samples must have spatial dimensions."
+            )
+        return cls(
+            latent_width=int(samples.shape[-1]),
+            latent_height=int(samples.shape[-2]),
+        )
+
+
 def available_schedulers() -> tuple[str, ...]:
     """Return core ComfyUI schedulers plus locally resolved extra schedulers."""
 
@@ -324,6 +359,8 @@ def calculate_sigmas(
     sampler_name: str,
     steps: int,
     denoise: float,
+    *,
+    view: SchedulerView | None = None,
 ) -> torch.Tensor:
     """Calculate sigmas for a core or SimpleSyrup-owned scheduler."""
 
@@ -351,6 +388,7 @@ def calculate_sigmas(
             sampler_name=sampler_name,
             steps=steps,
             denoise=denoise,
+            view=view,
         )
 
     return _calculate_core_sigmas(
@@ -414,6 +452,7 @@ def _calculate_extra_sigmas(
     sampler_name: str,
     steps: int,
     denoise: float,
+    view: SchedulerView | None,
 ) -> torch.Tensor:
     """Calculate sigmas for locally resolved extra scheduler policies."""
 
@@ -425,7 +464,12 @@ def _calculate_extra_sigmas(
     calculation_steps = (
         schedule_steps + 1 if discard_penultimate_sigma else schedule_steps
     )
-    sigmas = _calculate_extra_schedule(model, scheduler_name, calculation_steps)
+    sigmas = _calculate_extra_schedule(
+        model,
+        scheduler_name,
+        calculation_steps,
+        view=view,
+    )
 
     if discard_penultimate_sigma:
         sigmas = torch.cat([sigmas[:-2], sigmas[-1:]])
@@ -456,6 +500,8 @@ def _calculate_extra_schedule(
     model: SamplingModel,
     scheduler_name: str,
     steps: int,
+    *,
+    view: SchedulerView | None,
 ) -> torch.Tensor:
     """Calculate a full local extra scheduler output."""
 
@@ -469,7 +515,45 @@ def _calculate_extra_schedule(
         return _calculate_beta57_schedule(model, steps)
     if scheduler_name == "automatic_a1111":
         return _calculate_automatic_a1111_schedule(model, steps)
+    if scheduler_name == "Flux2":
+        return _calculate_flux2_schedule(model, steps, view=view)
     raise ValueError(f"Unsupported extra scheduler '{scheduler_name}'.")
+
+
+def _calculate_flux2_schedule(
+    model: SamplingModel,
+    steps: int,
+    *,
+    view: SchedulerView | None,
+) -> torch.Tensor:
+    """Calculate ComfyUI's Flux2 schedule for the effective model view."""
+
+    if view is None:
+        raise ValueError("Flux2 scheduler requires a model view resolution.")
+    latent_format = model.get_model_object("latent_format")
+    spatial_ratio = getattr(latent_format, "spacial_downscale_ratio", None)
+    if (
+        isinstance(spatial_ratio, bool)
+        or not isinstance(spatial_ratio, (int, float))
+        or spatial_ratio <= 0
+    ):
+        raise ValueError(
+            "Flux2 scheduler requires the model latent format to expose a "
+            "positive spacial_downscale_ratio."
+        )
+
+    pixel_width = view.latent_width * float(spatial_ratio)
+    pixel_height = view.latent_height * float(spatial_ratio)
+    image_sequence_length = round(pixel_width * pixel_height / (16 * 16))
+    flux_nodes = import_module("comfy_extras.nodes_flux")
+    get_schedule = cast(
+        Callable[[int, int], Sequence[float] | torch.Tensor],
+        flux_nodes.get_schedule,
+    )
+    return torch.as_tensor(
+        get_schedule(steps, image_sequence_length),
+        dtype=torch.float32,
+    ).detach()
 
 
 def _calculate_ays_schedule(model_type: str, steps: int) -> torch.Tensor:

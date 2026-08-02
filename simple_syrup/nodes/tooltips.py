@@ -137,6 +137,10 @@ DENOISE_STRENGTH = (
     "larger changes."
 )
 DENOISED_LATENT_OUTPUT = "Denoised latent for VAE decode or more latent processing."
+TILED_DIFFUSION_MODE = (
+    "Tile overlap blend. MultiDiffusion averages predictions; Mixture of Diffusers "
+    "gives tile centers more influence."
+)
 
 LATENT_TILE_WIDTH = (
     "Width of each latent tile. Larger tiles see more context but use more memory."
@@ -151,6 +155,33 @@ LATENT_TILE_OVERLAP = (
 LATENT_TILE_BATCH_SIZE = (
     "Number of latent tiles sampled together. Higher values can be faster but use "
     "more memory."
+)
+LATENT_CONTEXT_SIZE = (
+    "Maximum side of each model context in latent pixels. Larger contexts preserve "
+    "more relationships but use more memory."
+)
+LATENT_CONTEXT_OVERLAP = (
+    "Overlap between local latent contexts in latent pixels. Larger overlaps reduce "
+    "seams but increase sampling work."
+)
+LATENT_CONTEXT_BATCH_SIZE = (
+    "Number of equal-sized latent contexts sampled together. Higher values can be "
+    "faster but use more memory."
+)
+GLOBAL_CONTEXT_WEIGHT = (
+    "Strength of whole-image low-frequency guidance. 1 makes the global context "
+    "authoritative; lower values allow more tile interpretation."
+)
+GLOBAL_CONTEXT_STEPS = (
+    "Number of initial denoising steps that use the global context. Fewer steps leave "
+    "more late sampling for local detail."
+)
+GLOBAL_CONTEXT_DECAY = (
+    "Multiplier applied to whole-image strength after each global step. Lower "
+    "values hand control to local contexts faster."
+)
+CONTEXTUAL_DIFFUSION_SEGS = (
+    "Optional regions that replace the regular grid with SEGS-guided contexts."
 )
 
 DETAIL_IMAGE = (

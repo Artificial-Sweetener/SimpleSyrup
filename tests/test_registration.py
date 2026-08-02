@@ -33,6 +33,7 @@ BASE_NODE_IDS = [
     "SimpleSyrup.KSamplerExtras",
     "SimpleSyrup.KSamplerPromptByRegion",
     "SimpleSyrup.KSamplerPromptByTiledRegion",
+    "SimpleSyrup.KSamplerContextualDiffusion",
     "SimpleSyrup.KSamplerTiledDiffusion",
     "SimpleSyrup.LatentDiagnostics",
     "SimpleSyrup.LayerStyleSAMModelsAdapter",

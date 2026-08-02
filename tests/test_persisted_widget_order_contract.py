@@ -19,6 +19,9 @@ from simple_syrup.nodes.detail_segs_by_scale_factor_tiled_diffusion import (
 from simple_syrup.nodes.detect_segs_with_ultralytics import DetectSEGSWithUltralytics
 from simple_syrup.nodes.grounding_dino_model_loader import GroundingDINOModelLoader
 from simple_syrup.nodes.image_resize_to_target import ResizeImageToTarget
+from simple_syrup.nodes.ksampler_contextual_diffusion import (
+    KSamplerContextualDiffusion,
+)
 from simple_syrup.nodes.ksampler_extras import KSamplerExtras
 from simple_syrup.nodes.ksampler_tiled_diffusion import KSamplerTiledDiffusion
 from simple_syrup.nodes.load_ultralytics_model import LoadUltralyticsModel
@@ -144,6 +147,24 @@ _PERSISTED_WIDGET_PREFIXES: tuple[tuple[type[_ClassicNode], tuple[str, ...]], ..
             "latent_tile_height",
             "latent_tile_overlap",
             "latent_tile_batch_size",
+        ),
+    ),
+    (
+        KSamplerContextualDiffusion,
+        (
+            "seed",
+            "steps",
+            "cfg",
+            "sampler_name",
+            "scheduler",
+            "denoise",
+            "diffusion_mode",
+            "latent_context_size",
+            "latent_context_overlap",
+            "latent_context_batch_size",
+            "global_weight",
+            "global_steps",
+            "global_decay",
         ),
     ),
     (LoadUltralyticsModel, ("model_name",)),
