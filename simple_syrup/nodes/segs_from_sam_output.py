@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, ClassVar
 
+import torch
+
 from ..masking.segs_mask_ops import iter_single_images, validate_image_batch
 from ..runtime.progress import PhaseProgressReporter, create_comfy_phase_progress
 from ..services.segs_from_sam_output_service import SEGSFromSAMOutputService
@@ -22,11 +24,12 @@ class SEGSFromSAMOutput:
         create_comfy_phase_progress
     )
 
-    RETURN_TYPES = ("SEGS",)
-    RETURN_NAMES = ("segs",)
-    OUTPUT_IS_LIST = (True,)
+    RETURN_TYPES = ("SEGS", "IMAGE")
+    RETURN_NAMES = ("segs", "overlay")
+    OUTPUT_IS_LIST = (True, False)
     OUTPUT_TOOLTIPS = (
         "Automatic image regions as SEGS for detailing, masking, or tiled diffusion.",
+        "Source images with retained SAM regions shown as translucent colors.",
     )
     FUNCTION = "generate"
     CATEGORY = "SimpleSyrup/Detection"
@@ -82,33 +85,34 @@ class SEGSFromSAMOutput:
         sam_model: object,
         segmentation_resolution: int = 640,
         minimum_region_area: int = 0,
-    ) -> tuple[list[object]]:
-        """Return one automatic SEGS payload for each image batch item."""
+    ) -> tuple[list[object], torch.Tensor]:
+        """Return aligned automatic SEGS and a SAM-style overlay image batch."""
 
         image_batch = validate_image_batch(image, "SEGS from SAM Output")
         service = self.service_class()
         phase_progress = type(self).progress_factory(
             operation="segs_from_sam_output",
             subject=_sam_model_subject(sam_model),
-            total_phases=int(image_batch.shape[0]) * 3 + 1,
+            total_phases=int(image_batch.shape[0]) * 4 + 1,
         )
         outputs: list[object] = []
+        overlays: list[torch.Tensor] = []
         try:
             for single_image in iter_single_images(image_batch):
-                outputs.append(
-                    service.build(
-                        image=single_image,
-                        sam_model=sam_model,
-                        segmentation_resolution=segmentation_resolution,
-                        minimum_region_area=minimum_region_area,
-                        phase_progress=phase_progress,
-                    )
+                result = service.build(
+                    image=single_image,
+                    sam_model=sam_model,
+                    segmentation_resolution=segmentation_resolution,
+                    minimum_region_area=minimum_region_area,
+                    phase_progress=phase_progress,
                 )
+                outputs.append(result.segs)
+                overlays.append(result.overlay)
         except Exception:
             phase_progress.advance("failed")
             raise
         phase_progress.advance("completed")
-        return (outputs,)
+        return outputs, torch.cat(overlays, dim=0)
 
 
 def _sam_model_subject(sam_model: object) -> str:

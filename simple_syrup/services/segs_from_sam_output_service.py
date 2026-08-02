@@ -21,6 +21,7 @@ from ..runtime.sam_automatic_segmenter import (
     SAMAutomaticSegmenter,
     SAMModelAutomaticSegmenter,
 )
+from ..runtime.sam_region_overlay_renderer import SAMRegionOverlayRenderer
 from ..shared.logging import get_logger
 
 LOGGER = get_logger(__name__)
@@ -32,6 +33,14 @@ class SAMAutoSegsSettings:
 
     segmentation_resolution: int
     minimum_region_area: int
+
+
+@dataclass(frozen=True)
+class SEGSFromSAMOutputResult:
+    """Return retained SEGS together with their source-image visualization."""
+
+    segs: NativeSegs
+    overlay: torch.Tensor
 
 
 @dataclass(frozen=True)
@@ -47,10 +56,15 @@ class _GuideMaskCandidate:
 class SEGSFromSAMOutputService:
     """Build reusable SEGS from a SAM model's unprompted masks."""
 
-    def __init__(self, segmenter: SAMAutomaticSegmenter | None = None) -> None:
+    def __init__(
+        self,
+        segmenter: SAMAutomaticSegmenter | None = None,
+        overlay_renderer: SAMRegionOverlayRenderer | None = None,
+    ) -> None:
         """Create the service with an injectable automatic segmentation runtime."""
 
         self._segmenter = segmenter or SAMModelAutomaticSegmenter()
+        self._overlay_renderer = overlay_renderer or SAMRegionOverlayRenderer()
 
     def build(
         self,
@@ -60,8 +74,8 @@ class SEGSFromSAMOutputService:
         segmentation_resolution: int,
         minimum_region_area: int,
         phase_progress: PhaseProgressReporter | None = None,
-    ) -> NativeSegs:
-        """Return source-sized SEGS from unprompted SAM masks."""
+    ) -> SEGSFromSAMOutputResult:
+        """Return source-sized SEGS and their SAM-style colored overlay."""
 
         operation_started_at = perf_counter()
         reporter = phase_progress or NullPhaseProgressReporter()
@@ -98,6 +112,10 @@ class SEGSFromSAMOutputService:
             )
             for index, candidate in enumerate(candidates, start=1)
         )
+        segs: NativeSegs = (image_height, image_width), segments
+        segs_built_at = perf_counter()
+        reporter.advance("rendering_overlay")
+        overlay = self._overlay_renderer.render(image=source_image, segs=segs)
         LOGGER.info(
             "Built SEGS from SAM output",
             extra={
@@ -113,12 +131,16 @@ class SEGSFromSAMOutputService:
                     2,
                 ),
                 "segs_construction_ms": round(
-                    (perf_counter() - masks_generated_at) * 1000.0,
+                    (segs_built_at - masks_generated_at) * 1000.0,
+                    2,
+                ),
+                "overlay_rendering_ms": round(
+                    (perf_counter() - segs_built_at) * 1000.0,
                     2,
                 ),
             },
         )
-        return (image_height, image_width), segments
+        return SEGSFromSAMOutputResult(segs=segs, overlay=overlay)
 
 
 def _validate_settings(
