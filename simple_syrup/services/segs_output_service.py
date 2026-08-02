@@ -16,6 +16,7 @@ from ..domain.segs import (
     ImpactSegs,
     NativeSegs,
     Segment,
+    coerce_segment_mask,
     limit_segs,
     sort_segs,
     to_impact_compatible_segs,
@@ -118,7 +119,7 @@ def combined_mask_from_segs(segs: NativeSegs) -> torch.Tensor:
     height, width = header
     mask = torch.zeros((height, width), dtype=torch.float32)
     for segment in segments:
-        cropped_mask = coerce_cropped_mask(segment)
+        cropped_mask = coerce_segment_mask(segment)
         region = segment.crop_region
         existing = mask[region.top : region.bottom, region.left : region.right]
         mask[region.top : region.bottom, region.left : region.right] = torch.maximum(
@@ -126,21 +127,3 @@ def combined_mask_from_segs(segs: NativeSegs) -> torch.Tensor:
             cropped_mask.float().cpu(),
         )
     return mask.clamp(0.0, 1.0)
-
-
-def coerce_cropped_mask(segment: Segment) -> torch.Tensor:
-    """Return a crop-local HW mask tensor for a segment."""
-
-    if isinstance(segment.cropped_mask, torch.Tensor):
-        cropped_mask = segment.cropped_mask.float()
-    else:
-        cropped_mask = torch.as_tensor(segment.cropped_mask, dtype=torch.float32)
-    if cropped_mask.ndim == 3 and int(cropped_mask.shape[0]) == 1:
-        cropped_mask = cropped_mask.squeeze(0)
-    if cropped_mask.ndim != 2:
-        raise ValueError("Segment cropped_mask must be HW shaped.")
-    expected_shape = (segment.crop_region.height, segment.crop_region.width)
-    actual_shape = (int(cropped_mask.shape[0]), int(cropped_mask.shape[1]))
-    if actual_shape != expected_shape:
-        raise ValueError("Segment cropped_mask must match its crop region.")
-    return cropped_mask.clamp(0.0, 1.0)

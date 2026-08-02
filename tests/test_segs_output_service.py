@@ -8,7 +8,13 @@ from __future__ import annotations
 
 import torch
 
-from simple_syrup.domain.segs import BoundingBox, CropRegion, NativeSegs, Segment
+from simple_syrup.domain.segs import (
+    BoundingBox,
+    CropRegion,
+    NativeSegs,
+    Segment,
+    coerce_segment_mask,
+)
 from simple_syrup.services.segs_output_service import (
     CombinedSegsResult,
     finalize_detector_segs_output,
@@ -77,6 +83,23 @@ def test_finalization_supports_largest_size_for_mask_derived_segs() -> None:
     _header, segments = output.segs
     assert [segment.label for segment in segments] == ["large-low"]
     assert builder.seen_labels == [["large-low"]]
+
+
+def test_cropped_mask_coercion_accepts_hw_and_singleton_bhw() -> None:
+    """Shared mask coercion preserves existing HW and singleton-BHW behavior."""
+
+    hw_segment = _segment("hw", CropRegion(0, 0, 3, 2), 1.0)
+    bhw_segment = Segment(
+        cropped_image=None,
+        cropped_mask=torch.ones((1, 2, 3)),
+        confidence=1.0,
+        crop_region=CropRegion(0, 0, 3, 2),
+        bbox=BoundingBox(0, 0, 3, 2),
+        label="bhw",
+    )
+
+    assert coerce_segment_mask(hw_segment).shape == (2, 3)
+    assert coerce_segment_mask(bhw_segment).shape == (2, 3)
 
 
 class _RecordingBuilder:
