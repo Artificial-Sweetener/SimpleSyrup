@@ -55,7 +55,7 @@ def build_segs_guided_tiled_diffusion_plan(
         tile_batch_size=tile_batch_size,
     )
     native_segs = coerce_segs(segs)
-    _validate_aspect_ratio(native_segs, latent_height, latent_width)
+    validate_segs_aspect_ratio(native_segs, latent_height, latent_width)
     ownership = _build_ownership_cores(
         native_segs,
         latent_height=latent_height,
@@ -107,7 +107,7 @@ def build_segs_guided_tiled_diffusion_plan(
     )
 
 
-def _validate_aspect_ratio(
+def validate_segs_aspect_ratio(
     segs: NativeSegs,
     latent_height: int,
     latent_width: int,
@@ -136,7 +136,7 @@ def _build_ownership_cores(
 
     source_height, source_width = segs[0]
     segment_masks = tuple(
-        _segment_mask_to_latent(
+        segment_mask_to_latent(
             segment,
             source_height=source_height,
             source_width=source_width,
@@ -170,7 +170,7 @@ def _build_ownership_cores(
     )
 
 
-def _segment_mask_to_latent(
+def segment_mask_to_latent(
     segment: Segment,
     *,
     source_height: int,
@@ -179,6 +179,28 @@ def _segment_mask_to_latent(
     latent_width: int,
 ) -> torch.Tensor:
     """Restore one crop-local SEG mask and map it to a latent-space mask."""
+
+    return (
+        segment_weight_to_latent(
+            segment,
+            source_height=source_height,
+            source_width=source_width,
+            latent_height=latent_height,
+            latent_width=latent_width,
+        )
+        >= 0.5
+    )
+
+
+def segment_weight_to_latent(
+    segment: Segment,
+    *,
+    source_height: int,
+    source_width: int,
+    latent_height: int,
+    latent_width: int,
+) -> torch.Tensor:
+    """Project one crop-local SEG mask into latent space without binarizing it."""
 
     crop = segment.crop_region
     if (
@@ -215,7 +237,7 @@ def _segment_mask_to_latent(
         source_width,
         latent_width,
     )
-    latent_mask = torch.zeros((latent_height, latent_width), dtype=torch.bool)
+    latent_mask = torch.zeros((latent_height, latent_width), dtype=torch.float32)
     if latent_bottom <= latent_top or latent_right <= latent_left:
         return latent_mask
     sampled_rows = (
@@ -242,9 +264,7 @@ def _segment_mask_to_latent(
         )
         .index_select(1, sampled_columns)
     )
-    latent_mask[latent_top:latent_bottom, latent_left:latent_right] = (
-        sampled_mask >= 0.5
-    )
+    latent_mask[latent_top:latent_bottom, latent_left:latent_right] = sampled_mask
     return latent_mask
 
 

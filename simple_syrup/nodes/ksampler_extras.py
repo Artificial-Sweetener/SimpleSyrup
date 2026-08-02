@@ -16,7 +16,7 @@ Latent = dict[str, Any]
 
 
 class KSamplerExtras:
-    """Expose KSampler-style sampling with AYS and GITS scheduler options."""
+    """Expose KSampler-style sampling with extended scheduler options."""
 
     RETURN_TYPES = ("LATENT",)
     OUTPUT_TOOLTIPS = (tooltips.DENOISED_LATENT_OUTPUT,)

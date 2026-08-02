@@ -11,8 +11,9 @@ import torch
 
 from simple_syrup.domain.segs import BoundingBox, CropRegion, Segment
 from simple_syrup.domain.segs_tiled_diffusion import (
-    _segment_mask_to_latent,
     build_segs_guided_tiled_diffusion_plan,
+    segment_mask_to_latent,
+    segment_weight_to_latent,
 )
 
 
@@ -127,7 +128,7 @@ def test_crop_local_mask_projects_directly_to_latent_space() -> None:
         label="small_region",
     )
 
-    latent_mask = _segment_mask_to_latent(
+    latent_mask = segment_mask_to_latent(
         segment,
         source_height=4096,
         source_width=4096,
@@ -139,6 +140,30 @@ def test_crop_local_mask_projects_directly_to_latent_space() -> None:
     assert bool(latent_mask[32:64, 64:96].all())
     assert not bool(latent_mask[:32].any())
     assert not bool(latent_mask[:, :64].any())
+
+
+def test_crop_local_weight_projection_preserves_soft_mask_values() -> None:
+    """Semantic consumers can retain fractional SAM write ownership."""
+
+    crop = CropRegion(0, 0, 8, 8)
+    segment = Segment(
+        cropped_image=None,
+        cropped_mask=torch.full((8, 8), 0.25, dtype=torch.float32),
+        confidence=1.0,
+        crop_region=crop,
+        bbox=BoundingBox(*crop),
+        label="soft_region",
+    )
+
+    latent_weight = segment_weight_to_latent(
+        segment,
+        source_height=8,
+        source_width=8,
+        latent_width=8,
+        latent_height=8,
+    )
+
+    assert torch.allclose(latent_weight, torch.full((8, 8), 0.25))
 
 
 def test_guided_plan_rejects_mismatched_image_aspect_ratio() -> None:

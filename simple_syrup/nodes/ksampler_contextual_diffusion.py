@@ -2,45 +2,49 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""ComfyUI node declaration for selectable tiled diffusion sampling."""
+"""ComfyUI node declaration for contextual diffusion sampling."""
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeAlias
 
 from ..domain.tiled_diffusion import TILED_DIFFUSION_MODES
 from ..runtime import sampling_samplers, sampling_schedulers
-from ..services.tiled_diffusion_sampling_service import TiledDiffusionSamplingService
+from ..services.contextual_diffusion_sampling_service import (
+    ContextualDiffusionSamplingService,
+)
 from . import tooltips
 
-Latent = dict[str, Any]
-MAX_LATENT_TILE_SIZE = 512
+Latent: TypeAlias = dict[str, Any]
+MAX_LATENT_CONTEXT_SIZE = 512
 
 
-class KSamplerTiledDiffusion:
-    """Sample latents with selectable tiled diffusion denoising."""
+class KSamplerContextualDiffusion:
+    """Edit large latents through coordinated global and detailed contexts."""
 
     RETURN_TYPES = ("LATENT",)
     OUTPUT_TOOLTIPS = (tooltips.DENOISED_LATENT_OUTPUT,)
     FUNCTION = "sample"
     CATEGORY = "SimpleSyrup/Sampling"
-    DESCRIPTION = "Denoises latents with selectable tiled diffusion sampling."
+    DESCRIPTION = (
+        "Preserves composition while applying appearance and subject-detail edits "
+        "to large latents through global context and optional SEGS-guided tiles."
+    )
     SEARCH_ALIASES = [
         "ksampler",
-        "sampler",
-        "tiled diffusion",
-        "multidiffusion",
-        "multi diffusion",
-        "mixture of diffusers",
+        "contextual diffusion",
+        "contextual tiled diffusion",
+        "high resolution edit",
+        "sam tiled diffusion",
     ]
 
-    service_class: ClassVar[type[TiledDiffusionSamplingService]] = (
-        TiledDiffusionSamplingService
+    service_class: ClassVar[type[ContextualDiffusionSamplingService]] = (
+        ContextualDiffusionSamplingService
     )
 
     @classmethod
     def INPUT_TYPES(cls) -> dict[str, dict[str, tuple[Any, ...]]]:
-        """Declare ComfyUI inputs for selectable tiled diffusion sampling."""
+        """Declare KSampler inputs and bounded contextual controls."""
 
         return {
             "required": {
@@ -58,7 +62,7 @@ class KSamplerTiledDiffusion:
                 "steps": (
                     "INT",
                     {
-                        "default": 20,
+                        "default": 4,
                         "min": 1,
                         "max": 10000,
                         "tooltip": tooltips.SAMPLING_STEPS,
@@ -67,7 +71,7 @@ class KSamplerTiledDiffusion:
                 "cfg": (
                     "FLOAT",
                     {
-                        "default": 8.0,
+                        "default": 1.0,
                         "min": 0.0,
                         "max": 100.0,
                         "step": 0.1,
@@ -109,57 +113,72 @@ class KSamplerTiledDiffusion:
                         "tooltip": tooltips.TILED_DIFFUSION_MODE,
                     },
                 ),
-                "latent_tile_width": (
+                "latent_context_size": (
                     "INT",
                     {
-                        "default": 128,
+                        "default": 96,
                         "min": 16,
-                        "max": MAX_LATENT_TILE_SIZE,
+                        "max": MAX_LATENT_CONTEXT_SIZE,
                         "step": 16,
-                        "tooltip": tooltips.LATENT_TILE_WIDTH,
+                        "tooltip": tooltips.LATENT_CONTEXT_SIZE,
                     },
                 ),
-                "latent_tile_height": (
+                "latent_context_overlap": (
                     "INT",
                     {
-                        "default": 128,
-                        "min": 16,
-                        "max": MAX_LATENT_TILE_SIZE,
-                        "step": 16,
-                        "tooltip": tooltips.LATENT_TILE_HEIGHT,
-                    },
-                ),
-                "latent_tile_overlap": (
-                    "INT",
-                    {
-                        "default": 16,
+                        "default": 32,
                         "min": 0,
                         "max": 256,
                         "step": 4,
-                        "tooltip": tooltips.LATENT_TILE_OVERLAP,
+                        "tooltip": tooltips.LATENT_CONTEXT_OVERLAP,
                     },
                 ),
-                "latent_tile_batch_size": (
+                "latent_context_batch_size": (
                     "INT",
                     {
                         "default": 4,
                         "min": 1,
                         "max": 8,
                         "step": 1,
-                        "tooltip": tooltips.LATENT_TILE_BATCH_SIZE,
+                        "tooltip": tooltips.LATENT_CONTEXT_BATCH_SIZE,
+                    },
+                ),
+                "global_weight": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.0,
+                        "max": 2.0,
+                        "step": 0.05,
+                        "tooltip": tooltips.GLOBAL_CONTEXT_WEIGHT,
+                    },
+                ),
+                "global_steps": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 0,
+                        "max": 10000,
+                        "step": 1,
+                        "tooltip": tooltips.GLOBAL_CONTEXT_STEPS,
+                    },
+                ),
+                "global_decay": (
+                    "FLOAT",
+                    {
+                        "default": 0.5,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "step": 0.05,
+                        "tooltip": tooltips.GLOBAL_CONTEXT_DECAY,
                     },
                 ),
             },
             "optional": {
                 "segs": (
                     "SEGS",
-                    {
-                        "tooltip": (
-                            "Optional image regions that guide irregular tile "
-                            "boundaries while preserving the configured overlap."
-                        ),
-                    },
-                ),
+                    {"tooltip": tooltips.CONTEXTUAL_DIFFUSION_SEGS},
+                )
             },
         }
 
@@ -176,16 +195,17 @@ class KSamplerTiledDiffusion:
         latent_image: Latent,
         denoise: float = 1.0,
         diffusion_mode: str = "multidiffusion",
-        latent_tile_width: int = 128,
-        latent_tile_height: int = 128,
-        latent_tile_overlap: int = 16,
-        latent_tile_batch_size: int = 4,
+        latent_context_size: int = 96,
+        latent_context_overlap: int = 32,
+        latent_context_batch_size: int = 4,
+        global_weight: float = 1.0,
+        global_steps: int = 1,
+        global_decay: float = 0.5,
         segs: object | None = None,
     ) -> tuple[Latent]:
-        """Sample a latent with the selected tiled diffusion method."""
+        """Delegate contextual diffusion sampling to its application service."""
 
         output = self.service_class().sample(
-            diffusion_mode=diffusion_mode,
             model=model,
             seed=seed,
             steps=steps,
@@ -196,11 +216,13 @@ class KSamplerTiledDiffusion:
             negative=negative,
             latent_image=latent_image,
             denoise=denoise,
-            latent_tile_width=latent_tile_width,
-            latent_tile_height=latent_tile_height,
-            latent_tile_overlap=latent_tile_overlap,
-            latent_tile_batch_size=latent_tile_batch_size,
-            preview_context=None,
+            diffusion_mode=diffusion_mode,
+            latent_context_size=latent_context_size,
+            latent_context_overlap=latent_context_overlap,
+            latent_context_batch_size=latent_context_batch_size,
+            global_weight=global_weight,
+            global_steps=global_steps,
+            global_decay=global_decay,
             segs=segs,
         )
         return (output,)

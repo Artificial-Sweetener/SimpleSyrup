@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from importlib import import_module
 from typing import Any
 
 import comfy.samplers
@@ -16,6 +17,7 @@ import torch
 
 from simple_syrup.runtime import sampling_schedulers
 from simple_syrup.runtime.sampling_schedulers import (
+    SchedulerView,
     available_schedulers,
     calculate_sigmas,
 )
@@ -34,6 +36,32 @@ class FakeModel:
 
         assert name == "model_sampling"
         return self.model_sampling
+
+
+class FakeLatentFormat:
+    """Expose the spatial compression used to recover image dimensions."""
+
+    def __init__(self, spacial_downscale_ratio: int) -> None:
+        """Store one deterministic latent-to-image scale."""
+
+        self.spacial_downscale_ratio = spacial_downscale_ratio
+
+
+class FakeModelWithLatentFormat(FakeModel):
+    """Provide model-sampling and latent-format objects for Flux2 tests."""
+
+    def __init__(self, spacial_downscale_ratio: int) -> None:
+        """Create a fake model with the requested spatial compression."""
+
+        super().__init__()
+        self.latent_format = FakeLatentFormat(spacial_downscale_ratio)
+
+    def get_model_object(self, name: str) -> object:
+        """Return the requested fake model object."""
+
+        if name == "latent_format":
+            return self.latent_format
+        return super().get_model_object(name)
 
 
 class FakeDiscreteModelSampling:
@@ -199,13 +227,57 @@ def test_available_schedulers_includes_core_and_extras() -> None:
 
     for scheduler in comfy.samplers.KSampler.SCHEDULERS:
         assert scheduler in schedulers
-    assert schedulers[-5:] == (
+    assert schedulers[-6:] == (
         "AYS SD1",
         "AYS SDXL",
         "GITS",
         "beta57",
         "automatic_a1111",
+        "Flux2",
     )
+
+
+def test_flux2_schedule_matches_comfy_for_model_view_resolution() -> None:
+    """Flux2 delegates to ComfyUI using the effective model-view resolution."""
+
+    model = FakeModelWithLatentFormat(spacial_downscale_ratio=16)
+    sigmas = calculate_sigmas(
+        model,
+        "Flux2",
+        "euler",
+        4,
+        1.0,
+        view=SchedulerView(latent_width=64, latent_height=64),
+    )
+
+    flux_nodes = import_module("comfy_extras.nodes_flux")
+    expected = torch.as_tensor(flux_nodes.get_schedule(4, 4096), dtype=torch.float32)
+    assert torch.allclose(sigmas, expected, atol=1e-6, rtol=1e-6)
+
+
+def test_flux2_schedule_requires_a_model_view() -> None:
+    """Flux2 fails clearly when a caller omits its resolution context."""
+
+    with pytest.raises(ValueError, match="requires a model view"):
+        calculate_sigmas(FakeModel(), "Flux2", "euler", 4, 1.0)
+
+
+def test_flux2_schedule_uses_model_latent_downscale_ratio() -> None:
+    """Flux2 remains selectable for models with non-Flux latent formats."""
+
+    model = FakeModelWithLatentFormat(spacial_downscale_ratio=8)
+    sigmas = calculate_sigmas(
+        model,
+        "Flux2",
+        "euler",
+        4,
+        1.0,
+        view=SchedulerView(latent_width=128, latent_height=128),
+    )
+
+    flux_nodes = import_module("comfy_extras.nodes_flux")
+    expected = torch.as_tensor(flux_nodes.get_schedule(4, 4096), dtype=torch.float32)
+    assert torch.allclose(sigmas, expected, atol=1e-6, rtol=1e-6)
 
 
 def test_available_schedulers_deduplicates_beta57_when_globally_patched(
