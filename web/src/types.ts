@@ -35,6 +35,10 @@ export interface ComfyApp {
   registerExtension(extension: ComfyExtension): void;
 }
 
+export interface ComfyApi extends ComfyExecutionEvents {
+  apiURL?(path: string): string;
+}
+
 /** Native Comfy event target used to publish execution-shaped node output. */
 export type ComfyExecutionEvents = Pick<EventTarget, "dispatchEvent">;
 
@@ -53,4 +57,7 @@ export interface ComfyExtension {
   name: string;
   setup?(app: ComfyApp): void | Promise<void>;
   nodeCreated?(node: unknown): void | Promise<void>;
+  onNodeOutputsUpdated?(
+    outputs: Record<string, ComfyNodeExecutionOutput>
+  ): void | Promise<void>;
 }

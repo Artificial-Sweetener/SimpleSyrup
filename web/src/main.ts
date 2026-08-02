@@ -8,14 +8,15 @@ import { app } from "../../../scripts/app.js";
 import { registerSimpleSyrupSettings } from "./settings";
 import { registerExternalLLMRefreshHook } from "./refresh";
 import { registerMaskBatchUpload } from "./maskBatchUpload";
-import type { ComfyApp, ComfyExecutionEvents } from "./types";
+import { registerSimplePreviewSEGS } from "./segPreviewNode";
+import type { ComfyApi, ComfyApp } from "./types";
 
 interface ComfyRuntimeWindow extends Window {
-  comfyAPI: { api: { api: ComfyExecutionEvents } };
+  comfyAPI: { api: { api: ComfyApi } };
 }
 
 const comfyApp = app as unknown as ComfyApp;
-const comfyExecutionEvents = (window as unknown as ComfyRuntimeWindow).comfyAPI
+const comfyApi = (window as unknown as ComfyRuntimeWindow).comfyAPI
   .api.api;
 
 comfyApp.registerExtension({
@@ -26,4 +27,5 @@ comfyApp.registerExtension({
   }
 });
 
-registerMaskBatchUpload(comfyApp, comfyExecutionEvents);
+registerMaskBatchUpload(comfyApp, comfyApi);
+registerSimplePreviewSEGS(comfyApp, comfyApi);

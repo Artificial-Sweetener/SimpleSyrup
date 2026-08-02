@@ -9,6 +9,7 @@ import type {
   ComfySettingDefinition,
   SettingValue
 } from "../src/types";
+import { vi } from "vitest";
 
 export interface FakeComfySettingsApi {
   definitions: Array<ComfySettingDefinition<SettingValue>>;
@@ -63,4 +64,44 @@ export function createJsonResponse(
     headers: { "Content-Type": "application/json" },
     ...init
   });
+}
+
+/** Install a deterministic 2D canvas surface for DOM inspector tests. */
+export function installCanvasMock(maskValue = 255): void {
+  const context = {
+    globalAlpha: 1,
+    shadowColor: "",
+    shadowBlur: 0,
+    clearRect: vi.fn(),
+    drawImage: vi.fn(),
+    fillRect: vi.fn(),
+    getImageData: vi.fn((x: number, y: number, width: number, height: number) => {
+      void x;
+      void y;
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let offset = 0; offset < data.length; offset += 4) {
+        data[offset] = maskValue;
+        data[offset + 1] = maskValue;
+        data[offset + 2] = maskValue;
+        data[offset + 3] = 255;
+      }
+      return { data, width, height, colorSpace: "srgb" };
+    }),
+    putImageData: vi.fn(),
+    restore: vi.fn(),
+    save: vi.fn()
+  } as unknown as CanvasRenderingContext2D;
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context);
+  vi.stubGlobal(
+    "ImageData",
+    class {
+      readonly colorSpace = "srgb";
+
+      constructor(
+        readonly data: Uint8ClampedArray,
+        readonly width: number,
+        readonly height: number
+      ) {}
+    }
+  );
 }

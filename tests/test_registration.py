@@ -49,6 +49,7 @@ BASE_NODE_IDS = [
     "SimpleSyrup.ScaleFactor",
     "SimpleSyrup.Seed",
     "SimpleSyrup.SimpleLoadAnima",
+    "SimpleSyrup.SimplePreviewSEGS",
     "SimpleSyrup.SimpleLoadCheckpoint",
     "SimpleSyrup.SimpleVAEEncode",
     "SimpleSyrup.TagSEGSWithExternalLLM",
