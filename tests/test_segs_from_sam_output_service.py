@@ -72,7 +72,7 @@ def test_service_downscales_the_segmentation_guide_without_upscaling_source() ->
     segment = segs[1][0]
     assert segment.bbox == (64, 32, 128, 64)
     assert segment.crop_region == (64, 32, 128, 64)
-    assert cast(torch.Tensor, segment.cropped_mask).shape == (32, 64)
+    assert cast(torch.Tensor, segment.cropped_mask).shape == (1, 32, 64)
     assert segment.confidence == 0.8
     assert segment.label == "segment_001"
 
@@ -164,7 +164,7 @@ def test_service_expands_retained_mask_crops_to_source_resolution() -> None:
 
     segment = result.segs[1][0]
     assert segment.crop_region == (512, 256, 1024, 512)
-    assert cast(torch.Tensor, segment.cropped_mask).shape == (256, 512)
+    assert cast(torch.Tensor, segment.cropped_mask).shape == (1, 256, 512)
 
 
 @pytest.mark.parametrize("resolution", (0, 65, 127))

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as functional
 
-from .segs import NativeSegs, Segment, coerce_segs
+from .segs import NativeSegs, Segment, coerce_segment_mask, coerce_segs
 from .tiled_diffusion import (
     LatentTile,
     TiledDiffusionPlan,
@@ -215,16 +215,7 @@ def segment_weight_to_latent(
             "SEGS-guided tiled diffusion requires every SEG crop_region to fit "
             "inside the SEGS header dimensions."
         )
-    local_mask = (
-        torch.as_tensor(segment.cropped_mask, dtype=torch.float32).detach().cpu()
-    )
-    if local_mask.ndim == 3 and int(local_mask.shape[0]) == 1:
-        local_mask = local_mask.squeeze(0)
-    if local_mask.shape != (crop.height, crop.width):
-        raise ValueError(
-            "SEGS-guided tiled diffusion requires each cropped_mask to match its "
-            "crop_region."
-        )
+    local_mask = coerce_segment_mask(segment).detach().cpu()
     latent_top, latent_bottom = _latent_sample_range(
         crop.top,
         crop.bottom,

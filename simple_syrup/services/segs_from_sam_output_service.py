@@ -309,7 +309,7 @@ def _build_segment(
         ]
         .detach()
         .clone(),
-        cropped_mask=local_mask.detach().clone(),
+        cropped_mask=local_mask.unsqueeze(0).detach().clone(),
         confidence=max(0.0, min(1.0, float(confidence))),
         crop_region=crop_region,
         bbox=BoundingBox(

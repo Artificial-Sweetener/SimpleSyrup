@@ -9,22 +9,8 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as functional
 
-from ..domain.segs import NativeSegs, Segment, coerce_segs
-
-_REGION_COLORS: tuple[tuple[float, float, float], ...] = (
-    (0.95, 0.26, 0.21),
-    (0.13, 0.59, 0.95),
-    (0.30, 0.69, 0.31),
-    (1.00, 0.76, 0.03),
-    (0.61, 0.15, 0.69),
-    (1.00, 0.34, 0.13),
-    (0.00, 0.74, 0.83),
-    (0.91, 0.12, 0.39),
-    (0.55, 0.76, 0.29),
-    (0.40, 0.23, 0.72),
-    (1.00, 0.60, 0.00),
-    (0.00, 0.59, 0.53),
-)
+from ..domain.seg_visualization import build_seg_visualization_plan
+from ..domain.segs import NativeSegs
 
 
 class SAMRegionOverlayRenderer:
@@ -34,14 +20,14 @@ class SAMRegionOverlayRenderer:
         """Return a source-sized IMAGE with translucent masks and stronger edges."""
 
         _validate_image(image)
-        (segs_height, segs_width), segments = coerce_segs(segs)
+        plan = build_seg_visualization_plan(segs)
         image_height = int(image.shape[1])
         image_width = int(image.shape[2])
-        if (segs_height, segs_width) != (image_height, image_width):
+        if (plan.source_height, plan.source_width) != (image_height, image_width):
             raise ValueError(
                 "SAM region overlay requires SEGS dimensions to match the image."
             )
-        if not segments:
+        if not plan.regions:
             return image.detach().clone()
 
         color_channels = min(3, int(image.shape[-1]))
@@ -59,11 +45,11 @@ class SAMRegionOverlayRenderer:
         boundaries = torch.zeros_like(coverage)
         boundary_thickness = max(1, round(max(image_height, image_width) / 1024))
 
-        for index, segment in enumerate(segments):
-            mask = _validated_local_mask(segment, device=device)
-            region = segment.crop_region
+        for region_plan in plan.regions:
+            mask = (region_plan.mask >= 0.5).to(device=device, dtype=torch.float32)
+            region = region_plan.crop_region
             color = torch.tensor(
-                _REGION_COLORS[index % len(_REGION_COLORS)][:color_channels],
+                region_plan.color.normalized[:color_channels],
                 device=device,
                 dtype=torch.float32,
             )
@@ -102,27 +88,6 @@ def _validate_image(image: torch.Tensor) -> None:
         raise ValueError("SAM region overlay requires one BHWC image.")
     if int(image.shape[-1]) < 1:
         raise ValueError("SAM region overlay requires at least one image channel.")
-
-
-def _validated_local_mask(
-    segment: Segment,
-    *,
-    device: torch.device,
-) -> torch.Tensor:
-    """Return one binary crop-local mask after validating its SEG geometry."""
-
-    mask = segment.cropped_mask
-    if not isinstance(mask, torch.Tensor):
-        raise TypeError("SAM region overlay requires tensor SEG masks.")
-    working = mask.detach().to(device=device, dtype=torch.float32)
-    if working.ndim == 3 and int(working.shape[0]) == 1:
-        working = working.squeeze(0)
-    if working.ndim != 2:
-        raise ValueError("SAM region overlay requires HW or 1HW SEG masks.")
-    expected_shape = (segment.crop_region.height, segment.crop_region.width)
-    if tuple(working.shape) != expected_shape:
-        raise ValueError("SAM region overlay mask dimensions must match its SEG crop.")
-    return (working >= 0.5).float()
 
 
 def _mask_boundary(mask: torch.Tensor, *, thickness: int) -> torch.Tensor:

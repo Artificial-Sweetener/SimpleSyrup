@@ -10,6 +10,8 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import NamedTuple, Protocol, TypeAlias, cast
 
+import torch
+
 
 class CropRegion(NamedTuple):
     """Represent a crop region as left, top, right, bottom coordinates."""
@@ -150,6 +152,25 @@ def coerce_segment(value: object) -> Segment:
         label=str(segment_like.label),
         control_net_wrapper=segment_like.control_net_wrapper,
     )
+
+
+def coerce_segment_mask(segment: Segment) -> torch.Tensor:
+    """Return one validated crop-local HW mask without changing its values."""
+
+    mask = (
+        segment.cropped_mask.float()
+        if isinstance(segment.cropped_mask, torch.Tensor)
+        else torch.as_tensor(segment.cropped_mask, dtype=torch.float32)
+    )
+    if mask.ndim == 3 and int(mask.shape[0]) == 1:
+        mask = mask.squeeze(0)
+    if mask.ndim != 2:
+        raise ValueError("Segment cropped_mask must be HW or singleton BHW shaped.")
+    expected_shape = (segment.crop_region.height, segment.crop_region.width)
+    actual_shape = (int(mask.shape[0]), int(mask.shape[1]))
+    if actual_shape != expected_shape:
+        raise ValueError("Segment cropped_mask must match its crop region.")
+    return mask.clamp(0.0, 1.0)
 
 
 def to_impact_compatible_segs(segs: NativeSegs) -> ImpactSegs:

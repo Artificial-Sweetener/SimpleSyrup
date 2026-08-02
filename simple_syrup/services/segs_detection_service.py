@@ -10,7 +10,7 @@ from typing import Protocol
 
 import torch
 
-from ..domain.segs import NativeSegs, Segment
+from ..domain.segs import NativeSegs, Segment, coerce_segment_mask
 from ..masking.segs_mask_ops import (
     crop_image,
     crop_mask,
@@ -25,7 +25,7 @@ from ..runtime.ultralytics_detection import (
 )
 from ..runtime.ultralytics_loader import UltralyticsDetectorModel
 from ..shared.logging import get_logger
-from .segs_output_service import coerce_cropped_mask, combined_mask_from_segs
+from .segs_output_service import combined_mask_from_segs
 
 LOGGER = get_logger(__name__)
 
@@ -208,7 +208,7 @@ def _intersect_segs_with_combined_mask(
     combined_mask = combined_mask_from_segs(mask_segs)
     refined_segments: list[Segment] = []
     for segment in segments:
-        cropped_mask = coerce_cropped_mask(segment)
+        cropped_mask = coerce_segment_mask(segment)
         refinement_mask = crop_mask(combined_mask, segment.crop_region)
         refined_segments.append(
             Segment(
@@ -234,7 +234,7 @@ def _dilate_cropped_segs(segs: NativeSegs, dilation: int) -> NativeSegs:
     return header, tuple(
         Segment(
             cropped_image=segment.cropped_image,
-            cropped_mask=dilate_mask(coerce_cropped_mask(segment), dilation),
+            cropped_mask=dilate_mask(coerce_segment_mask(segment), dilation),
             confidence=segment.confidence,
             crop_region=segment.crop_region,
             bbox=segment.bbox,
