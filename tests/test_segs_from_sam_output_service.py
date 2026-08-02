@@ -59,13 +59,14 @@ def test_service_downscales_the_segmentation_guide_without_upscaling_source() ->
     runtime = _RecordingSegmenter((AutomaticSAMMask(guide_mask, 0.8),))
     service = SEGSFromSAMOutputService(runtime)
 
-    segs = service.build(
+    result = service.build(
         image=torch.zeros((1, 128, 256, 3)),
         sam_model=object(),
         segmentation_resolution=64,
         minimum_region_area=0,
     )
 
+    segs = result.segs
     assert runtime.image_shapes == [(32, 64)]
     assert segs[0] == (128, 256)
     segment = segs[1][0]
@@ -94,6 +95,7 @@ def test_service_reports_meaningful_automatic_segmentation_phases() -> None:
         "preparing_segmentation_image",
         "generating_automatic_masks",
         "building_segs",
+        "rendering_overlay",
     ]
 
 
@@ -105,21 +107,21 @@ def test_service_filters_region_area_after_restoring_source_dimensions() -> None
     runtime = _RecordingSegmenter((AutomaticSAMMask(guide_mask, 0.5, "thing"),))
     service = SEGSFromSAMOutputService(runtime)
 
-    retained = service.build(
+    retained_result = service.build(
         image=torch.zeros((1, 128, 256, 3)),
         sam_model=object(),
         segmentation_resolution=64,
         minimum_region_area=63,
     )
-    filtered = service.build(
+    filtered_result = service.build(
         image=torch.zeros((1, 128, 256, 3)),
         sam_model=object(),
         segmentation_resolution=64,
         minimum_region_area=65,
     )
 
-    assert retained[1][0].label == "thing"
-    assert filtered[1] == ()
+    assert retained_result.segs[1][0].label == "thing"
+    assert filtered_result.segs[1] == ()
 
 
 def test_service_suppresses_duplicate_masks_and_keeps_highest_confidence() -> None:
@@ -133,16 +135,16 @@ def test_service_suppresses_duplicate_masks_and_keeps_highest_confidence() -> No
         )
     )
 
-    segs = SEGSFromSAMOutputService(runtime).build(
+    result = SEGSFromSAMOutputService(runtime).build(
         image=torch.zeros((1, 16, 16, 3)),
         sam_model=object(),
         segmentation_resolution=64,
         minimum_region_area=0,
     )
 
-    assert len(segs[1]) == 1
-    assert segs[1][0].confidence == 0.9
-    assert segs[1][0].label == "second"
+    assert len(result.segs[1]) == 1
+    assert result.segs[1][0].confidence == 0.9
+    assert result.segs[1][0].label == "second"
 
 
 def test_service_expands_retained_mask_crops_to_source_resolution() -> None:
@@ -151,7 +153,7 @@ def test_service_expands_retained_mask_crops_to_source_resolution() -> None:
     guide_mask = torch.zeros((64, 128), dtype=torch.float32)
     guide_mask[16:32, 32:64] = 1.0
 
-    segs = SEGSFromSAMOutputService(
+    result = SEGSFromSAMOutputService(
         _RecordingSegmenter((AutomaticSAMMask(guide_mask, 1.0),))
     ).build(
         image=torch.zeros((1, 1024, 2048, 3)),
@@ -160,7 +162,7 @@ def test_service_expands_retained_mask_crops_to_source_resolution() -> None:
         minimum_region_area=0,
     )
 
-    segment = segs[1][0]
+    segment = result.segs[1][0]
     assert segment.crop_region == (512, 256, 1024, 512)
     assert cast(torch.Tensor, segment.cropped_mask).shape == (256, 512)
 
