@@ -60,14 +60,6 @@ class DetailSampler:
         """Sample a latent with SimpleSyrup's sampler and scheduler helpers."""
 
         sampler = sampling_samplers.resolve_sampler(sampler_name)
-        sigmas = sampling_schedulers.calculate_sigmas(
-            model=model,
-            scheduler_name=scheduler,
-            sampler_name=sampler_name,
-            steps=steps,
-            denoise=denoise,
-        ).to(model.load_device)
-
         latent_samples = cast(torch.Tensor, latent_image["samples"])
         comfy_sample = _comfy_sample()
         comfy_utils = _comfy_utils()
@@ -77,6 +69,14 @@ class DetailSampler:
             latent_samples,
             latent_image.get("downscale_ratio_spacial", None),
         )
+        sigmas = sampling_schedulers.calculate_sigmas(
+            model=model,
+            scheduler_name=scheduler,
+            sampler_name=sampler_name,
+            steps=steps,
+            denoise=denoise,
+            view=sampling_schedulers.SchedulerView.from_tensor(latent_samples),
+        ).to(model.load_device)
         batch_inds = (
             latent_image["batch_index"] if "batch_index" in latent_image else None
         )

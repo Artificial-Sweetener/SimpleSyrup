@@ -24,6 +24,7 @@ from ..nodes.encode_prompt_batch import EncodePromptBatch
 from ..nodes.grounded_sam_model_info import GroundedSAMModelInfo
 from ..nodes.grounding_dino_model_loader import GroundingDINOModelLoader
 from ..nodes.image_resize_to_target import ResizeImageToTarget
+from ..nodes.ksampler_contextual_diffusion import KSamplerContextualDiffusion
 from ..nodes.ksampler_extras import KSamplerExtras
 from ..nodes.ksampler_tiled_diffusion import KSamplerTiledDiffusion
 from ..nodes.latent_diagnostics import LatentDiagnostics
@@ -155,6 +156,14 @@ class KSamplerTiledDiffusionV3(LegacyNodeV3Adapter):
     LEGACY_NODE_CLASS = KSamplerTiledDiffusion
     NODE_ID = "SimpleSyrup.KSamplerTiledDiffusion"
     DISPLAY_NAME = "KSampler (Tiled Diffusion)"
+
+
+class KSamplerContextualDiffusionV3(LegacyNodeV3Adapter):
+    """Expose KSampler Contextual Diffusion through Comfy v3 only."""
+
+    LEGACY_NODE_CLASS = KSamplerContextualDiffusion
+    NODE_ID = "SimpleSyrup.KSamplerContextualDiffusion"
+    DISPLAY_NAME = "KSampler (Contextual Diffusion)"
 
 
 class LayerStyleSAMModelsAdapterV3(LegacyNodeV3Adapter):
@@ -505,6 +514,7 @@ __all__ = [
     "GroundedSAMModelInfoV3",
     "GroundingDINOModelLoaderV3",
     "KSamplerExtrasV3",
+    "KSamplerContextualDiffusionV3",
     "KSamplerTiledDiffusionV3",
     "LatentDiagnosticsV3",
     "LayerStyleSAMModelsAdapterV3",
