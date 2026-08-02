@@ -81,14 +81,6 @@ def sample_regional_multidiffusion(
         reject_unsupported_conditioning(region.positive, sampler_label=SAMPLER_LABEL)
 
     sampler = sampling_samplers.resolve_sampler(sampler_name)
-    sigmas = sampling_schedulers.calculate_sigmas(
-        model=model,
-        scheduler_name=scheduler,
-        sampler_name=sampler_name,
-        steps=steps,
-        denoise=denoise,
-    ).to(model.load_device)
-
     latent_samples = validate_latent_samples(
         latent_image,
         sampler_label=SAMPLER_LABEL,
@@ -102,6 +94,14 @@ def sample_regional_multidiffusion(
         latent_image.get("downscale_ratio_spacial", None),
     )
     validate_tensor_shape(latent_samples, sampler_label=SAMPLER_LABEL)
+    sigmas = sampling_schedulers.calculate_sigmas(
+        model=model,
+        scheduler_name=scheduler,
+        sampler_name=sampler_name,
+        steps=steps,
+        denoise=denoise,
+        view=sampling_schedulers.SchedulerView.from_tensor(latent_samples),
+    ).to(model.load_device)
     latent_height = int(latent_samples.shape[-2])
     latent_width = int(latent_samples.shape[-1])
     sampling_model, summary = clone_model_with_regional_multidiffusion(

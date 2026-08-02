@@ -111,6 +111,7 @@ def test_scheduler_options_include_extras_and_exclude_svd() -> None:
     assert "GITS" in scheduler_options
     assert "beta57" in scheduler_options
     assert "automatic_a1111" in scheduler_options
+    assert "Flux2" in scheduler_options
     assert "AYS SVD" not in scheduler_options
 
 
@@ -152,6 +153,8 @@ def test_sample_delegates_to_runtime_helpers(
         sampler_name: str,
         steps: int,
         denoise: float,
+        *,
+        view: sampling_schedulers.SchedulerView,
     ) -> torch.Tensor:
         """Record scheduler calculation."""
 
@@ -161,6 +164,7 @@ def test_sample_delegates_to_runtime_helpers(
             "sampler_name": sampler_name,
             "steps": steps,
             "denoise": denoise,
+            "view": view,
         }
         return fixed_sigmas
 
@@ -286,6 +290,10 @@ def test_sample_delegates_to_runtime_helpers(
         "sampler_name": "lcm",
         "steps": 2,
         "denoise": 0.8,
+        "view": sampling_schedulers.SchedulerView(
+            latent_width=8,
+            latent_height=8,
+        ),
     }
     assert calls["prepare_noise"]["batch_inds"] == [0]
     assert calls["sample_custom"]["noise_mask"] is latent_image["noise_mask"]

@@ -39,13 +39,6 @@ class KSamplerSamplingService:
         """Sample a latent with configured SimpleSyrup sampler extensions."""
 
         sampler = sampling_samplers.resolve_sampler(sampler_name)
-        sigmas = sampling_schedulers.calculate_sigmas(
-            model=model,
-            scheduler_name=scheduler,
-            sampler_name=sampler_name,
-            steps=steps,
-            denoise=denoise,
-        ).to(model.load_device)
         latent_samples = latent_image["samples"]
         if not isinstance(latent_samples, torch.Tensor):
             raise TypeError("KSampler latent samples must be a torch.Tensor.")
@@ -61,6 +54,14 @@ class KSamplerSamplingService:
             raise TypeError(
                 "KSampler normalized latent samples must be a torch.Tensor."
             )
+        sigmas = sampling_schedulers.calculate_sigmas(
+            model=model,
+            scheduler_name=scheduler,
+            sampler_name=sampler_name,
+            steps=steps,
+            denoise=denoise,
+            view=sampling_schedulers.SchedulerView.from_tensor(latent_samples),
+        ).to(model.load_device)
         noise = comfy_sample.prepare_noise(
             latent_samples,
             seed,

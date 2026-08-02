@@ -678,6 +678,9 @@ def test_sample_delegates_to_comfy_sampling_with_cloned_wrapped_model(
     assert calls["sample_custom"]["sampler"] is sampler
     assert calls["sample_custom"]["noise"] is fixed_noise
     assert calls["sample_custom"]["disable_pbar"] is True
+    assert calls["calculate_sigmas"]["view"] == (
+        sampling_schedulers.SchedulerView(latent_width=4, latent_height=4)
+    )
 
 
 def test_sample_accepts_singleton_depth_5d_latent(

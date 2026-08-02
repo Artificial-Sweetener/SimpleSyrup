@@ -15,12 +15,20 @@ from dataclasses import dataclass
 from typing import Any, TypeAlias
 
 import torch
+import torch.nn.functional as functional
 
-from ..domain.tiled_diffusion import LatentTile, TiledDiffusionPlan
+from ..domain.contextual_diffusion import SpatialContext
+from ..domain.tiled_diffusion import (
+    LatentTile,
+    TiledDiffusionPlan,
+    gaussian_tile_weights,
+    validate_tiled_diffusion_mode,
+)
 
 Latent: TypeAlias = dict[str, Any]
 ApplyModel: TypeAlias = Callable[..., torch.Tensor]
 ModelFunctionWrapper: TypeAlias = Callable[[ApplyModel, dict[str, Any]], torch.Tensor]
+TileEvaluator: TypeAlias = Callable[[dict[str, Any]], torch.Tensor]
 
 UNSUPPORTED_CONDITIONING_KEYS = frozenset({"area", "control", "gligen"})
 
@@ -89,6 +97,110 @@ class SemanticTileWeightCache:
         if index is None:
             raise ValueError("Semantic tile weight cache received an unknown tile.")
         return weights.model[index], weights.accumulation[index]
+
+
+class TileBlendWeightCache:
+    """Resolve authoritative overlap weights for either tiled diffusion policy."""
+
+    def __init__(self, plan: TiledDiffusionPlan, diffusion_mode: str) -> None:
+        """Create weight caches for one immutable tiled prediction plan."""
+
+        validate_tiled_diffusion_mode(diffusion_mode)
+        self._diffusion_mode = diffusion_mode
+        self._semantic_weights = SemanticTileWeightCache(plan.tiles)
+        self._gaussian_weights: dict[
+            tuple[torch.device, torch.dtype, int, int, int], torch.Tensor
+        ] = {}
+
+    def for_tile(
+        self,
+        output: torch.Tensor,
+        tile: LatentTile,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return model and accumulation weights for one predicted tile."""
+
+        semantic_weights = self._semantic_weights.for_output(output)
+        model_weight, accumulation_weight = self._semantic_weights.for_tile(
+            semantic_weights,
+            tile,
+        )
+        if self._diffusion_mode == "multidiffusion":
+            return model_weight, accumulation_weight
+
+        gaussian_weight = self._gaussian_for(output, tile)
+        return (
+            model_weight * gaussian_weight,
+            accumulation_weight * gaussian_weight.to(dtype=torch.float32),
+        )
+
+    def _gaussian_for(
+        self,
+        output: torch.Tensor,
+        tile: LatentTile,
+    ) -> torch.Tensor:
+        """Return cached Mixture of Diffusers weights for one tile shape."""
+
+        cache_key = (
+            output.device,
+            output.dtype,
+            output.ndim,
+            tile.width,
+            tile.height,
+        )
+        cached = self._gaussian_weights.get(cache_key)
+        if cached is not None:
+            return cached
+        weights = gaussian_tile_weights(
+            tile.width,
+            tile.height,
+            device=output.device,
+            dtype=output.dtype,
+        ).reshape((1,) * (output.ndim - 2) + (tile.height, tile.width))
+        self._gaussian_weights[cache_key] = weights
+        return weights
+
+
+class TilePredictionAccumulator:
+    """Evaluate tiled model views and combine them with one selected policy."""
+
+    def __init__(self, plan: TiledDiffusionPlan, *, diffusion_mode: str) -> None:
+        """Bind an immutable plan to its overlap weighting policy."""
+
+        self._plan = plan
+        self._blend_weights = TileBlendWeightCache(plan, diffusion_mode)
+
+    def predict(
+        self,
+        *,
+        args: dict[str, Any],
+        x: torch.Tensor,
+        evaluate: TileEvaluator,
+    ) -> torch.Tensor:
+        """Return one canvas prediction accumulated from bounded model views."""
+
+        output_buffer = torch.zeros_like(x)
+        weight_buffer = new_spatial_weight_buffer(x, self._plan)
+        input_batch_size = int(x.shape[0])
+        for batch in self._plan.batches:
+            tiled_args = make_tiled_model_args(
+                args=args,
+                tiles=batch,
+                input_batch_size=input_batch_size,
+                latent_height=self._plan.latent_height,
+                latent_width=self._plan.latent_width,
+            )
+            tile_output = evaluate(tiled_args)
+            for index, tile in enumerate(batch):
+                tile_slice = spatial_tile_slicer(tile, x.ndim)
+                start = index * input_batch_size
+                end = start + input_batch_size
+                model_weight, accumulation_weight = self._blend_weights.for_tile(
+                    tile_output,
+                    tile,
+                )
+                output_buffer[tile_slice] += tile_output[start:end] * model_weight
+                weight_buffer[tile_slice] += accumulation_weight
+        return output_buffer / weight_buffer.to(dtype=output_buffer.dtype)
 
 
 def validate_sampling_controls(
@@ -268,6 +380,191 @@ def make_tiled_model_args(
             len(tiles),
         )
     return tiled_args
+
+
+def make_spatial_context_model_args(
+    *,
+    args: dict[str, Any],
+    contexts: Sequence[SpatialContext],
+    input_batch_size: int,
+    latent_height: int,
+    latent_width: int,
+) -> dict[str, Any]:
+    """Create apply-model arguments for equally shaped spatial contexts."""
+
+    if not contexts:
+        raise ValueError("Spatial model arguments require at least one context.")
+    target_shape = (contexts[0].context_height, contexts[0].context_width)
+    if any(
+        (context.context_height, context.context_width) != target_shape
+        for context in contexts
+    ):
+        raise ValueError("Batched spatial contexts must use one model context shape.")
+    x = args["input"]
+    timestep = args["timestep"]
+    conditioning = args.get("c", {})
+    if not isinstance(x, torch.Tensor):
+        raise ValueError("contextual sampler model input must be a tensor.")
+    if not isinstance(timestep, torch.Tensor):
+        raise ValueError("contextual sampler timestep must be a tensor.")
+    if not isinstance(conditioning, dict):
+        raise ValueError("contextual sampler conditioning must be a dict.")
+
+    context_x = torch.cat(
+        [
+            resize_spatial_tensor(
+                x[spatial_context_slicer(context, x.ndim)],
+                height=context.context_height,
+                width=context.context_width,
+                mode="nearest-exact",
+            )
+            for context in contexts
+        ],
+        dim=0,
+    )
+    context_timestep = torch.cat([timestep] * len(contexts), dim=0)
+    context_conditioning = spatial_context_conditioning(
+        conditioning=conditioning,
+        contexts=contexts,
+        input_batch_size=input_batch_size,
+        latent_height=latent_height,
+        latent_width=latent_width,
+        context_timestep=context_timestep,
+    )
+    context_args = args.copy()
+    context_args["input"] = context_x
+    context_args["timestep"] = context_timestep
+    context_args["c"] = context_conditioning
+    if "cond_or_uncond" in args:
+        context_args["cond_or_uncond"] = repeat_sequence(
+            args["cond_or_uncond"],
+            len(contexts),
+        )
+    return context_args
+
+
+def spatial_context_conditioning(
+    *,
+    conditioning: dict[str, Any],
+    contexts: Sequence[SpatialContext],
+    input_batch_size: int,
+    latent_height: int,
+    latent_width: int,
+    context_timestep: torch.Tensor,
+) -> dict[str, Any]:
+    """Resize spatial conditioning alongside arbitrary latent contexts."""
+
+    transformed: dict[str, Any] = {}
+    for key, value in conditioning.items():
+        if key == "transformer_options" and isinstance(value, dict):
+            transformed[key] = tile_transformer_options(
+                value,
+                tile_count=len(contexts),
+                tiled_timestep=context_timestep,
+            )
+            continue
+        transformed[key] = spatial_context_value(
+            value,
+            contexts=contexts,
+            input_batch_size=input_batch_size,
+            latent_height=latent_height,
+            latent_width=latent_width,
+        )
+    return transformed
+
+
+def spatial_context_value(
+    value: Any,
+    *,
+    contexts: Sequence[SpatialContext],
+    input_batch_size: int,
+    latent_height: int,
+    latent_width: int,
+) -> Any:
+    """Transform tensors nested inside one spatial-context conditioning value."""
+
+    if isinstance(value, torch.Tensor):
+        if value.ndim >= 4 and value.shape[-2:] == (
+            latent_height,
+            latent_width,
+        ):
+            return torch.cat(
+                [
+                    resize_spatial_tensor(
+                        value[spatial_context_slicer(context, value.ndim)],
+                        height=context.context_height,
+                        width=context.context_width,
+                        mode="nearest-exact",
+                    )
+                    for context in contexts
+                ],
+                dim=0,
+            )
+        if value.ndim >= 1 and value.shape[0] == input_batch_size:
+            return torch.cat([value] * len(contexts), dim=0)
+        if value.ndim >= 1 and value.shape[0] == 1:
+            repeats = [input_batch_size * len(contexts)] + [1] * (value.ndim - 1)
+            return value.repeat(repeats)
+        return value
+    if isinstance(value, list):
+        return [
+            spatial_context_value(
+                item,
+                contexts=contexts,
+                input_batch_size=input_batch_size,
+                latent_height=latent_height,
+                latent_width=latent_width,
+            )
+            for item in value
+        ]
+    if isinstance(value, tuple):
+        return tuple(
+            spatial_context_value(
+                item,
+                contexts=contexts,
+                input_batch_size=input_batch_size,
+                latent_height=latent_height,
+                latent_width=latent_width,
+            )
+            for item in value
+        )
+    return value
+
+
+def spatial_context_slicer(
+    context: SpatialContext,
+    tensor_ndim: int,
+) -> tuple[slice, ...]:
+    """Return a slicer for one arbitrary spatial context rectangle."""
+
+    return (
+        (slice(None),) * (tensor_ndim - 2)
+        + (slice(context.y, context.y + context.height),)
+        + (slice(context.x, context.x + context.width),)
+    )
+
+
+def resize_spatial_tensor(
+    tensor: torch.Tensor,
+    *,
+    height: int,
+    width: int,
+    mode: str,
+) -> torch.Tensor:
+    """Resize only the final two axes of a 4D or singleton-depth 5D tensor."""
+
+    if tensor.shape[-2:] == (height, width):
+        return tensor
+    leading_shape = tensor.shape[:-2]
+    flattened = tensor.reshape(-1, 1, tensor.shape[-2], tensor.shape[-1])
+    align_corners = False if mode in {"bilinear", "bicubic"} else None
+    resized = functional.interpolate(
+        flattened,
+        size=(height, width),
+        mode=mode,
+        align_corners=align_corners,
+    )
+    return resized.reshape(*leading_shape, height, width)
 
 
 def tile_conditioning(
