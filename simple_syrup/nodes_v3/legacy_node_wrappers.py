@@ -40,6 +40,7 @@ from ..nodes.sam_model_loader import SAMModelLoader
 from ..nodes.seed import Seed
 from ..nodes.segs_from_sam_output import SEGSFromSAMOutput
 from ..nodes.simple_load_anima import SimpleLoadAnima
+from ..nodes.simple_preview_segs import SimplePreviewSEGS
 from ..nodes.vitmatte_model_loader import ViTMatteModelLoader
 
 if TYPE_CHECKING:
@@ -270,6 +271,14 @@ class SEGSFromSAMOutputV3(LegacyNodeV3Adapter):
     LEGACY_NODE_CLASS = SEGSFromSAMOutput
     NODE_ID = "SimpleSyrup.SEGSFromSAMOutput"
     DISPLAY_NAME = "SEGS from SAM Output"
+
+
+class SimplePreviewSEGSV3(LegacyNodeV3Adapter):
+    """Expose the interactive Simple Preview SEGS node through Comfy v3 only."""
+
+    LEGACY_NODE_CLASS = SimplePreviewSEGS
+    NODE_ID = "SimpleSyrup.SimplePreviewSEGS"
+    DISPLAY_NAME = "Simple Preview SEGS"
 
 
 class SeedV3(LegacyNodeV3Adapter):
@@ -527,6 +536,7 @@ __all__ = [
     "SEGSFromSAMOutputV3",
     "SeedV3",
     "SimpleLoadAnimaV3",
+    "SimplePreviewSEGSV3",
     "SimpleVAEEncodeV3",
     "UpscaleLatentFromImageV3",
     "ViTMatteModelLoaderV3",
