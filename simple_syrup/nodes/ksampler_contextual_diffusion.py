@@ -22,8 +22,12 @@ MAX_LATENT_CONTEXT_SIZE = 512
 class KSamplerContextualDiffusion:
     """Edit large latents through coordinated global and detailed contexts."""
 
-    RETURN_TYPES = ("LATENT",)
-    OUTPUT_TOOLTIPS = (tooltips.DENOISED_LATENT_OUTPUT,)
+    RETURN_TYPES = ("LATENT", "SEGS")
+    RETURN_NAMES = ("latent", "contexts_segs")
+    OUTPUT_TOOLTIPS = (
+        tooltips.DENOISED_LATENT_OUTPUT,
+        tooltips.CONTEXTUAL_DIFFUSION_CONTEXTS_OUTPUT,
+    )
     FUNCTION = "sample"
     CATEGORY = "SimpleSyrup/Sampling"
     DESCRIPTION = (
@@ -202,10 +206,10 @@ class KSamplerContextualDiffusion:
         global_steps: int = 1,
         global_decay: float = 0.5,
         segs: object | None = None,
-    ) -> tuple[Latent]:
+    ) -> tuple[Latent, object]:
         """Delegate contextual diffusion sampling to its application service."""
 
-        output = self.service_class().sample(
+        result = self.service_class().sample(
             model=model,
             seed=seed,
             steps=steps,
@@ -225,4 +229,4 @@ class KSamplerContextualDiffusion:
             global_decay=global_decay,
             segs=segs,
         )
-        return (output,)
+        return result.latent, result.contexts
