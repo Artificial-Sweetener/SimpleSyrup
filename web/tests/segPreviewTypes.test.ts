@@ -4,10 +4,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import {
-  parseSegPreviewDocument,
-  previewAssetUrl
-} from "../src/segPreviewTypes";
+import { comfyImageUrl } from "../src/comfyImageUrl";
+import { parseSegPreviewDocument } from "../src/segPreviewTypes";
 
 describe("SEG preview transport", () => {
   it("validates execution payloads and uses the latest mapped document", () => {
@@ -25,7 +23,7 @@ describe("SEG preview transport", () => {
   });
 
   it("builds an encoded view URL through Comfy's base-path resolver", () => {
-    const url = previewAssetUrl(
+    const url = comfyImageUrl(
       { filename: "one two.png", subfolder: "a/b", type: "temp" },
       (path) => `/comfy${path}`
     );

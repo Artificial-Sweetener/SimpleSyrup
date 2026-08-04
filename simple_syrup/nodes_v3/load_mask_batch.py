@@ -25,7 +25,6 @@ else:
 
 _comfy_api: Any = None if TYPE_CHECKING else import_module("comfy_api.latest")
 _comfy_io: Any = None if TYPE_CHECKING else _comfy_api.io
-_comfy_ui: Any = None if TYPE_CHECKING else _comfy_api.UI
 
 
 class LoadMaskBatchV3(_ComfyNodeBase):
@@ -47,7 +46,6 @@ class LoadMaskBatchV3(_ComfyNodeBase):
                 "single mask batch."
             ),
             search_aliases=["load masks", "mask batch", "regional masks"],
-            has_intermediate_output=True,
             inputs=[
                 _comfy_io.MultiCombo.Input(
                     "image",
@@ -85,13 +83,10 @@ class LoadMaskBatchV3(_ComfyNodeBase):
 
     @classmethod
     def execute(cls, image: str | list[str], channel: str) -> Any:
-        """Load the selected files and return a native mask-batch preview."""
+        """Load the selected files as one same-sized mask batch."""
 
         mask_batch = cls.service_class().load(image, channel)
-        return _comfy_io.NodeOutput(
-            mask_batch,
-            ui=_comfy_ui.PreviewMask(mask_batch, cls=cls),
-        )
+        return _comfy_io.NodeOutput(mask_batch)
 
     @classmethod
     def validate_inputs(cls, image: str | list[str], channel: str) -> bool | str:

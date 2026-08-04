@@ -13,7 +13,6 @@ import torch
 
 from simple_syrup.domain.conditioning_batch import ConditioningBatch
 from simple_syrup.nodes.encode_prompt_batch import EncodePromptBatch
-from simple_syrup.nodes_v3 import load_mask_batch as load_node_module
 from simple_syrup.nodes_v3.ksampler_prompt_by_region import (
     KSamplerPromptByRegionV3,
 )
@@ -85,9 +84,6 @@ def test_sep_prompts_and_disk_masks_flow_into_regional_sampler(
 
     monkeypatch.setattr(EncodePromptBatch, "encoder_class", WorkflowEncoder)
     monkeypatch.setattr(LoadMaskBatchV3, "service_class", WorkflowMaskLoader)
-    monkeypatch.setattr(
-        load_node_module._comfy_ui, "PreviewMask", lambda mask, cls: None
-    )
     monkeypatch.setattr(
         KSamplerPromptByRegionV3,
         "sampling_service_class",

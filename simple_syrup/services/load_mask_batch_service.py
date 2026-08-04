@@ -6,12 +6,12 @@
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Sequence
 from typing import ClassVar
 
 import torch
 
+from ..domain.ordered_files import OrderedFileSelection
 from ..runtime.mask_file_loader import MaskFileLoader
 from ..shared.logging import get_logger
 
@@ -26,7 +26,7 @@ class LoadMaskBatchService:
     def validate(self, files: Sequence[str], channel: str) -> None:
         """Validate every selected file through the native Comfy mask loader."""
 
-        ordered_files = self._validate_files(files)
+        ordered_files = self._selection(files).paths
         loader = self.loader_class()
         for path in ordered_files:
             loader.validate(path, channel)
@@ -59,39 +59,29 @@ class LoadMaskBatchService:
     def load_each(self, files: Sequence[str], channel: str) -> tuple[torch.Tensor, ...]:
         """Load ordered masks without requiring batch-compatible dimensions."""
 
-        ordered_files = self._validate_files(files)
+        ordered_files = self._selection(files).paths
         loader = self.loader_class()
         return tuple(loader.load(path, channel) for path in ordered_files)
 
     def fingerprint(self, files: Sequence[str], channel: str) -> str:
         """Return an order-sensitive fingerprint for files and channel."""
 
-        ordered_files = self._validate_files(files)
         loader = self.loader_class()
-        digest = hashlib.sha256()
-        digest.update(channel.encode("utf-8"))
-        for path in ordered_files:
-            encoded_path = path.encode("utf-8")
-            digest.update(len(encoded_path).to_bytes(8, "big"))
-            digest.update(encoded_path)
-            digest.update(loader.fingerprint(path).encode("ascii"))
-        return digest.hexdigest()
+        return self._selection(files).fingerprint(
+            loader.fingerprint,
+            context=(channel,),
+        )
 
     def available_files(self) -> tuple[str, ...]:
         """Return Comfy input images eligible for selection."""
 
         return self.loader_class().available_files()
 
-    def _validate_files(self, files: Sequence[str]) -> tuple[str, ...]:
-        """Return a non-empty ordered immutable file sequence."""
+    def _selection(self, files: Sequence[str]) -> OrderedFileSelection:
+        """Return validated positional mask-file state."""
 
-        ordered: tuple[str, ...]
-        if isinstance(files, str):
-            ordered = (files,)
-        else:
-            ordered = tuple(files)
-        if not ordered:
-            raise ValueError("Load Mask Batch requires at least one mask file.")
-        if any(not isinstance(path, str) or not path for path in ordered):
-            raise TypeError("Load Mask Batch mask files must be non-empty strings.")
-        return ordered
+        return OrderedFileSelection.require(
+            files,
+            node_name="Load Mask Batch",
+            item_name="mask",
+        )

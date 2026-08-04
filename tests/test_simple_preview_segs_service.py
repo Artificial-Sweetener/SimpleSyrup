@@ -29,6 +29,11 @@ def test_service_builds_bounded_image_and_non_overlapping_mask_atlas() -> None:
     assert document.image.shape == (1, 512, 1024, 3)
     assert document.atlas.ndim == 4
     assert int(document.atlas.shape[-1]) == 3
+    assert [tuple(image.shape) for image in document.region_images] == [
+        (1, 400, 600, 4),
+        (1, 600, 600, 4),
+    ]
+    assert torch.all(document.region_images[0][..., 3] == 1.0)
     assert [region.label for region in document.regions] == ["subject", "clothing"]
     first_atlas, second_atlas = (region.atlas for region in document.regions)
     assert (
@@ -49,7 +54,35 @@ def test_service_returns_minimal_assets_for_empty_segs() -> None:
 
     assert document.image.shape == (1, 8, 12, 3)
     assert document.atlas.shape == (1, 1, 1, 3)
+    assert document.region_images == ()
     assert document.regions == ()
+
+
+def test_service_preserves_region_texture_with_transparent_non_mask_area() -> None:
+    """Native inspection assets expose only the selected SEG through alpha."""
+
+    mask = torch.zeros((4, 4))
+    mask[1:3, 1:3] = 1.0
+    region = CropRegion(0, 0, 4, 4)
+    segment = Segment(
+        cropped_image=None,
+        cropped_mask=mask,
+        confidence=0.9,
+        crop_region=region,
+        bbox=BoundingBox(*region),
+        label="subject",
+    )
+
+    document = SimplePreviewSEGSService().build(
+        image=torch.full((1, 4, 4, 3), 0.75),
+        segs=((4, 4), (segment,)),
+    )
+
+    inspection = document.region_images[0]
+    assert inspection.shape == (1, 4, 4, 4)
+    assert torch.all(inspection[..., :3] == 0.75)
+    assert inspection[0, 0, 0, 3] == 0.0
+    assert inspection[0, 1, 1, 3] == 1.0
 
 
 def test_service_rejects_image_and_segs_size_mismatch() -> None:

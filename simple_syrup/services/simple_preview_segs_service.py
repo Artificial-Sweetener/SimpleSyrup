@@ -59,6 +59,7 @@ class SegPreviewDocument:
     preview_height: int
     image: torch.Tensor
     atlas: torch.Tensor
+    region_images: tuple[torch.Tensor, ...]
     regions: tuple[SegPreviewRegion, ...]
 
 
@@ -88,6 +89,7 @@ class SimplePreviewSEGSService:
             height=preview_height,
         )
         atlas, regions = _build_atlas(plan)
+        region_images = _build_region_images(source_image, plan)
         return SegPreviewDocument(
             source_width=image_width,
             source_height=image_height,
@@ -95,8 +97,31 @@ class SimplePreviewSEGSService:
             preview_height=preview_height,
             image=preview_image,
             atlas=atlas,
+            region_images=region_images,
             regions=regions,
         )
+
+
+def _build_region_images(
+    source_image: torch.Tensor,
+    plan: SegVisualizationPlan,
+) -> tuple[torch.Tensor, ...]:
+    """Render bounded RGBA region crops for Comfy's native image gallery."""
+
+    images: list[torch.Tensor] = []
+    for region in plan.regions:
+        crop = region.crop_region
+        texture = source_image[:, crop.top : crop.bottom, crop.left : crop.right, :3]
+        width, height = _fit_dimensions(crop.width, crop.height, _MAX_PREVIEW_EDGE)
+        texture = _resize_image(texture, width=width, height=height)
+        alpha = functional.interpolate(
+            region.mask.unsqueeze(0).unsqueeze(0).float(),
+            size=(height, width),
+            mode="bilinear",
+            align_corners=False,
+        ).movedim(1, -1)
+        images.append(torch.cat((texture, alpha.clamp(0.0, 1.0)), dim=-1))
+    return tuple(images)
 
 
 def _build_atlas(
