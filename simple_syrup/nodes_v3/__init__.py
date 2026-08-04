@@ -47,6 +47,7 @@ def get_nodes() -> list[type[object]]:
         UpscaleLatentFromImageV3,
         ViTMatteModelLoaderV3,
     )
+    from .load_image_list import LoadImageListV3
     from .load_mask_batch import LoadMaskBatchV3
     from .mask_to_segs import MaskToSEGSV3
     from .scale_factor import ScaleFactorV3
@@ -80,6 +81,7 @@ def get_nodes() -> list[type[object]]:
         LatentDiagnosticsV3,
         LayerStyleSAMModelsAdapterV3,
         LoadUltralyticsModelV3,
+        LoadImageListV3,
         LoadMaskBatchV3,
         MaskToSEGSV3,
         PromptEncodeStyleAndNormalizationV3,

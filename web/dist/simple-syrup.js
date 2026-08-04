@@ -548,122 +548,684 @@ function registerExternalLLMRefreshHook(app2, api = { refreshExternalLLMModels }
   };
 }
 
-// web/src/maskBatchPreview.ts
-var EMPTY_PREVIEW = {
-  images: [],
-  animated: []
-};
-var PREVIEW_PROMPT_ID = "simple-syrup-mask-batch-preview";
-var MaskBatchPreviewController = class {
-  constructor(executionEvents, node, loadPreview = getMaskBatchPreview, logger = console, clearNativePreview2 = () => void 0) {
-    this.executionEvents = executionEvents;
+// web/src/nativeNodePreview.ts
+var NativeNodePreview = class {
+  constructor(app2, api, node) {
+    this.app = app2;
+    this.api = api;
     this.node = node;
-    this.loadPreview = loadPreview;
-    this.logger = logger;
-    this.clearNativePreview = clearNativePreview2;
   }
-  executionEvents;
+  app;
+  api;
   node;
-  loadPreview;
-  logger;
-  clearNativePreview;
-  requestVersion = 0;
-  /** Replace the visible preview with the exact selected-channel mask output. */
-  refresh(files, channel) {
-    if (this.node.id === void 0 || channel === void 0) return;
-    const requestVersion = ++this.requestVersion;
-    this.clearNativePreview();
-    this.publish(EMPTY_PREVIEW);
-    if (files.length === 0) return;
-    void this.loadPreview([...files], channel).then((output) => {
-      if (requestVersion === this.requestVersion) this.publish(output);
-    }).catch((error) => {
-      if (requestVersion !== this.requestVersion) return;
-      this.logger.warn("Could not refresh Load Mask Batch preview.", error);
-    });
-  }
-  /** Publish an execution-shaped result through Comfy's native preview. */
+  publishListeners = /* @__PURE__ */ new Set();
+  /** Publish media as an execution-shaped output for both node renderers. */
   publish(output) {
-    if (this.node.id === void 0) return;
-    this.executionEvents.dispatchEvent(
+    const nodeId = this.nodeId();
+    if (!nodeId) return;
+    this.app.nodeOutputs ??= {};
+    this.app.nodeOutputs[nodeId] = output;
+    this.api.dispatchEvent(
       new CustomEvent("executed", {
-        detail: {
-          node: String(this.node.id),
-          output,
-          merge: false,
-          prompt_id: PREVIEW_PROMPT_ID
-        }
+        detail: { node: nodeId, display_node: nodeId, output }
       })
     );
-    this.node.graph?.setDirtyCanvas?.(true, true);
+    for (const listener of this.publishListeners) listener();
+  }
+  /** Notify renderer adapters after native output changes. */
+  subscribe(listener) {
+    this.publishListeners.add(listener);
+    return () => this.publishListeners.delete(listener);
+  }
+  /** Remove loader-owned media from Comfy's native preview surface. */
+  clear() {
+    this.publish({ images: [], animated: [] });
+  }
+  nodeId() {
+    if (this.node.id === void 0) return void 0;
+    return String(this.node.id);
   }
 };
 
-// web/src/maskBatchUpload.ts
-var LOAD_MASK_BATCH_NODE_ID = "SimpleSyrup.LoadMaskBatch";
-var REPLACE_MASKS_LABEL = "Replace masks...";
-var ADD_MASKS_LABEL = "Add masks...";
-var REMOVE_MASK_LABEL = "Remove selected mask";
-var EMPTY_MASK_SELECTION_LABEL = "No masks loaded";
-function registerMaskBatchUpload(app2, executionEvents, loadPreview, logger = console) {
-  const extension = {
-    name: "SimpleSyrup.LoadMaskBatchUpload",
-    nodeCreated(node) {
-      try {
-        configureMaskBatchNode(node, executionEvents, loadPreview, logger, app2);
-      } catch (error) {
-        logger.warn(
-          `Could not configure Load Mask Batch native controls: ${errorMessage2(error)}`,
-          error
+// web/src/orderedMediaPreview.ts
+var OrderedMediaPreviewController = class {
+  constructor(target, label, logger = console) {
+    this.target = target;
+    this.label = label;
+    this.logger = logger;
+  }
+  target;
+  label;
+  logger;
+  requestVersion = 0;
+  disposed = false;
+  hasPreview = false;
+  /** Resolve one ordered selection without allowing stale previews to win. */
+  refresh(files, loadPreview) {
+    if (this.disposed) return;
+    const requestVersion = ++this.requestVersion;
+    if (files.length === 0) {
+      this.target.clear();
+      this.hasPreview = false;
+      return;
+    }
+    void loadPreview().then(async (output) => {
+      await nextTask();
+      if (this.disposed || requestVersion !== this.requestVersion) return;
+      if (!Array.isArray(output.images) || output.images.length !== files.length) {
+        throw new Error(
+          `${this.label} preview returned ${String(output.images?.length ?? 0)} images for ${String(files.length)} files.`
         );
-        throw error;
       }
+      this.target.publish(output);
+      this.hasPreview = true;
+    }).catch((error) => {
+      if (this.disposed || requestVersion !== this.requestVersion) return;
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Could not refresh ${this.label} preview: ${message}`, error);
+      if (!this.hasPreview) this.target.clear();
+    });
+  }
+  /** Clear native media and invalidate pending work owned by a removed node. */
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.requestVersion += 1;
+    this.target.clear();
+  }
+};
+function nextTask() {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
+// web/src/nativePreviewLifecycle.ts
+var listeners = /* @__PURE__ */ new Set();
+var observer = null;
+function subscribeNativePreviewLifecycle(listener) {
+  listeners.add(listener);
+  ensureObserver();
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) {
+      observer?.disconnect();
+      observer = null;
     }
   };
-  app2.registerExtension(extension);
 }
-function errorMessage2(error) {
-  return error instanceof Error && error.message ? error.message : String(error);
+function ensureObserver() {
+  if (observer) return;
+  observer = new MutationObserver(() => {
+    for (const listener of listeners) listener();
+  });
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["src"]
+  });
 }
-function configureMaskBatchNode(candidate, executionEvents, loadPreview, logger = console, app2) {
-  if (!isMaskBatchNode(candidate)) return;
+
+// web/src/orderedMediaPreviewAffordances.ts
+var MEDIA_MOVE_EARLIER_ATTRIBUTE = "data-ss-media-move-earlier";
+var MEDIA_MOVE_LATER_ATTRIBUTE = "data-ss-media-move-later";
+var MEDIA_REMOVE_ATTRIBUTE = "data-ss-media-remove";
+var MEDIA_INDEX_ATTRIBUTE = "data-ss-media-index";
+var OrderedMediaPreviewAffordances = class {
+  constructor(options) {
+    this.options = options;
+    window.addEventListener("resize", this.requestRefresh, true);
+    document.addEventListener("click", this.requestRefresh, true);
+    document.addEventListener("keydown", this.requestRefresh, true);
+    document.addEventListener("pointermove", this.requestRefresh, true);
+    document.addEventListener("pointerup", this.requestRefresh, true);
+    document.addEventListener("wheel", this.requestRefresh, true);
+    this.refresh();
+  }
+  options;
+  elements = [];
+  animationFrame = null;
+  remainingSyncFrames = 0;
+  /** Recheck native layout across several frames after Comfy rerenders output. */
+  refresh() {
+    this.remainingSyncFrames = Math.max(this.remainingSyncFrames, 4);
+    this.scheduleSync();
+  }
+  /** Remove every overlay control and global layout listener. */
+  dispose() {
+    window.removeEventListener("resize", this.requestRefresh, true);
+    document.removeEventListener("click", this.requestRefresh, true);
+    document.removeEventListener("keydown", this.requestRefresh, true);
+    document.removeEventListener("pointermove", this.requestRefresh, true);
+    document.removeEventListener("pointerup", this.requestRefresh, true);
+    document.removeEventListener("wheel", this.requestRefresh, true);
+    if (this.animationFrame !== null) {
+      cancelAnimationFrame(this.animationFrame);
+      this.animationFrame = null;
+    }
+    for (const element of this.elements) element.root.remove();
+    this.elements = [];
+  }
+  requestRefresh = () => {
+    this.remainingSyncFrames = Math.max(this.remainingSyncFrames, 2);
+    this.scheduleSync();
+  };
+  scheduleSync() {
+    if (this.animationFrame !== null) return;
+    this.animationFrame = requestAnimationFrame(() => {
+      this.animationFrame = null;
+      this.sync();
+      this.remainingSyncFrames -= 1;
+      if (this.remainingSyncFrames > 0) this.scheduleSync();
+    });
+  }
+  sync() {
+    const slots = this.options.getSlots();
+    this.resizeElements(slots.length);
+    for (const [index, elements] of this.elements.entries()) {
+      const slot = slots[index];
+      if (!slot || slot.width <= 0 || slot.height <= 0) {
+        elements.root.hidden = true;
+        continue;
+      }
+      elements.root.hidden = false;
+      const stripHeight = Math.max(18, Math.min(26, slot.height * 0.16));
+      Object.assign(elements.root.style, {
+        left: `${String(slot.left)}px`,
+        top: `${String(slot.top)}px`,
+        width: `${String(slot.width)}px`,
+        height: `${String(stripHeight)}px`
+      });
+      elements.root.dataset.ssMediaIndex = String(index);
+      elements.earlier.dataset.ssMediaIndex = String(index);
+      elements.later.dataset.ssMediaIndex = String(index);
+      elements.remove.dataset.ssMediaIndex = String(index);
+      setActionAvailability(elements.earlier, index > 0);
+      setActionAvailability(
+        elements.later,
+        index < this.elements.length - 1
+      );
+      elements.earlier.setAttribute(
+        "aria-label",
+        `Move ${this.options.itemLabel} ${String(index + 1)} earlier`
+      );
+      elements.later.setAttribute(
+        "aria-label",
+        `Move ${this.options.itemLabel} ${String(index + 1)} later`
+      );
+      elements.remove.setAttribute(
+        "aria-label",
+        `Remove ${this.options.itemLabel} ${String(index + 1)}`
+      );
+    }
+  }
+  resizeElements(count) {
+    while (this.elements.length > count) this.elements.pop()?.root.remove();
+    while (this.elements.length < count) {
+      this.elements.push(this.createElements());
+    }
+  }
+  createElements() {
+    const root = document.createElement("div");
+    root.className = "ss-native-preview-affordance";
+    Object.assign(root.style, {
+      position: "fixed",
+      zIndex: "9990",
+      display: "flex",
+      alignItems: "stretch",
+      pointerEvents: "none",
+      overflow: "hidden",
+      borderRadius: "4px 4px 0 0",
+      background: "rgba(20, 20, 20, 0.72)",
+      boxShadow: "inset 0 -1px 0 rgba(255, 255, 255, 0.16)"
+    });
+    const earlier = controlButton("pi-arrow-left", "Move earlier");
+    earlier.setAttribute(MEDIA_MOVE_EARLIER_ATTRIBUTE, "true");
+    const later = controlButton("pi-arrow-right", "Move later");
+    later.setAttribute(MEDIA_MOVE_LATER_ATTRIBUTE, "true");
+    const remove = controlButton("pi-times", "Remove");
+    remove.setAttribute(MEDIA_REMOVE_ATTRIBUTE, "true");
+    bindAction(earlier, (index) => {
+      this.options.moveEarlier(index);
+    });
+    bindAction(later, (index) => {
+      this.options.moveLater(index);
+    });
+    bindAction(remove, (index) => {
+      this.options.remove(index);
+    });
+    root.append(earlier, later, remove);
+    document.body.append(root);
+    return { root, earlier, later, remove };
+  }
+};
+function mediaIndex(element) {
+  const value = element.getAttribute(MEDIA_INDEX_ATTRIBUTE);
+  if (value === null) return null;
+  const index = Number(value);
+  return Number.isInteger(index) && index >= 0 ? index : null;
+}
+function controlButton(iconClass, title) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.title = title;
+  const icon = document.createElement("i");
+  icon.className = `pi ${iconClass}`;
+  icon.setAttribute("aria-hidden", "true");
+  button.append(icon);
+  Object.assign(button.style, {
+    appearance: "none",
+    border: "0",
+    padding: "0",
+    margin: "0",
+    minWidth: "0",
+    flex: "1 1 0",
+    color: "rgba(255, 255, 255, 0.92)",
+    background: "transparent",
+    fontSize: "13px",
+    cursor: "pointer",
+    pointerEvents: "auto"
+  });
+  return button;
+}
+function bindAction(button, action) {
+  button.addEventListener("pointerdown", stopControlPointerEvent);
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const index = mediaIndex(button);
+    if (index !== null) action(index);
+  });
+}
+function setActionAvailability(button, available) {
+  button.disabled = !available;
+  button.style.cursor = available ? "pointer" : "default";
+  button.style.opacity = available ? "1" : "0.35";
+}
+function stopControlPointerEvent(event) {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+// web/src/orderedMediaPreviewTransaction.ts
+var OrderedMediaPreviewTransaction = class {
+  constructor(options) {
+    this.options = options;
+  }
+  options;
+  surface = null;
+  items = null;
+  handoffFrame = null;
+  /** Move an already-loaded native item without rebuilding its gallery. */
+  move(index, destination) {
+    if (!this.begin()) return false;
+    const items = this.items;
+    if (!items || index < 0 || index >= items.length || destination < 0 || destination >= items.length || index === destination) {
+      return false;
+    }
+    const [moved] = items.splice(index, 1);
+    if (!moved) return false;
+    items.splice(destination, 0, moved);
+    this.apply();
+    return true;
+  }
+  /** Remove an already-loaded item and let the native gallery compact itself. */
+  remove(index) {
+    if (!this.begin()) return false;
+    const items = this.items;
+    if (!items || index < 0 || index >= items.length) return false;
+    items.splice(index, 1);
+    this.apply();
+    return true;
+  }
+  /** Return live native-cell geometry while an optimistic transaction is active. */
+  activeSlots() {
+    if (!this.surface || !this.items) return null;
+    return this.surface.slots.slice(0, this.items.length).map((slot) => slot());
+  }
+  /** End the transaction after Comfy's authoritative native preview is ready. */
+  authoritativePublished() {
+    if (!this.surface || this.handoffFrame !== null) return;
+    this.scheduleHandoff();
+  }
+  /** Release native surface changes and stop any pending handoff check. */
+  dispose() {
+    if (this.handoffFrame !== null) cancelAnimationFrame(this.handoffFrame);
+    this.handoffFrame = null;
+    this.finish();
+  }
+  begin() {
+    if (this.surface && this.items) return true;
+    const surface = this.options.captureSurface();
+    if (!surface || surface.items.length === 0) return false;
+    this.surface = surface;
+    this.items = [...surface.items];
+    return true;
+  }
+  apply() {
+    if (!this.surface || !this.items) return;
+    this.surface.apply(this.items);
+    this.options.stateChanged();
+  }
+  scheduleHandoff() {
+    this.handoffFrame = requestAnimationFrame(() => {
+      this.handoffFrame = null;
+      if (!this.surface) return;
+      if (this.options.authoritativeReady()) {
+        this.finish();
+        this.options.stateChanged();
+        return;
+      }
+      this.scheduleHandoff();
+    });
+  }
+  finish() {
+    this.surface?.release();
+    this.surface = null;
+    this.items = null;
+  }
+};
+
+// web/src/comfyImageReference.ts
+function comfyImageReferenceKey(reference) {
+  return `${reference.type}
+${reference.subfolder}
+${reference.filename}`;
+}
+function comfyImageSourceKey(sourceUrl) {
+  try {
+    const url = new URL(sourceUrl, window.location.href);
+    return `${url.searchParams.get("type") ?? ""}
+${url.searchParams.get("subfolder") ?? ""}
+${url.searchParams.get("filename") ?? ""}`;
+  } catch {
+    return "";
+  }
+}
+function loadedImagesMatchReferences(images, references) {
+  return images?.length === references.length && images.every((image, index) => {
+    const reference = references[index];
+    return reference !== void 0 && comfyImageSourceKey(image.currentSrc || image.src) === comfyImageReferenceKey(reference);
+  });
+}
+
+// web/src/orderedMediaPreviewActions.ts
+var OrderedMediaPreviewActions = class {
+  constructor(options) {
+    this.options = options;
+    this.transaction = new OrderedMediaPreviewTransaction({
+      captureSurface: () => this.captureSurface(),
+      authoritativeReady: () => this.authoritativeReady(),
+      stateChanged: () => {
+        this.affordances.refresh();
+      }
+    });
+    this.affordances = new OrderedMediaPreviewAffordances({
+      itemLabel: options.itemLabel,
+      getSlots: () => this.nativeSlots(),
+      moveEarlier: (index) => {
+        this.transaction.move(index, index - 1);
+        options.moveEarlier(index);
+      },
+      moveLater: (index) => {
+        this.transaction.move(index, index + 1);
+        options.moveLater(index);
+      },
+      remove: (index) => {
+        this.transaction.remove(index);
+        options.remove(index);
+      }
+    });
+    this.unsubscribePreview = options.preview.subscribe(() => {
+      this.affordances.refresh();
+      this.transaction.authoritativePublished();
+    });
+    this.unsubscribeLifecycle = subscribeNativePreviewLifecycle(() => {
+      this.affordances.refresh();
+    });
+  }
+  options;
+  affordances;
+  transaction;
+  unsubscribePreview;
+  unsubscribeLifecycle;
+  /** Remove layout listeners and every loader-owned overlay control. */
+  dispose() {
+    this.unsubscribePreview();
+    this.unsubscribeLifecycle();
+    this.transaction.dispose();
+    this.affordances.dispose();
+  }
+  itemCount() {
+    const files = this.options.getFiles();
+    const images = this.currentImages();
+    return images?.length === files.length ? files.length : 0;
+  }
+  currentImages() {
+    const nodeId = this.nodeId();
+    return nodeId ? this.options.app.nodeOutputs?.[nodeId]?.images : void 0;
+  }
+  domImages() {
+    const root = this.domRoot();
+    const references = this.currentImages();
+    if (!root || !references || references.length !== this.itemCount()) return [];
+    const remainingKeys = references.map(comfyImageReferenceKey);
+    const matched = [];
+    for (const image of Array.from(
+      root.querySelectorAll("img")
+    )) {
+      const key = comfyImageSourceKey(image.src);
+      const referenceIndex = remainingKeys.indexOf(key);
+      if (referenceIndex < 0) continue;
+      matched.push(image);
+      remainingKeys.splice(referenceIndex, 1);
+    }
+    return remainingKeys.length === 0 ? matched : [];
+  }
+  domRoot() {
+    const nodeId = this.nodeId();
+    if (!nodeId) return null;
+    return Array.from(document.querySelectorAll("[data-node-id]")).find(
+      (element) => element.dataset.nodeId === nodeId
+    ) ?? null;
+  }
+  canvasSlots() {
+    const canvasApi = this.options.app.canvas;
+    const nodePosition = this.options.node.pos;
+    const imageRects = this.options.node.imageRects;
+    if (!canvasApi || !nodePosition || !imageRects) return [];
+    const canvasRect = canvasApi.canvas.getBoundingClientRect();
+    return imageRects.map(([x, y, width, height]) => {
+      const topLeft = canvasApi.convertOffsetToCanvas([
+        nodePosition[0] + x,
+        nodePosition[1] + y
+      ]);
+      const bottomRight = canvasApi.convertOffsetToCanvas([
+        nodePosition[0] + x + width,
+        nodePosition[1] + y + height
+      ]);
+      return {
+        left: canvasRect.left + topLeft[0],
+        top: canvasRect.top + topLeft[1],
+        width: bottomRight[0] - topLeft[0],
+        height: bottomRight[1] - topLeft[1]
+      };
+    });
+  }
+  nativeSlots() {
+    if (this.options.node.flags?.collapsed || this.options.node.imageIndex != null) {
+      return [];
+    }
+    const activeSlots = this.transaction.activeSlots();
+    if (activeSlots) return activeSlots;
+    if (!this.isGridVisible()) return [];
+    const domSlots = this.domImages().map((image) => {
+      const rect = image.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height
+      };
+    });
+    return domSlots.length === this.itemCount() ? domSlots : this.canvasSlots();
+  }
+  captureSurface() {
+    const domImages = this.domImages();
+    if (domImages.length > 0) return this.domSurface(domImages);
+    const canvasImages = this.options.node.imgs;
+    if (!canvasImages || canvasImages.length !== this.currentImages()?.length) {
+      return null;
+    }
+    return {
+      items: previewItems(canvasImages),
+      slots: canvasImages.map((_, index) => () => this.canvasSlots()[index]),
+      apply: (items) => {
+        this.options.node.imgs = items.map((item) => item.image);
+        delete this.options.node.imageRects;
+        this.options.node.graph?.setDirtyCanvas?.(true, true);
+      },
+      release: () => void 0
+    };
+  }
+  domSurface(images) {
+    const slots = images.map((image) => imageSlot(image));
+    const targets = images.map((image) => image.closest("button") ?? image);
+    const originalDisplays = targets.map((target) => target.style.display);
+    return {
+      items: previewItems(images),
+      slots,
+      apply: (items) => {
+        for (const [index, image] of images.entries()) {
+          const item = items[index];
+          const target = targets[index];
+          if (!target) continue;
+          if (!item) {
+            target.style.display = "none";
+            continue;
+          }
+          target.style.display = originalDisplays[index] ?? "";
+          if (image.src !== item.sourceUrl) image.src = item.sourceUrl;
+        }
+      },
+      release: () => {
+        for (const [index, target] of targets.entries()) {
+          target.style.display = originalDisplays[index] ?? "";
+        }
+      }
+    };
+  }
+  authoritativeReady() {
+    const references = this.currentImages();
+    if (!references || references.length !== this.options.getFiles().length) {
+      return false;
+    }
+    const expectedKeys = references.map(comfyImageReferenceKey);
+    const rendered = this.authoritativeImages(expectedKeys);
+    return rendered.length === expectedKeys.length && rendered.every(
+      (image, index) => comfyImageSourceKey(image.src) === expectedKeys[index] && image.complete && image.naturalWidth > 0
+    );
+  }
+  authoritativeImages(expectedKeys) {
+    const root = this.domRoot();
+    const domImages = root ? Array.from(root.querySelectorAll("img")) : [];
+    if (domImages.length === expectedKeys.length) return domImages;
+    return this.options.node.imgs ?? [];
+  }
+  isGridVisible() {
+    return !this.options.node.flags?.collapsed && this.options.node.imageIndex == null && this.itemCount() > 1;
+  }
+  nodeId() {
+    const nodeId = this.options.node.id;
+    return nodeId === void 0 ? void 0 : String(nodeId);
+  }
+};
+function previewItems(images) {
+  return images.map((image) => ({
+    sourceUrl: image.currentSrc || image.src,
+    image
+  }));
+}
+function imageSlot(image) {
+  return () => {
+    const rect = image.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height
+    };
+  };
+}
+
+// web/src/orderedMediaSelection.ts
+var OrderedMediaSelection = class {
+  files;
+  constructor(value = []) {
+    this.files = normalizeMediaFiles(value);
+  }
+  /** Return a defensive snapshot in authored order. */
+  snapshot() {
+    return [...this.files];
+  }
+  /** Replace every position with a normalized persisted widget value. */
+  replace(value) {
+    this.files = normalizeMediaFiles(value);
+    return this.snapshot();
+  }
+  /** Append every incoming position without deduplicating filenames. */
+  append(value) {
+    this.files.push(...normalizeMediaFiles(value));
+    return this.snapshot();
+  }
+  /** Remove one exact position when it exists. */
+  remove(index) {
+    if (validIndex(index, this.files.length)) this.files.splice(index, 1);
+    return this.snapshot();
+  }
+  /** Move one exact position and retain all duplicate filenames. */
+  move(from, to) {
+    if (!validIndex(from, this.files.length) || !validIndex(to, this.files.length)) {
+      return this.snapshot();
+    }
+    const [moved] = this.files.splice(from, 1);
+    if (moved !== void 0) this.files.splice(to, 0, moved);
+    return this.snapshot();
+  }
+};
+function normalizeMediaFiles(value) {
+  const values = Array.isArray(value) ? value : [value];
+  return values.filter(
+    (item) => typeof item === "string" && item.length > 0
+  );
+}
+function validIndex(index, length) {
+  return Number.isInteger(index) && index >= 0 && index < length;
+}
+
+// web/src/orderedMediaNode.ts
+function configureOrderedMediaNode(candidate, app2, api, config, logger = console) {
+  if (!isOrderedMediaNode(candidate, config.nodeId)) return;
   const imageWidget = findWidget(candidate, "image");
-  const channelWidget = findWidget(candidate, "channel");
   const uploadWidget = findNativeUploadWidget(candidate);
-  if (!imageWidget || !channelWidget || !uploadWidget?.callback) return;
+  if (!imageWidget || !uploadWidget?.callback) return;
   hideInternalWidget(imageWidget);
   hideInternalWidget(uploadWidget);
-  const preview = new MaskBatchPreviewController(
-    executionEvents,
-    candidate,
-    loadPreview,
-    logger,
-    () => {
-      clearNativePreview(candidate, app2);
-    }
+  const selection = new OrderedMediaSelection(imageWidget.value);
+  const nativePreview = new NativeNodePreview(app2, api, candidate);
+  const preview = new OrderedMediaPreviewController(
+    nativePreview,
+    `${config.labels.singular} loader`,
+    logger
   );
+  let programmaticSelectionUpdate = false;
   let selectionIntent = "replace";
   let appendBase = [];
   let uploadPending = false;
-  let programmaticSelectionUpdate = false;
   let ignoredUploadCallbackFiles;
   const nativeUploadCallback = uploadWidget.callback;
-  const replaceWidget = candidate.addWidget(
-    "button",
-    "simple_syrup_replace_masks",
-    "image",
-    () => {
-      selectionIntent = "replace";
-      appendBase = [];
-      uploadPending = true;
-      nativeUploadCallback.call(uploadWidget);
-    },
-    nativeButtonOptions(
-      "Choose one or more masks and replace the current ordered list."
-    )
-  );
-  replaceWidget.label = REPLACE_MASKS_LABEL;
-  const setSelectedMasks = (files) => {
+  const setPersistedFiles = (files) => {
     programmaticSelectionUpdate = true;
     try {
       imageWidget.value = [...files];
@@ -671,155 +1233,145 @@ function configureMaskBatchNode(candidate, executionEvents, loadPreview, logger 
       programmaticSelectionUpdate = false;
     }
   };
-  uploadWidget.callback = (value) => {
+  const refresh = (files) => {
+    config.onSelectionChanged?.([...files]);
+    preview.refresh(files, () => config.preview([...files], candidate));
+  };
+  const commit = (current, previous) => {
+    setPersistedFiles(current);
+    candidate.onWidgetChanged?.(
+      imageWidget.name,
+      [...current],
+      [...previous],
+      imageWidget
+    );
+    candidate.graph?.setDirtyCanvas?.(true, true);
+    refresh(current);
+  };
+  const removeAt = (index) => {
+    const previous = selection.snapshot();
+    if (index < 0 || index >= previous.length) return;
+    const current = selection.remove(index);
+    commit(current, previous);
+  };
+  const moveTo = (index, destination) => {
+    const previous = selection.snapshot();
+    if (index < 0 || index >= previous.length || destination < 0 || destination >= previous.length || index === destination) {
+      return;
+    }
+    const current = selection.move(index, destination);
+    commit(current, previous);
+  };
+  const previewActions = new OrderedMediaPreviewActions({
+    app: app2,
+    node: candidate,
+    preview: nativePreview,
+    itemLabel: config.labels.singular,
+    getFiles: () => selection.snapshot(),
+    moveEarlier: (index) => {
+      moveTo(index, index - 1);
+    },
+    moveLater: (index) => {
+      moveTo(index, index + 1);
+    },
+    remove: removeAt
+  });
+  const beginReplace = () => {
     selectionIntent = "replace";
     appendBase = [];
     uploadPending = true;
+  };
+  const beginAppend = () => {
+    selectionIntent = "append";
+    appendBase = selection.snapshot();
+    uploadPending = true;
+  };
+  nativeButton(candidate, "simple_syrup_replace_media", config.labels.replace, () => {
+    beginReplace();
+    nativeUploadCallback.call(uploadWidget);
+  });
+  nativeButton(candidate, "simple_syrup_add_media", config.labels.add, () => {
+    beginAppend();
+    nativeUploadCallback.call(uploadWidget);
+  });
+  uploadWidget.callback = (value) => {
+    beginReplace();
     nativeUploadCallback.call(uploadWidget, value);
   };
-  const addWidget = candidate.addWidget(
-    "button",
-    "simple_syrup_add_masks",
-    "image",
-    () => {
-      selectionIntent = "append";
-      appendBase = selectedMaskFiles(imageWidget);
-      uploadPending = true;
-      nativeUploadCallback.call(uploadWidget);
-    },
-    nativeButtonOptions(
-      "Upload one or more masks and append them after the current ordered list."
-    )
-  );
-  addWidget.label = ADD_MASKS_LABEL;
-  const selectedMaskWidget = candidate.addWidget(
-    "combo",
-    "simple_syrup_selected_mask",
-    EMPTY_MASK_SELECTION_LABEL,
-    (value) => {
-      const selectedIndex = selectedMaskIndex(selectedMaskWidget, value);
-      candidate.imageIndex = selectedIndex;
-      candidate.graph?.setDirtyCanvas?.(true, true);
-    },
-    {
-      serialize: false,
-      tooltip: "Select one loaded mask by its ordered position for preview or removal.",
-      values: []
-    }
-  );
-  selectedMaskWidget.label = "selected mask";
-  const removeWidget = candidate.addWidget(
-    "button",
-    "simple_syrup_remove_mask",
-    "image",
-    () => {
-      const previous = selectedMaskFiles(imageWidget);
-      const index = activeMaskIndex(candidate, selectedMaskWidget, previous);
-      if (index === null) return;
-      const current = previous.toSpliced(index, 1);
-      setSelectedMasks(current);
-      updateMaskSelection(selectedMaskWidget, current, index);
-      candidate.imageIndex = current.length === 0 ? null : Math.min(index, current.length - 1);
-      notifySelectionChanged(candidate, imageWidget, { current, previous });
-      updateRemoveAvailability(removeWidget, current.length);
-      preview.refresh(current, selectedChannel(channelWidget));
-    },
-    nativeButtonOptions(
-      "Open a mask in the preview gallery, then remove that position from the loaded list."
-    )
-  );
-  removeWidget.label = REMOVE_MASK_LABEL;
   imageWidget.callback = (value) => {
     if (programmaticSelectionUpdate) return;
     const callbackValue = value ?? imageWidget.value;
     if (uploadPending && !Array.isArray(callbackValue)) return;
-    const incoming = normalizeMaskFiles(callbackValue);
-    if (ignoredUploadCallbackFiles && sameMaskFiles(incoming, ignoredUploadCallbackFiles)) {
+    const incoming = normalizeMediaFiles(callbackValue);
+    if (ignoredUploadCallbackFiles && sameMediaFiles(incoming, ignoredUploadCallbackFiles)) {
       ignoredUploadCallbackFiles = void 0;
       return;
     }
     ignoredUploadCallbackFiles = uploadPending ? [...incoming] : void 0;
     uploadPending = false;
-    const current = selectionIntent === "append" ? [...appendBase, ...incoming] : incoming;
-    const appended = selectionIntent === "append";
+    const current = selectionIntent === "append" ? selection.replace([...appendBase, ...incoming]) : selection.replace(incoming);
     selectionIntent = "replace";
     appendBase = [];
-    if (appended) setSelectedMasks(current);
-    candidate.imageIndex = null;
-    updateMaskSelection(selectedMaskWidget, current);
-    updateRemoveAvailability(removeWidget, current.length);
-    preview.refresh(current, selectedChannel(channelWidget));
-  };
-  const originalChannelCallback = channelWidget.callback;
-  channelWidget.callback = (value) => {
-    originalChannelCallback?.call(channelWidget, value);
-    const files = selectedMaskFiles(imageWidget);
-    if (files.length > 0) {
-      preview.refresh(files, selectedChannel(channelWidget, value));
+    if (!sameMediaFiles(current, normalizeMediaFiles(imageWidget.value))) {
+      setPersistedFiles(current);
     }
+    candidate.graph?.setDirtyCanvas?.(true, true);
+    refresh(current);
   };
-  resetIntentForExternalUploads(candidate, () => {
-    selectionIntent = "replace";
-    appendBase = [];
-    uploadPending = false;
-  });
+  for (const widgetName of config.previewWidgetNames ?? []) {
+    const widget = findWidget(candidate, widgetName);
+    if (!widget) continue;
+    const originalCallback = widget.callback;
+    widget.callback = (value) => {
+      originalCallback?.call(widget, value);
+      if (value !== void 0) widget.value = value;
+      refresh(selection.snapshot());
+    };
+  }
+  const restoreExternalUploads = wrapExternalAppendUploads(candidate, beginAppend);
   const originalOnGraphConfigured = candidate.onGraphConfigured;
   candidate.onGraphConfigured = function(...args) {
     const result = originalOnGraphConfigured?.apply(this, args);
-    const restored = selectedMaskFiles(imageWidget);
-    if (!Array.isArray(imageWidget.value)) setSelectedMasks(restored);
-    updateMaskSelection(selectedMaskWidget, restored);
-    updateRemoveAvailability(removeWidget, restored.length);
-    if (restored.length > 0) {
-      preview.refresh(restored, selectedChannel(channelWidget));
-    }
+    const restored = selection.replace(imageWidget.value);
+    if (!Array.isArray(imageWidget.value)) setPersistedFiles(restored);
+    refresh(restored);
     return result;
   };
-  const initial = selectedMaskFiles(imageWidget);
-  if (!Array.isArray(imageWidget.value)) setSelectedMasks(initial);
-  updateMaskSelection(selectedMaskWidget, initial);
-  updateRemoveAvailability(removeWidget, initial.length);
-  if (initial.length > 0) {
-    preview.refresh(initial, selectedChannel(channelWidget));
-  }
+  const originalOnRemoved = candidate.onRemoved;
+  candidate.onRemoved = function(...args) {
+    restoreExternalUploads();
+    previewActions.dispose();
+    preview.dispose();
+    return originalOnRemoved?.apply(this, args);
+  };
+  const initial = selection.snapshot();
+  if (!Array.isArray(imageWidget.value)) setPersistedFiles(initial);
+  refresh(initial);
 }
-function hideInternalWidget(widget) {
-  widget.options ??= {};
-  widget.options.hidden = true;
-  widget.hidden = true;
-  widget.computeSize = () => [0, -4];
+function registerOrderedMediaNode(app2, api, extensionName, config, logger = console) {
+  app2.registerExtension({
+    name: extensionName,
+    nodeCreated(candidate) {
+      try {
+        configureOrderedMediaNode(candidate, app2, api, config, logger);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(
+          `Could not configure ${config.labels.singular} loader: ${message}`,
+          error
+        );
+        throw error;
+      }
+    }
+  });
 }
-function updateMaskSelection(widget, files, preferredIndex = 0) {
-  const values = files.map(
-    (file, index) => `${String(index + 1)}. ${file}`
-  );
-  const hasMasks = values.length > 0;
-  widget.options ??= {};
-  widget.options.values = hasMasks ? values : [EMPTY_MASK_SELECTION_LABEL];
-  widget.disabled = !hasMasks;
-  widget.options.disabled = !hasMasks;
-  widget.value = hasMasks ? values[Math.min(Math.max(preferredIndex, 0), values.length - 1)] : EMPTY_MASK_SELECTION_LABEL;
-}
-function selectedMaskIndex(widget, callbackValue) {
-  if (widget.disabled) return null;
-  const value = callbackValue ?? widget.value;
-  const values = widget.options?.values ?? [];
-  const index = typeof value === "string" ? values.indexOf(value) : -1;
-  return index >= 0 ? index : null;
-}
-function clearNativePreview(node, app2) {
-  node.imgs = void 0;
-  node.images = [];
-  if (node.id !== void 0) delete app2?.nodeOutputs?.[String(node.id)];
-  node.graph?.setDirtyCanvas?.(true, true);
-}
-function activeMaskIndex(node, selectedMaskWidget, files) {
-  const galleryIndex = node.imageIndex;
-  if (galleryIndex !== null && galleryIndex !== void 0 && galleryIndex >= 0 && galleryIndex < files.length) {
-    return galleryIndex;
-  }
-  const selectedIndex = selectedMaskIndex(selectedMaskWidget);
-  return selectedIndex !== null && selectedIndex < files.length ? selectedIndex : null;
+function nativeButton(node, name, label, callback) {
+  const widget = node.addWidget("button", name, "ordered_media", callback, {
+    serialize: false,
+    tooltip: label
+  });
+  widget.label = label;
+  return widget;
 }
 function findWidget(node, name) {
   return node.widgets?.find((widget) => widget.name === name);
@@ -829,55 +1381,29 @@ function findNativeUploadWidget(node) {
     (widget) => widget.type === "button" && widget.value === "image" && widget.options?.serialize === false && widget.options.canvasOnly === true
   );
 }
-function nativeButtonOptions(tooltip) {
-  return { serialize: false, tooltip };
+function hideInternalWidget(widget) {
+  widget.options ??= {};
+  widget.options.hidden = true;
+  widget.hidden = true;
+  widget.computeSize = () => [0, -4];
 }
-function selectedChannel(channelWidget, callbackValue) {
-  const value = callbackValue ?? channelWidget.value;
-  return typeof value === "string" && value.length > 0 ? value : void 0;
-}
-function selectedMaskFiles(widget) {
-  return normalizeMaskFiles(widget.value);
-}
-function normalizeMaskFiles(value) {
-  const values = Array.isArray(value) ? value : [value];
-  return values.filter(
-    (item) => typeof item === "string" && item.length > 0
-  );
-}
-function sameMaskFiles(left, right) {
+function sameMediaFiles(left, right) {
   return left.length === right.length && left.every((file, index) => file === right[index]);
 }
-function updateRemoveAvailability(widget, count) {
-  const disabled = count === 0;
-  widget.disabled = disabled;
-  widget.options ??= {};
-  widget.options.disabled = disabled;
-}
-function notifySelectionChanged(node, imageWidget, change) {
-  node.onWidgetChanged?.(
-    imageWidget.name,
-    [...change.current],
-    [...change.previous],
-    imageWidget
-  );
-  node.graph?.setDirtyCanvas?.(true, true);
-}
-function resetIntentForExternalUploads(node, reset) {
+function wrapExternalAppendUploads(node, beginAppend) {
   const originalPasteFiles = node.pasteFiles;
   const originalOnDragDrop = node.onDragDrop;
-  const originalOnRemoved = node.onRemoved;
   const wrappedPasteFiles = originalPasteFiles ? (...args) => {
-    reset();
+    beginAppend();
     return originalPasteFiles.apply(node, args);
   } : void 0;
   const wrappedOnDragDrop = originalOnDragDrop ? (...args) => {
-    reset();
+    beginAppend();
     return originalOnDragDrop.apply(node, args);
   } : void 0;
   if (wrappedPasteFiles) node.pasteFiles = wrappedPasteFiles;
   if (wrappedOnDragDrop) node.onDragDrop = wrappedOnDragDrop;
-  node.onRemoved = function(...args) {
+  return () => {
     if (node.pasteFiles === wrappedPasteFiles) {
       if (originalPasteFiles) node.pasteFiles = originalPasteFiles;
       else delete node.pasteFiles;
@@ -886,13 +1412,84 @@ function resetIntentForExternalUploads(node, reset) {
       if (originalOnDragDrop) node.onDragDrop = originalOnDragDrop;
       else delete node.onDragDrop;
     }
-    return originalOnRemoved?.apply(this, args);
   };
 }
-function isMaskBatchNode(candidate) {
+function isOrderedMediaNode(candidate, nodeId) {
   if (typeof candidate !== "object" || candidate === null) return false;
   const node = candidate;
-  return node.constructor?.comfyClass === LOAD_MASK_BATCH_NODE_ID && typeof node.addWidget === "function";
+  return node.constructor?.comfyClass === nodeId && typeof node.addWidget === "function";
+}
+
+// web/src/maskBatchUpload.ts
+var LOAD_MASK_BATCH_NODE_ID = "SimpleSyrup.LoadMaskBatch";
+function registerMaskBatchUpload(app2, api, loadPreview = getMaskBatchPreview, logger = console) {
+  registerOrderedMediaNode(
+    app2,
+    api,
+    "SimpleSyrup.LoadMaskBatchUpload",
+    maskConfig(loadPreview),
+    logger
+  );
+}
+function maskConfig(loadPreview) {
+  return {
+    nodeId: LOAD_MASK_BATCH_NODE_ID,
+    labels: {
+      singular: "mask",
+      plural: "masks",
+      replace: "Replace masks...",
+      add: "Add masks..."
+    },
+    previewWidgetNames: ["channel"],
+    preview: (files, node) => loadPreview(files, selectedChannel(node))
+  };
+}
+function selectedChannel(node) {
+  const value = node.widgets?.find((widget) => widget.name === "channel")?.value;
+  return typeof value === "string" && value.length > 0 ? value : "alpha";
+}
+
+// web/src/comfyImageUrl.ts
+function comfyImageUrl(reference, apiURL = (path) => path) {
+  const query = new URLSearchParams({
+    filename: reference.filename,
+    subfolder: reference.subfolder,
+    type: reference.type
+  });
+  return apiURL(`/view?${query.toString()}`);
+}
+function inputImageReference(path) {
+  const annotated = path.trim().replace(/\s+\[input\]$/, "");
+  const normalized = annotated.replaceAll("\\", "/");
+  const separator = normalized.lastIndexOf("/");
+  return {
+    filename: normalized.slice(separator + 1),
+    subfolder: separator >= 0 ? normalized.slice(0, separator) : "",
+    type: "input"
+  };
+}
+
+// web/src/imageListUpload.ts
+function registerImageListUpload(app2, api, logger = console) {
+  registerOrderedMediaNode(
+    app2,
+    api,
+    "SimpleSyrup.LoadImageListUpload",
+    {
+      nodeId: "SimpleSyrup.LoadImageList",
+      labels: {
+        singular: "image",
+        plural: "images",
+        replace: "Replace images...",
+        add: "Add images..."
+      },
+      preview: (files) => Promise.resolve({
+        images: files.map(inputImageReference),
+        animated: files.map(() => false)
+      })
+    },
+    logger
+  );
 }
 
 // web/src/interactiveInspector.ts
@@ -946,6 +1543,26 @@ var InteractiveInspectorController = class {
     const message = error instanceof Error ? error.message : String(error);
     this.logger.warn(`Could not display Simple Preview SEGS: ${message}`, error);
     this.view.showError(message);
+  }
+};
+
+// web/src/domWidgetLayout.ts
+var FixedDomWidgetLayout = class {
+  constructor(node, widget, measure) {
+    this.node = node;
+    Object.defineProperty(widget, "computeLayoutSize", {
+      configurable: true,
+      value: void 0,
+      writable: true
+    });
+    widget.computeSize = measure;
+  }
+  node;
+  /** Recompute legacy widget allocation after the content mode changes. */
+  reflow() {
+    if (!this.node.graph) return;
+    this.node.arrange?.();
+    this.node.graph.setDirtyCanvas?.(true, true);
   }
 };
 
@@ -1054,6 +1671,476 @@ function parseColor(value) {
   ];
 }
 
+// web/src/selectionModel.ts
+var SelectionModel = class {
+  hovered = null;
+  selected = null;
+  candidates = [];
+  subscribers = /* @__PURE__ */ new Set();
+  /** Subscribe to selection changes and receive the current state immediately. */
+  subscribe(subscriber) {
+    this.subscribers.add(subscriber);
+    subscriber(this.state());
+    return () => this.subscribers.delete(subscriber);
+  }
+  /** Replace the hover target and all regions currently beneath the pointer. */
+  hover(candidates) {
+    this.candidates = [...candidates];
+    this.hovered = candidates[0] ?? null;
+    this.publish();
+  }
+  /** Clear transient pointer state without changing the pinned region. */
+  clearHover() {
+    this.candidates = [];
+    this.hovered = null;
+    this.publish();
+  }
+  /** Pin one region, or clear the pinned selection with null. */
+  select(id) {
+    this.selected = id;
+    this.publish();
+  }
+  /** Cycle through overlapping pointer candidates and pin the result. */
+  selectNextCandidate() {
+    if (this.candidates.length === 0) return this.selected;
+    const currentIndex = this.selected === null ? -1 : this.candidates.indexOf(this.selected);
+    const next = this.candidates[(currentIndex + 1) % this.candidates.length] ?? null;
+    this.select(next);
+    return next;
+  }
+  /** Return immutable selection state for rendering or tests. */
+  state() {
+    return {
+      hovered: this.hovered,
+      selected: this.selected,
+      candidates: [...this.candidates],
+      active: this.hovered ?? this.selected
+    };
+  }
+  publish() {
+    const state = this.state();
+    for (const subscriber of this.subscribers) subscriber(state);
+  }
+};
+
+// web/src/segPreviewInspector.ts
+var SegPreviewInspector = class {
+  constructor(inspectRegion = () => void 0, changeMode = () => void 0, apiURL = (path) => path, loadImage = loadPreviewImage) {
+    this.inspectRegion = inspectRegion;
+    this.changeMode = changeMode;
+    this.apiURL = apiURL;
+    this.loadImage = loadImage;
+    installStyles();
+    this.element.className = "ss-segs-preview";
+    this.body.className = "ss-segs-preview__body";
+    this.status.className = "ss-segs-preview__status";
+    this.status.setAttribute("aria-live", "polite");
+    const toolbar = document.createElement("nav");
+    toolbar.className = "ss-segs-preview__toolbar";
+    toolbar.setAttribute("aria-label", "SEGS preview mode");
+    toolbar.append(this.overlayButton, this.gridButton);
+    this.overlayButton.addEventListener("click", () => {
+      this.setMode("overlay");
+    });
+    this.gridButton.addEventListener("click", () => {
+      this.setMode("grid");
+    });
+    this.element.append(toolbar, this.body, this.status);
+    this.updateMode();
+    this.showMessage("Run the workflow to inspect SEGS.");
+  }
+  inspectRegion;
+  changeMode;
+  apiURL;
+  loadImage;
+  element = document.createElement("section");
+  overlayButton = modeButton("Overlay");
+  gridButton = modeButton("Grid");
+  body = document.createElement("div");
+  status = document.createElement("div");
+  mode = "overlay";
+  committed;
+  unsubscribeSelection;
+  highlightCanvas;
+  /** Return the renderer height needed by the active preview surface. */
+  preferredHeight() {
+    return this.mode === "overlay" ? 360 : 38;
+  }
+  /** Select the overlay or native gallery and optionally notify its owner. */
+  setMode(mode, notifyOwner = true) {
+    if (mode === this.mode) {
+      if (notifyOwner) this.changeMode(mode);
+      return;
+    }
+    this.mode = mode;
+    this.updateMode();
+    this.renderMode();
+    if (notifyOwner) this.changeMode(mode);
+  }
+  /** Show a loading state while execution assets are decoded. */
+  setLoading() {
+    this.showMessage("Loading SEGS preview\u2026");
+  }
+  /** Load source and atlas assets without publishing partial state. */
+  async prepare(document2) {
+    const [image, atlasImage] = await Promise.all([
+      this.loadImage(comfyImageUrl(document2.preview.image, this.apiURL)),
+      this.loadImage(comfyImageUrl(document2.atlas.image, this.apiURL))
+    ]);
+    const atlas = maskAtlasFromImage(document2, atlasImage);
+    let disposed = false;
+    return {
+      commit: () => {
+        if (!disposed) this.commit(document2, image, atlas);
+      },
+      dispose: () => {
+        disposed = true;
+      }
+    };
+  }
+  /** Show an actionable error without breaking the node lifecycle. */
+  showError(message) {
+    this.showMessage(message, true);
+  }
+  /** Release selection subscriptions and rendered state. */
+  dispose() {
+    this.unsubscribeSelection?.();
+    this.unsubscribeSelection = void 0;
+    this.committed = void 0;
+    this.highlightCanvas = void 0;
+    this.body.replaceChildren();
+    this.status.textContent = "";
+  }
+  commit(document2, image, atlas) {
+    this.unsubscribeSelection?.();
+    const selection = new SelectionModel();
+    const masks = new Map(
+      document2.regions.map((region) => [
+        region.id,
+        maskCanvas(atlas, region)
+      ])
+    );
+    this.committed = {
+      document: document2,
+      image,
+      atlas,
+      viewport: new ImageViewport(document2.source, document2.preview),
+      masks,
+      selection
+    };
+    this.unsubscribeSelection = selection.subscribe((state) => {
+      this.renderSelection(state);
+    });
+    this.renderMode();
+  }
+  renderMode() {
+    const committed = this.committed;
+    if (!committed) return;
+    if (this.mode === "overlay") {
+      this.renderOverlay();
+      return;
+    }
+    this.highlightCanvas = void 0;
+    this.body.replaceChildren();
+    this.status.textContent = `${String(committed.document.regions.length)} regions`;
+  }
+  renderOverlay() {
+    const committed = required(this.committed);
+    const stack = document.createElement("div");
+    stack.className = "ss-segs-preview__canvas-stack";
+    const base = sizedCanvas(committed.document.preview);
+    const highlight = sizedCanvas(committed.document.preview);
+    highlight.className = "ss-segs-preview__highlight";
+    this.highlightCanvas = highlight;
+    const context = context2d(base);
+    context.drawImage(
+      committed.image,
+      0,
+      0,
+      committed.document.preview.width,
+      committed.document.preview.height
+    );
+    context.globalAlpha = 0.38;
+    for (const region of committed.document.regions) {
+      drawRegionMask(context, committed, region);
+    }
+    context.globalAlpha = 1;
+    highlight.addEventListener("pointermove", (event) => {
+      const point = committed.viewport.sourcePoint(
+        event.clientX,
+        event.clientY,
+        highlight.getBoundingClientRect()
+      );
+      const hits = committed.atlas.hitsAt(point.x, point.y);
+      committed.selection.hover(hits.map((region) => region.id));
+    });
+    highlight.addEventListener("pointerleave", () => {
+      committed.selection.clearHover();
+    });
+    highlight.addEventListener("click", () => {
+      const selected = committed.selection.selectNextCandidate();
+      const region = committed.document.regions.find(
+        (candidate) => candidate.id === selected
+      );
+      if (region) {
+        this.setMode("grid", false);
+        this.inspectRegion(region.index);
+      }
+      committed.selection.select(null);
+    });
+    stack.append(base, highlight);
+    this.body.replaceChildren(stack);
+    this.renderSelection(committed.selection.state());
+  }
+  renderSelection(state) {
+    const committed = this.committed;
+    const highlight = this.highlightCanvas;
+    if (!committed || !highlight) return;
+    const active = state.active ? committed.document.regions.find((region) => region.id === state.active) : void 0;
+    const context = context2d(highlight);
+    context.clearRect(0, 0, highlight.width, highlight.height);
+    if (active) {
+      context.save();
+      context.globalAlpha = 0.9;
+      context.shadowColor = "rgba(255, 255, 255, 0.95)";
+      context.shadowBlur = 8;
+      drawRegionMask(context, committed, active);
+      context.restore();
+    }
+    if (!active) {
+      this.status.textContent = `${String(committed.document.regions.length)} regions`;
+    } else if (state.candidates.length > 1) {
+      this.status.textContent = `${regionTitle(active)} \xB7 ${String(state.candidates.length)} overlapping regions \xB7 click to inspect`;
+    } else {
+      this.status.textContent = `${regionTitle(active)} \xB7 click to inspect`;
+    }
+  }
+  showMessage(message, error = false) {
+    const content = document.createElement("div");
+    content.className = "ss-segs-preview__message";
+    content.dataset.error = String(error);
+    content.textContent = message;
+    this.body.replaceChildren(content);
+    this.status.textContent = "";
+  }
+  updateMode() {
+    this.element.dataset.mode = this.mode;
+    this.overlayButton.setAttribute(
+      "aria-pressed",
+      String(this.mode === "overlay")
+    );
+    this.gridButton.setAttribute("aria-pressed", String(this.mode === "grid"));
+  }
+};
+function modeButton(label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  return button;
+}
+function drawRegionMask(context, committed, region) {
+  const placement = committed.viewport.displayRectangle(region.crop);
+  const mask = committed.masks.get(region.id);
+  if (!mask) return;
+  context.drawImage(
+    mask,
+    placement.x,
+    placement.y,
+    placement.width,
+    placement.height
+  );
+}
+function maskCanvas(atlas, region) {
+  const canvas = sizedCanvas(region.atlas);
+  context2d(canvas).putImageData(atlas.coloredMask(region), 0, 0);
+  return canvas;
+}
+function sizedCanvas(size) {
+  const canvas = document.createElement("canvas");
+  canvas.width = size.width;
+  canvas.height = size.height;
+  return canvas;
+}
+function context2d(canvas) {
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Simple Preview SEGS requires canvas rendering.");
+  return context;
+}
+function regionTitle(region) {
+  const label = region.label.trim();
+  return `${String(region.index + 1)}. ${label || "region"}`;
+}
+function required(value) {
+  if (!value) throw new Error("Simple Preview SEGS has no committed document.");
+  return value;
+}
+function loadPreviewImage(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => {
+      resolve(image);
+    }, { once: true });
+    image.addEventListener(
+      "error",
+      () => {
+        reject(new Error("Simple Preview SEGS could not load a preview asset."));
+      },
+      { once: true }
+    );
+    image.src = url;
+  });
+}
+var stylesInstalled = false;
+function installStyles() {
+  if (stylesInstalled) return;
+  const style = document.createElement("style");
+  style.dataset.simpleSyrupSegsPreview = "true";
+  style.textContent = `
+    .ss-segs-preview { box-sizing: border-box; width: 100%; color: var(--fg-color, #ddd); font: 12px sans-serif; }
+    .ss-segs-preview * { box-sizing: border-box; }
+    .ss-segs-preview__toolbar { display: flex; gap: 4px; margin: 0 0 6px; }
+    .ss-segs-preview__toolbar button { flex: 1; min-height: 26px; border: 1px solid var(--border-color, #555); border-radius: 5px; color: inherit; background: var(--comfy-input-bg, #222); cursor: pointer; }
+    .ss-segs-preview__toolbar button[aria-pressed="true"] { border-color: var(--p-primary-color, #6aa9ff); background: color-mix(in srgb, var(--p-primary-color, #6aa9ff) 28%, var(--comfy-input-bg, #222)); }
+    .ss-segs-preview__body { overflow: hidden; border: 1px solid var(--border-color, #444); border-radius: 6px; background: var(--comfy-menu-bg, #181818); }
+    .ss-segs-preview[data-mode="grid"] .ss-segs-preview__body { display: none; }
+    .ss-segs-preview[data-mode="grid"] .ss-segs-preview__status { display: none; }
+    .ss-segs-preview__canvas-stack { position: relative; line-height: 0; background: #111; }
+    .ss-segs-preview__canvas-stack canvas { display: block; width: 100%; height: auto; }
+    .ss-segs-preview__highlight { position: absolute; inset: 0; cursor: crosshair; }
+    .ss-segs-preview__status { min-height: 22px; padding: 5px 2px 0; color: var(--descrip-text, #aaa); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ss-segs-preview__message { display: grid; min-height: 160px; place-items: center; padding: 18px; color: var(--descrip-text, #aaa); text-align: center; }
+    .ss-segs-preview__message[data-error="true"] { color: var(--error-text, #ff8a80); }
+  `;
+  document.head.append(style);
+  stylesInstalled = true;
+}
+
+// web/src/nativePreviewNavigator.ts
+var NativePreviewNavigator = class {
+  constructor(app2, node) {
+    this.app = app2;
+    this.node = node;
+  }
+  app;
+  node;
+  pendingReference;
+  legacyInspectionFrame;
+  unsubscribeLifecycle;
+  /** Report whether Comfy currently owns a DOM-backed preview surface. */
+  usesDomPreview() {
+    return this.domRoot() !== null;
+  }
+  /** Inspect one zero-based native preview item in either node renderer. */
+  inspect(index) {
+    if (!Number.isInteger(index) || index < 0) return;
+    if (this.domRoot()) {
+      const images = this.images();
+      if (!images || index >= images.length) return;
+      const reference = images[index];
+      if (this.clickDomImage(reference)) return;
+      this.pendingReference = reference;
+      this.unsubscribeLifecycle ??= subscribeNativePreviewLifecycle(() => {
+        this.completePendingInspection();
+      });
+      return;
+    }
+    this.scheduleLegacyImage(index);
+  }
+  /** Wait for Comfy to restore canvas images before selecting native detail. */
+  scheduleLegacyImage(index) {
+    this.cancelLegacyInspection();
+    const inspectWhenReady = () => {
+      const images = this.node.imgs;
+      if (images !== void 0 && images.length > index) {
+        this.legacyInspectionFrame = void 0;
+        this.openLegacyImage(index);
+        return;
+      }
+      this.legacyInspectionFrame = requestAnimationFrame(inspectWhenReady);
+    };
+    this.legacyInspectionFrame = requestAnimationFrame(inspectWhenReady);
+  }
+  /** Open one loaded image through Comfy's canvas detail state. */
+  openLegacyImage(index) {
+    this.node.imageIndex = index;
+    const position = this.app.canvas?.graph_mouse;
+    if (position) {
+      this.node.pointerDown = { index, pos: [position[0], position[1]] };
+    }
+    delete this.node.imageRects;
+    this.node.graph?.setDirtyCanvas?.(true, true);
+  }
+  /** Return the native preview to its one authoritative gallery. */
+  showGrid() {
+    this.cancelLegacyInspection();
+    this.pendingReference = void 0;
+    if (this.clickDomGrid()) return;
+    this.node.imageIndex = null;
+    delete this.node.imageRects;
+    this.node.graph?.setDirtyCanvas?.(true, true);
+  }
+  /** Cancel pending navigation when native images are hidden. */
+  hide() {
+    this.cancelLegacyInspection();
+    this.pendingReference = void 0;
+    this.node.imageIndex = null;
+    delete this.node.imageRects;
+    this.node.graph?.setDirtyCanvas?.(true, true);
+  }
+  /** Release native-preview lifecycle observation. */
+  dispose() {
+    this.cancelLegacyInspection();
+    this.pendingReference = void 0;
+    this.unsubscribeLifecycle?.();
+    this.unsubscribeLifecycle = void 0;
+  }
+  cancelLegacyInspection() {
+    if (this.legacyInspectionFrame === void 0) return;
+    cancelAnimationFrame(this.legacyInspectionFrame);
+    this.legacyInspectionFrame = void 0;
+  }
+  completePendingInspection() {
+    const reference = this.pendingReference;
+    if (!reference || !this.clickDomImage(reference)) return;
+    this.pendingReference = void 0;
+  }
+  clickDomImage(reference) {
+    const root = this.domRoot();
+    if (!root) return false;
+    const image = Array.from(root.querySelectorAll("img")).find(
+      (candidate) => comfyImageSourceKey(candidate.src) === comfyImageReferenceKey(reference)
+    );
+    const button = image?.closest("button");
+    if (!button) return false;
+    button.click();
+    return true;
+  }
+  clickDomGrid() {
+    const root = this.domRoot();
+    if (!root) return false;
+    const button = Array.from(root.querySelectorAll("button")).find(
+      (candidate) => candidate.getAttribute("aria-label") === "Grid view" || candidate.title === "Grid view"
+    );
+    if (!button) return false;
+    button.click();
+    return true;
+  }
+  domRoot() {
+    const nodeId = this.nodeId();
+    if (!nodeId) return null;
+    return Array.from(document.querySelectorAll("[data-node-id]")).find(
+      (element) => element.dataset.nodeId === nodeId
+    ) ?? null;
+  }
+  images() {
+    const nodeId = this.nodeId();
+    return nodeId ? this.app.nodeOutputs?.[nodeId]?.images : void 0;
+  }
+  nodeId() {
+    return this.node.id === void 0 ? void 0 : String(this.node.id);
+  }
+};
+
 // web/src/segPreviewTypes.ts
 var SEG_PREVIEW_OUTPUT_KEY = "simple_syrup_segs_preview";
 function parseSegPreviewDocument(output) {
@@ -1072,14 +2159,6 @@ function parseSegPreviewDocument(output) {
   }
   const regions = candidate.regions.map(parseRegion);
   return { version: 1, source, preview, atlas, regions };
-}
-function previewAssetUrl(reference, apiURL = (path) => path) {
-  const query = new URLSearchParams({
-    filename: reference.filename,
-    subfolder: reference.subfolder,
-    type: reference.type
-  });
-  return apiURL(`/view?${query.toString()}`);
 }
 function parseRegion(value, index) {
   if (!isRecord(value)) {
@@ -1173,436 +2252,147 @@ function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// web/src/selectionModel.ts
-var SelectionModel = class {
-  hovered = null;
-  selected = null;
-  candidates = [];
-  subscribers = /* @__PURE__ */ new Set();
-  /** Subscribe to selection changes and receive the current state immediately. */
-  subscribe(subscriber) {
-    this.subscribers.add(subscriber);
-    subscriber(this.state());
-    return () => this.subscribers.delete(subscriber);
+// web/src/segPreviewNativeSurface.ts
+var SegPreviewNativeSurface = class {
+  constructor(app2, api, node) {
+    this.app = app2;
+    this.node = node;
+    this.preview = new NativeNodePreview(app2, api, node);
+    this.navigator = new NativePreviewNavigator(app2, node);
   }
-  /** Replace the hover target and all regions currently beneath the pointer. */
-  hover(candidates) {
-    this.candidates = [...candidates];
-    this.hovered = candidates[0] ?? null;
-    this.publish();
-  }
-  /** Clear transient pointer state without changing the pinned region. */
-  clearHover() {
-    this.candidates = [];
-    this.hovered = null;
-    this.publish();
-  }
-  /** Pin one region, or clear the pinned selection with null. */
-  select(id) {
-    this.selected = id;
-    this.publish();
-  }
-  /** Cycle through overlapping pointer candidates and pin the result. */
-  selectNextCandidate() {
-    if (this.candidates.length === 0) return this.selected;
-    const currentIndex = this.selected === null ? -1 : this.candidates.indexOf(this.selected);
-    const next = this.candidates[(currentIndex + 1) % this.candidates.length] ?? null;
-    this.select(next);
-    return next;
-  }
-  /** Return immutable selection state for rendering or tests. */
-  state() {
-    return {
-      hovered: this.hovered,
-      selected: this.selected,
-      candidates: [...this.candidates],
-      active: this.hovered ?? this.selected
-    };
-  }
-  publish() {
-    const state = this.state();
-    for (const subscriber of this.subscribers) subscriber(state);
-  }
-};
-
-// web/src/segPreviewInspector.ts
-var SegPreviewInspector = class {
-  constructor(apiURL = (path) => path, loadImage = loadPreviewImage) {
-    this.apiURL = apiURL;
-    this.loadImage = loadImage;
-    installStyles();
-    this.element.className = "ss-segs-preview";
-    this.body.className = "ss-segs-preview__body";
-    this.status.className = "ss-segs-preview__status";
-    this.status.setAttribute("aria-live", "polite");
-    const toolbar = document.createElement("nav");
-    toolbar.className = "ss-segs-preview__toolbar";
-    toolbar.setAttribute("aria-label", "SEGS preview mode");
-    toolbar.append(this.overlayButton, this.gridButton);
-    this.overlayButton.addEventListener("click", () => {
-      this.setMode("overlay");
-    });
-    this.gridButton.addEventListener("click", () => {
-      this.setMode("grid");
-    });
-    this.element.append(toolbar, this.body, this.status);
-    this.updateModeButtons();
-    this.showMessage("Run the workflow to inspect SEGS.");
-  }
-  apiURL;
-  loadImage;
-  element = document.createElement("section");
-  body = document.createElement("div");
-  status = document.createElement("div");
-  overlayButton = modeButton("Overlay");
-  gridButton = modeButton("Grid");
+  app;
+  node;
+  preview;
+  navigator;
+  authoritativeOutput;
   mode = "overlay";
-  committed;
-  unsubscribeSelection;
-  highlightCanvas;
-  focusContainer;
-  gridButtons = /* @__PURE__ */ new Map();
-  /** Show a native loading state while execution assets are decoded. */
-  setLoading() {
-    this.showMessage("Loading SEGS preview\u2026");
+  /** Accept a complete backend result and apply the active surface mode. */
+  update(value) {
+    const output = executionOutput(value);
+    if (!output) return;
+    const document2 = parseSegPreviewDocument(value);
+    if (!document2) return;
+    if (output.images.length !== document2.regions.length) return;
+    this.authoritativeOutput = output;
+    if (this.mode === "overlay") {
+      this.hideNativePreview();
+    } else if (this.mode === "grid") {
+      this.navigator.showGrid();
+    }
   }
-  /** Load source and atlas assets without publishing partial state. */
-  async prepare(document2) {
-    const [image, atlasImage] = await Promise.all([
-      this.loadImage(previewAssetUrl(document2.preview.image, this.apiURL)),
-      this.loadImage(previewAssetUrl(document2.atlas.image, this.apiURL))
-    ]);
-    const atlas = maskAtlasFromImage(document2, atlasImage);
-    let disposed = false;
-    return {
-      commit: () => {
-        if (!disposed) this.commit(document2, image, atlas);
-      },
-      dispose: () => {
-        disposed = true;
-      }
-    };
+  /** Show only the custom semantic overlay. */
+  showOverlay() {
+    this.mode = "overlay";
+    this.hideNativePreview();
   }
-  /** Replace the inspector with an actionable failure message. */
-  showError(message) {
-    this.showMessage(message, true);
+  /** Show Comfy's native gallery and return it from native detail mode. */
+  showGrid() {
+    this.mode = "grid";
+    this.setCanvasPreviewVisible(true);
+    if (this.nativeImagesNeedPublishing()) {
+      this.publishAuthoritativeOutput();
+    }
+    this.navigator.showGrid();
   }
-  /** Release node-owned DOM and interaction subscriptions. */
+  /** Show one SEG through Comfy's native detail viewer. */
+  inspect(index) {
+    const output = this.authoritativeOutput;
+    if (!output || index < 0 || index >= output.images.length) return;
+    this.mode = "detail";
+    this.setCanvasPreviewVisible(true);
+    if (this.nativeImagesNeedPublishing()) {
+      this.publishAuthoritativeOutput();
+    }
+    this.navigator.inspect(index);
+  }
+  /** Release native-preview observers owned by this node. */
   dispose() {
-    this.unsubscribeSelection?.();
-    this.unsubscribeSelection = void 0;
-    this.committed = void 0;
-    this.body.replaceChildren();
-    this.status.textContent = "";
+    this.navigator.dispose();
   }
-  commit(document2, image, atlas) {
-    this.unsubscribeSelection?.();
-    const selection = new SelectionModel();
-    const masks = new Map(
-      document2.regions.map((region) => [
-        region.id,
-        maskCanvas(atlas, region)
-      ])
-    );
-    this.committed = {
-      document: document2,
-      image,
-      atlas,
-      viewport: new ImageViewport(document2.source, document2.preview),
-      masks,
-      selection
-    };
-    this.unsubscribeSelection = selection.subscribe((state) => {
-      this.renderSelection(state);
+  hideNativePreview() {
+    const usesDomPreview = this.navigator.usesDomPreview();
+    this.navigator.hide();
+    this.setCanvasPreviewVisible(false);
+    if (!usesDomPreview) return;
+    this.node.imgs = [];
+    const output = this.authoritativeOutput;
+    if (!output || output.images.length === 0) return;
+    this.preview.publish({
+      ...output,
+      images: [],
+      animated: []
     });
-    this.renderMode();
   }
-  setMode(mode) {
-    if (this.mode === mode) return;
-    this.mode = mode;
-    this.updateModeButtons();
-    this.renderMode();
-  }
-  updateModeButtons() {
-    this.overlayButton.setAttribute(
-      "aria-pressed",
-      String(this.mode === "overlay")
+  /** Hide the persistent Nodes 1.0 preview widget outside native modes. */
+  setCanvasPreviewVisible(visible) {
+    const widget = this.node.widgets?.find(
+      (candidate) => candidate.name === "$$canvas-image-preview"
     );
-    this.gridButton.setAttribute("aria-pressed", String(this.mode === "grid"));
+    if (!widget) return;
+    widget.hidden = !visible;
+    widget.options ??= {};
+    widget.options.hidden = !visible;
   }
-  renderMode() {
-    this.highlightCanvas = void 0;
-    this.focusContainer = void 0;
-    this.gridButtons.clear();
-    if (!this.committed) return;
-    this.body.replaceChildren(
-      this.mode === "overlay" ? this.overlayView() : this.gridView()
-    );
-    this.renderSelection(this.committed.selection.state());
-  }
-  overlayView() {
-    const committed = required(this.committed);
-    const container = document.createElement("div");
-    container.className = "ss-segs-preview__overlay-view";
-    const stack = document.createElement("div");
-    stack.className = "ss-segs-preview__canvas-stack";
-    const base = sizedCanvas(committed.document.preview);
-    const highlight = sizedCanvas(committed.document.preview);
-    highlight.className = "ss-segs-preview__highlight";
-    this.highlightCanvas = highlight;
-    const context = context2d(base);
-    context.drawImage(
-      committed.image,
-      0,
-      0,
-      committed.document.preview.width,
-      committed.document.preview.height
-    );
-    context.globalAlpha = 0.38;
-    for (const region of committed.document.regions) {
-      drawRegionMask(context, committed, region);
-    }
-    context.globalAlpha = 1;
-    highlight.addEventListener("pointermove", (event) => {
-      const point = committed.viewport.sourcePoint(
-        event.clientX,
-        event.clientY,
-        highlight.getBoundingClientRect()
-      );
-      const hits = committed.atlas.hitsAt(point.x, point.y);
-      committed.selection.hover(hits.map((region) => region.id));
+  publishAuthoritativeOutput() {
+    const output = this.authoritativeOutput;
+    if (!output) return;
+    delete this.node.images;
+    delete this.node.imgs;
+    this.preview.publish({
+      ...output,
+      images: [...output.images]
     });
-    highlight.addEventListener("pointerleave", () => {
-      committed.selection.clearHover();
-    });
-    highlight.addEventListener("click", () => {
-      committed.selection.selectNextCandidate();
-    });
-    stack.append(base, highlight);
-    this.focusContainer = document.createElement("div");
-    this.focusContainer.className = "ss-segs-preview__focus";
-    container.append(stack, this.focusContainer);
-    return container;
   }
-  gridView() {
-    const committed = required(this.committed);
-    const grid = document.createElement("div");
-    grid.className = "ss-segs-preview__grid";
-    grid.setAttribute("role", "listbox");
-    if (committed.document.regions.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "ss-segs-preview__empty";
-      empty.textContent = "No SEGS to display.";
-      grid.append(empty);
-      return grid;
-    }
-    for (const region of committed.document.regions) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "ss-segs-preview__card";
-      card.setAttribute("role", "option");
-      card.dataset.regionId = region.id;
-      const canvas = regionPreviewCanvas(committed, region, 160, 132);
-      const label = document.createElement("span");
-      label.textContent = regionTitle(region);
-      card.append(canvas, label);
-      card.addEventListener("pointerenter", () => {
-        committed.selection.hover([region.id]);
-      });
-      card.addEventListener("pointerleave", () => {
-        committed.selection.clearHover();
-      });
-      card.addEventListener("click", () => {
-        committed.selection.select(region.id);
-      });
-      this.gridButtons.set(region.id, card);
-      grid.append(card);
-    }
-    return grid;
+  /** Check whether Comfy's current output still contains every SEG image. */
+  hasAuthoritativeImages() {
+    const output = this.authoritativeOutput;
+    if (!output || this.node.id === void 0) return false;
+    return this.app.nodeOutputs?.[String(this.node.id)]?.images?.length === output.images.length;
   }
-  renderSelection(state) {
-    const committed = this.committed;
-    if (!committed) return;
-    const active = state.active ? committed.document.regions.find((region) => region.id === state.active) : void 0;
-    if (this.highlightCanvas) {
-      const context = context2d(this.highlightCanvas);
-      context.clearRect(
-        0,
-        0,
-        this.highlightCanvas.width,
-        this.highlightCanvas.height
-      );
-      if (active) {
-        context.save();
-        context.globalAlpha = 0.9;
-        context.shadowColor = "rgba(255, 255, 255, 0.95)";
-        context.shadowBlur = 8;
-        drawRegionMask(context, committed, active);
-        context.restore();
-      }
-    }
-    for (const [id, button] of this.gridButtons) {
-      const selected = id === state.selected;
-      const highlighted = id === active?.id;
-      button.setAttribute("aria-selected", String(selected));
-      button.dataset.highlighted = String(highlighted);
-    }
-    this.renderFocus(active);
-    if (!active) {
-      this.status.textContent = `${String(committed.document.regions.length)} regions`;
-    } else if (state.candidates.length > 1) {
-      this.status.textContent = `${regionTitle(active)} \xB7 ${String(state.candidates.length)} overlapping regions \xB7 click to cycle`;
-    } else {
-      this.status.textContent = regionTitle(active);
-    }
-  }
-  renderFocus(region) {
-    if (!this.focusContainer || !this.committed) return;
-    if (!region) {
-      this.focusContainer.replaceChildren();
-      return;
-    }
-    const title = document.createElement("strong");
-    title.textContent = regionTitle(region);
-    const details = document.createElement("span");
-    details.textContent = `${String(Math.round(region.confidence * 100))}% confidence \xB7 ${region.area.toLocaleString()} px`;
-    this.focusContainer.replaceChildren(
-      regionPreviewCanvas(this.committed, region, 320, 220),
-      title,
-      details
-    );
-  }
-  showMessage(message, error = false) {
-    const content = document.createElement("div");
-    content.className = "ss-segs-preview__message";
-    content.dataset.error = String(error);
-    content.textContent = message;
-    this.body.replaceChildren(content);
-    this.status.textContent = "";
+  /** Decide whether the active renderer needs its native images republished. */
+  nativeImagesNeedPublishing() {
+    const output = this.authoritativeOutput;
+    if (!output) return false;
+    if (this.navigator.usesDomPreview()) return !this.hasAuthoritativeImages();
+    return !loadedImagesMatchReferences(this.node.imgs, output.images);
   }
 };
-function drawRegionMask(context, committed, region) {
-  const placement = committed.viewport.displayRectangle(region.crop);
-  const mask = committed.masks.get(region.id);
-  if (!mask) return;
-  context.drawImage(
-    mask,
-    placement.x,
-    placement.y,
-    placement.width,
-    placement.height
-  );
+function executionOutput(value) {
+  if (typeof value !== "object" || value === null) return void 0;
+  const output = value;
+  if (!Array.isArray(output.images) || !output.images.every(isImageResult)) {
+    return void 0;
+  }
+  return output;
 }
-function regionPreviewCanvas(committed, region, maximumWidth, maximumHeight) {
-  const aspect = region.crop.width / region.crop.height;
-  const width = Math.max(80, Math.min(maximumWidth, Math.round(maximumHeight * aspect)));
-  const height = Math.max(64, Math.min(maximumHeight, Math.round(width / aspect)));
-  const canvas = sizedCanvas({ width, height });
-  const context = context2d(canvas);
-  const source = committed.viewport.displayRectangle(region.crop);
-  context.drawImage(
-    committed.image,
-    source.x,
-    source.y,
-    source.width,
-    source.height,
-    0,
-    0,
-    width,
-    height
-  );
-  context.globalAlpha = 0.45;
-  const mask = committed.masks.get(region.id);
-  if (mask) context.drawImage(mask, 0, 0, width, height);
-  context.globalAlpha = 1;
-  return canvas;
-}
-function maskCanvas(atlas, region) {
-  const canvas = sizedCanvas(region.atlas);
-  context2d(canvas).putImageData(atlas.coloredMask(region), 0, 0);
-  return canvas;
-}
-function sizedCanvas(size) {
-  const canvas = document.createElement("canvas");
-  canvas.width = size.width;
-  canvas.height = size.height;
-  return canvas;
-}
-function context2d(canvas) {
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Simple Preview SEGS requires canvas rendering.");
-  return context;
-}
-function regionTitle(region) {
-  const label = region.label.trim();
-  return `${String(region.index + 1)}. ${label || "region"}`;
-}
-function modeButton(label) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = label;
-  return button;
-}
-function required(value) {
-  if (!value) throw new Error("Simple Preview SEGS has no committed document.");
-  return value;
-}
-function loadPreviewImage(url) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.addEventListener("load", () => {
-      resolve(image);
-    }, { once: true });
-    image.addEventListener(
-      "error",
-      () => {
-        reject(new Error("Simple Preview SEGS could not load a preview asset."));
-      },
-      { once: true }
-    );
-    image.src = url;
-  });
-}
-var stylesInstalled = false;
-function installStyles() {
-  if (stylesInstalled) return;
-  const style = document.createElement("style");
-  style.dataset.simpleSyrupSegsPreview = "true";
-  style.textContent = `
-    .ss-segs-preview { box-sizing: border-box; width: 100%; min-height: 360px; color: var(--fg-color, #ddd); font: 12px sans-serif; }
-    .ss-segs-preview * { box-sizing: border-box; }
-    .ss-segs-preview__toolbar { display: flex; gap: 4px; margin: 0 0 6px; }
-    .ss-segs-preview__toolbar button { flex: 1; min-height: 26px; border: 1px solid var(--border-color, #555); border-radius: 5px; color: inherit; background: var(--comfy-input-bg, #222); cursor: pointer; }
-    .ss-segs-preview__toolbar button[aria-pressed="true"] { border-color: var(--p-primary-color, #6aa9ff); background: color-mix(in srgb, var(--p-primary-color, #6aa9ff) 28%, var(--comfy-input-bg, #222)); }
-    .ss-segs-preview__body { min-height: 320px; overflow: hidden; border: 1px solid var(--border-color, #444); border-radius: 6px; background: var(--comfy-menu-bg, #181818); }
-    .ss-segs-preview__canvas-stack { position: relative; line-height: 0; background: #111; }
-    .ss-segs-preview__canvas-stack canvas { display: block; width: 100%; height: auto; }
-    .ss-segs-preview__highlight { position: absolute; inset: 0; cursor: crosshair; }
-    .ss-segs-preview__status { min-height: 22px; padding: 5px 2px 0; color: var(--descrip-text, #aaa); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ss-segs-preview__focus { display: grid; grid-template-columns: minmax(96px, 42%) 1fr; gap: 3px 9px; align-items: start; padding: 7px; border-top: 1px solid var(--border-color, #444); }
-    .ss-segs-preview__focus canvas { grid-row: 1 / span 2; width: 100%; height: auto; border-radius: 4px; background: #111; }
-    .ss-segs-preview__focus span { color: var(--descrip-text, #aaa); }
-    .ss-segs-preview__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 6px; max-height: 430px; padding: 7px; overflow: auto; }
-    .ss-segs-preview__card { min-width: 0; padding: 4px; border: 1px solid var(--border-color, #444); border-radius: 5px; color: inherit; background: var(--comfy-input-bg, #222); cursor: pointer; text-align: left; }
-    .ss-segs-preview__card[data-highlighted="true"], .ss-segs-preview__card[aria-selected="true"] { border-color: var(--p-primary-color, #6aa9ff); box-shadow: 0 0 0 1px var(--p-primary-color, #6aa9ff); }
-    .ss-segs-preview__card canvas { display: block; width: 100%; height: 94px; object-fit: contain; margin-bottom: 4px; background: #111; }
-    .ss-segs-preview__card span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ss-segs-preview__message, .ss-segs-preview__empty { display: grid; min-height: 320px; place-items: center; padding: 18px; color: var(--descrip-text, #aaa); text-align: center; }
-    .ss-segs-preview__message[data-error="true"] { color: var(--error-text, #ff8a80); }
-  `;
-  document.head.append(style);
-  stylesInstalled = true;
+function isImageResult(value) {
+  if (typeof value !== "object" || value === null) return false;
+  const image = value;
+  return typeof image.filename === "string" && typeof image.subfolder === "string" && (image.type === "input" || image.type === "output" || image.type === "temp");
 }
 
 // web/src/segPreviewNode.ts
 var SIMPLE_PREVIEW_SEGS_NODE_ID = "SimpleSyrup.SimplePreviewSEGS";
 function registerSimplePreviewSEGS(app2, api, loadImage, logger = console) {
   const controllers = /* @__PURE__ */ new Map();
+  const nativeSurfaces = /* @__PURE__ */ new Map();
+  const widgetLayouts = /* @__PURE__ */ new Map();
   const extension = {
     name: "SimpleSyrup.SimplePreviewSEGS",
     nodeCreated(candidate) {
       if (!isPreviewNode(candidate)) return;
+      const nativeSurface = new SegPreviewNativeSurface(app2, api, candidate);
+      const layoutOwner = {};
       const inspector = new SegPreviewInspector(
+        (index) => {
+          nativeSurface.inspect(index);
+          layoutOwner.current?.reflow();
+        },
+        (mode) => {
+          if (mode === "overlay") nativeSurface.showOverlay();
+          else nativeSurface.showGrid();
+          layoutOwner.current?.reflow();
+        },
         (path) => api.apiURL?.(path) ?? path,
         loadImage
       );
@@ -1621,10 +2411,17 @@ function registerSimplePreviewSEGS(app2, api, loadImage, logger = console) {
       widget.options ??= {};
       widget.options.serialize = false;
       widget.options.canvasOnly = false;
-      widget.computeSize = (width = 420) => [Math.max(360, width), 470];
+      const widgetLayout = new FixedDomWidgetLayout(candidate, widget, (width = 420) => [
+        Math.max(360, width),
+        inspector.preferredHeight()
+      ]);
+      layoutOwner.current = widgetLayout;
       const registerId = () => {
         if (candidate.id !== void 0) {
-          controllers.set(String(candidate.id), controller);
+          const nodeId = String(candidate.id);
+          controllers.set(nodeId, controller);
+          nativeSurfaces.set(nodeId, nativeSurface);
+          widgetLayouts.set(nodeId, widgetLayout);
         }
       };
       registerId();
@@ -1632,20 +2429,31 @@ function registerSimplePreviewSEGS(app2, api, loadImage, logger = console) {
       candidate.onExecuted = function(output) {
         originalExecuted?.call(this, output);
         controller.update(output);
+        nativeSurface.update(output);
+        widgetLayout.reflow();
       };
       const originalGraphConfigured = candidate.onGraphConfigured;
       candidate.onGraphConfigured = function(...args) {
         const result = originalGraphConfigured?.apply(this, args);
         registerId();
         if (candidate.id !== void 0) {
-          controller.update(app2.nodeOutputs?.[String(candidate.id)]);
+          const output = app2.nodeOutputs?.[String(candidate.id)];
+          controller.update(output);
+          nativeSurface.update(output);
+          widgetLayout.reflow();
         }
         return result;
       };
       const originalRemoved = candidate.onRemoved;
       candidate.onRemoved = function(...args) {
-        if (candidate.id !== void 0) controllers.delete(String(candidate.id));
+        if (candidate.id !== void 0) {
+          const nodeId = String(candidate.id);
+          controllers.delete(nodeId);
+          nativeSurfaces.delete(nodeId);
+          widgetLayouts.delete(nodeId);
+        }
         controller.dispose();
+        nativeSurface.dispose();
         return originalRemoved?.apply(this, args);
       };
       const computed = candidate.computeSize?.();
@@ -1653,13 +2461,15 @@ function registerSimplePreviewSEGS(app2, api, loadImage, logger = console) {
       if (current && candidate.setSize) {
         candidate.setSize([
           Math.max(420, current[0]),
-          Math.max(520, computed?.[1] ?? current[1])
+          Math.max(420, computed?.[1] ?? current[1])
         ]);
       }
     },
     onNodeOutputsUpdated(outputs) {
       for (const [nodeId, output] of Object.entries(outputs)) {
         controllers.get(nodeId)?.update(output);
+        nativeSurfaces.get(nodeId)?.update(output);
+        widgetLayouts.get(nodeId)?.reflow();
       }
     }
   };
@@ -1682,4 +2492,5 @@ comfyApp.registerExtension({
   }
 });
 registerMaskBatchUpload(comfyApp, comfyApi);
+registerImageListUpload(comfyApp, comfyApi);
 registerSimplePreviewSEGS(comfyApp, comfyApi);

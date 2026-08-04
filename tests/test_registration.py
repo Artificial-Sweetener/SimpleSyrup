@@ -38,6 +38,7 @@ BASE_NODE_IDS = [
     "SimpleSyrup.LatentDiagnostics",
     "SimpleSyrup.LayerStyleSAMModelsAdapter",
     "SimpleSyrup.LoadUltralyticsModel",
+    "SimpleSyrup.LoadImageList",
     "SimpleSyrup.LoadMaskBatch",
     "SimpleSyrup.MaskToSEGS",
     "SimpleSyrup.PromptEncodeStyleAndNormalization",

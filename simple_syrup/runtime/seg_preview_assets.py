@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from importlib import import_module
 from typing import Any, Protocol
 
@@ -16,23 +17,34 @@ from ..services.simple_preview_segs_service import SegPreviewDocument
 SEG_PREVIEW_UI_KEY = "simple_syrup_segs_preview"
 
 
+@dataclass(frozen=True)
+class SegPreviewPublication:
+    """Carry native gallery images beside overlay interaction metadata."""
+
+    manifest: dict[str, object]
+    images: tuple[dict[str, str], ...]
+
+
 class SegPreviewAssetPublisher(Protocol):
     """Publish one backend preview document as a JSON-compatible UI payload."""
 
-    def publish(self, document: SegPreviewDocument) -> dict[str, object]:
-        """Return a frontend-ready manifest with temporary asset references."""
+    def publish(self, document: SegPreviewDocument) -> SegPreviewPublication:
+        """Return native gallery references and overlay interaction metadata."""
 
 
 class ComfySegPreviewAssetPublisher:
     """Store preview tensors using ComfyUI's authoritative image helper."""
 
-    def publish(self, document: SegPreviewDocument) -> dict[str, object]:
-        """Return one versioned manifest referencing a base image and mask atlas."""
+    def publish(self, document: SegPreviewDocument) -> SegPreviewPublication:
+        """Publish native RGBA regions plus the overlay image and mask atlas."""
 
         comfy_api: Any = import_module("comfy_api.latest")
         image_ref = _publish_one(comfy_api, document.image)
         atlas_ref = _publish_one(comfy_api, document.atlas)
-        return {
+        region_refs = tuple(
+            _publish_one(comfy_api, image) for image in document.region_images
+        )
+        manifest: dict[str, object] = {
             "version": 1,
             "source": {
                 "width": document.source_width,
@@ -72,6 +84,7 @@ class ComfySegPreviewAssetPublisher:
                 for region in document.regions
             ],
         }
+        return SegPreviewPublication(manifest=manifest, images=region_refs)
 
 
 def _publish_one(comfy_api: Any, image: torch.Tensor) -> dict[str, str]:

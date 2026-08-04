@@ -7,19 +7,18 @@ import {
   type PreparedInspectorState
 } from "./interactiveInspector";
 import { ImageViewport } from "./imageViewport";
-import { maskAtlasFromImage } from "./maskAtlas";
-import type { MaskAtlas } from "./maskAtlas";
+import { maskAtlasFromImage, type MaskAtlas } from "./maskAtlas";
+import { comfyImageUrl } from "./comfyImageUrl";
 import type {
   SegPreviewDocument,
   SegPreviewRegion
 } from "./segPreviewTypes";
-import { previewAssetUrl } from "./segPreviewTypes";
 import { SelectionModel, type SelectionState } from "./selectionModel";
 
-type PreviewMode = "overlay" | "grid";
 export type PreviewImageLoader = (url: string) => Promise<HTMLImageElement>;
+export type SegPreviewMode = "overlay" | "grid";
 
-interface CommittedPreview {
+interface CommittedOverlay {
   document: SegPreviewDocument;
   image: HTMLImageElement;
   atlas: MaskAtlas;
@@ -28,23 +27,23 @@ interface CommittedPreview {
   selection: SelectionModel<string>;
 }
 
-/** Render the interactive SEGS inspector inside Comfy's native DOM widget. */
+/** Render the SEGS overlay and switch visibility to Comfy's native gallery. */
 export class SegPreviewInspector
   implements AsyncInspectorView<SegPreviewDocument>
 {
   readonly element = document.createElement("section");
-  private readonly body = document.createElement("div");
-  private readonly status = document.createElement("div");
   private readonly overlayButton = modeButton("Overlay");
   private readonly gridButton = modeButton("Grid");
-  private mode: PreviewMode = "overlay";
-  private committed: CommittedPreview | undefined;
+  private readonly body = document.createElement("div");
+  private readonly status = document.createElement("div");
+  private mode: SegPreviewMode = "overlay";
+  private committed: CommittedOverlay | undefined;
   private unsubscribeSelection: (() => void) | undefined;
   private highlightCanvas: HTMLCanvasElement | undefined;
-  private focusContainer: HTMLElement | undefined;
-  private gridButtons = new Map<string, HTMLButtonElement>();
 
   constructor(
+    private readonly inspectRegion: (index: number) => void = () => undefined,
+    private readonly changeMode: (mode: SegPreviewMode) => void = () => undefined,
     private readonly apiURL: (path: string) => string = (path) => path,
     private readonly loadImage: PreviewImageLoader = loadPreviewImage
   ) {
@@ -64,11 +63,28 @@ export class SegPreviewInspector
       this.setMode("grid");
     });
     this.element.append(toolbar, this.body, this.status);
-    this.updateModeButtons();
+    this.updateMode();
     this.showMessage("Run the workflow to inspect SEGS.");
   }
 
-  /** Show a native loading state while execution assets are decoded. */
+  /** Return the renderer height needed by the active preview surface. */
+  preferredHeight(): number {
+    return this.mode === "overlay" ? 360 : 38;
+  }
+
+  /** Select the overlay or native gallery and optionally notify its owner. */
+  setMode(mode: SegPreviewMode, notifyOwner = true): void {
+    if (mode === this.mode) {
+      if (notifyOwner) this.changeMode(mode);
+      return;
+    }
+    this.mode = mode;
+    this.updateMode();
+    this.renderMode();
+    if (notifyOwner) this.changeMode(mode);
+  }
+
+  /** Show a loading state while execution assets are decoded. */
   setLoading(): void {
     this.showMessage("Loading SEGS preview…");
   }
@@ -76,8 +92,8 @@ export class SegPreviewInspector
   /** Load source and atlas assets without publishing partial state. */
   async prepare(document: SegPreviewDocument): Promise<PreparedInspectorState> {
     const [image, atlasImage] = await Promise.all([
-      this.loadImage(previewAssetUrl(document.preview.image, this.apiURL)),
-      this.loadImage(previewAssetUrl(document.atlas.image, this.apiURL))
+      this.loadImage(comfyImageUrl(document.preview.image, this.apiURL)),
+      this.loadImage(comfyImageUrl(document.atlas.image, this.apiURL))
     ]);
     const atlas = maskAtlasFromImage(document, atlasImage);
     let disposed = false;
@@ -91,16 +107,17 @@ export class SegPreviewInspector
     };
   }
 
-  /** Replace the inspector with an actionable failure message. */
+  /** Show an actionable error without breaking the node lifecycle. */
   showError(message: string): void {
     this.showMessage(message, true);
   }
 
-  /** Release node-owned DOM and interaction subscriptions. */
+  /** Release selection subscriptions and rendered state. */
   dispose(): void {
     this.unsubscribeSelection?.();
     this.unsubscribeSelection = undefined;
     this.committed = undefined;
+    this.highlightCanvas = undefined;
     this.body.replaceChildren();
     this.status.textContent = "";
   }
@@ -132,36 +149,20 @@ export class SegPreviewInspector
     this.renderMode();
   }
 
-  private setMode(mode: PreviewMode): void {
-    if (this.mode === mode) return;
-    this.mode = mode;
-    this.updateModeButtons();
-    this.renderMode();
-  }
-
-  private updateModeButtons(): void {
-    this.overlayButton.setAttribute(
-      "aria-pressed",
-      String(this.mode === "overlay")
-    );
-    this.gridButton.setAttribute("aria-pressed", String(this.mode === "grid"));
-  }
-
   private renderMode(): void {
+    const committed = this.committed;
+    if (!committed) return;
+    if (this.mode === "overlay") {
+      this.renderOverlay();
+      return;
+    }
     this.highlightCanvas = undefined;
-    this.focusContainer = undefined;
-    this.gridButtons.clear();
-    if (!this.committed) return;
-    this.body.replaceChildren(
-      this.mode === "overlay" ? this.overlayView() : this.gridView()
-    );
-    this.renderSelection(this.committed.selection.state());
+    this.body.replaceChildren();
+    this.status.textContent = `${String(committed.document.regions.length)} regions`;
   }
 
-  private overlayView(): HTMLElement {
+  private renderOverlay(): void {
     const committed = required(this.committed);
-    const container = document.createElement("div");
-    container.className = "ss-segs-preview__overlay-view";
     const stack = document.createElement("div");
     stack.className = "ss-segs-preview__canvas-stack";
     const base = sizedCanvas(committed.document.preview);
@@ -194,106 +195,45 @@ export class SegPreviewInspector
       committed.selection.clearHover();
     });
     highlight.addEventListener("click", () => {
-      committed.selection.selectNextCandidate();
+      const selected = committed.selection.selectNextCandidate();
+      const region = committed.document.regions.find(
+        (candidate) => candidate.id === selected
+      );
+      if (region) {
+        this.setMode("grid", false);
+        this.inspectRegion(region.index);
+      }
+      committed.selection.select(null);
     });
     stack.append(base, highlight);
-    this.focusContainer = document.createElement("div");
-    this.focusContainer.className = "ss-segs-preview__focus";
-    container.append(stack, this.focusContainer);
-    return container;
-  }
-
-  private gridView(): HTMLElement {
-    const committed = required(this.committed);
-    const grid = document.createElement("div");
-    grid.className = "ss-segs-preview__grid";
-    grid.setAttribute("role", "listbox");
-    if (committed.document.regions.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "ss-segs-preview__empty";
-      empty.textContent = "No SEGS to display.";
-      grid.append(empty);
-      return grid;
-    }
-    for (const region of committed.document.regions) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "ss-segs-preview__card";
-      card.setAttribute("role", "option");
-      card.dataset.regionId = region.id;
-      const canvas = regionPreviewCanvas(committed, region, 160, 132);
-      const label = document.createElement("span");
-      label.textContent = regionTitle(region);
-      card.append(canvas, label);
-      card.addEventListener("pointerenter", () => {
-        committed.selection.hover([region.id]);
-      });
-      card.addEventListener("pointerleave", () => {
-        committed.selection.clearHover();
-      });
-      card.addEventListener("click", () => {
-        committed.selection.select(region.id);
-      });
-      this.gridButtons.set(region.id, card);
-      grid.append(card);
-    }
-    return grid;
+    this.body.replaceChildren(stack);
+    this.renderSelection(committed.selection.state());
   }
 
   private renderSelection(state: SelectionState<string>): void {
     const committed = this.committed;
-    if (!committed) return;
+    const highlight = this.highlightCanvas;
+    if (!committed || !highlight) return;
     const active = state.active
       ? committed.document.regions.find((region) => region.id === state.active)
       : undefined;
-    if (this.highlightCanvas) {
-      const context = context2d(this.highlightCanvas);
-      context.clearRect(
-        0,
-        0,
-        this.highlightCanvas.width,
-        this.highlightCanvas.height
-      );
-      if (active) {
-        context.save();
-        context.globalAlpha = 0.9;
-        context.shadowColor = "rgba(255, 255, 255, 0.95)";
-        context.shadowBlur = 8;
-        drawRegionMask(context, committed, active);
-        context.restore();
-      }
+    const context = context2d(highlight);
+    context.clearRect(0, 0, highlight.width, highlight.height);
+    if (active) {
+      context.save();
+      context.globalAlpha = 0.9;
+      context.shadowColor = "rgba(255, 255, 255, 0.95)";
+      context.shadowBlur = 8;
+      drawRegionMask(context, committed, active);
+      context.restore();
     }
-    for (const [id, button] of this.gridButtons) {
-      const selected = id === state.selected;
-      const highlighted = id === active?.id;
-      button.setAttribute("aria-selected", String(selected));
-      button.dataset.highlighted = String(highlighted);
-    }
-    this.renderFocus(active);
     if (!active) {
       this.status.textContent = `${String(committed.document.regions.length)} regions`;
     } else if (state.candidates.length > 1) {
-      this.status.textContent = `${regionTitle(active)} · ${String(state.candidates.length)} overlapping regions · click to cycle`;
+      this.status.textContent = `${regionTitle(active)} · ${String(state.candidates.length)} overlapping regions · click to inspect`;
     } else {
-      this.status.textContent = regionTitle(active);
+      this.status.textContent = `${regionTitle(active)} · click to inspect`;
     }
-  }
-
-  private renderFocus(region: SegPreviewRegion | undefined): void {
-    if (!this.focusContainer || !this.committed) return;
-    if (!region) {
-      this.focusContainer.replaceChildren();
-      return;
-    }
-    const title = document.createElement("strong");
-    title.textContent = regionTitle(region);
-    const details = document.createElement("span");
-    details.textContent = `${String(Math.round(region.confidence * 100))}% confidence · ${region.area.toLocaleString()} px`;
-    this.focusContainer.replaceChildren(
-      regionPreviewCanvas(this.committed, region, 320, 220),
-      title,
-      details
-    );
   }
 
   private showMessage(message: string, error = false): void {
@@ -304,11 +244,27 @@ export class SegPreviewInspector
     this.body.replaceChildren(content);
     this.status.textContent = "";
   }
+
+  private updateMode(): void {
+    this.element.dataset.mode = this.mode;
+    this.overlayButton.setAttribute(
+      "aria-pressed",
+      String(this.mode === "overlay")
+    );
+    this.gridButton.setAttribute("aria-pressed", String(this.mode === "grid"));
+  }
+}
+
+function modeButton(label: string): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  return button;
 }
 
 function drawRegionMask(
   context: CanvasRenderingContext2D,
-  committed: CommittedPreview,
+  committed: CommittedOverlay,
   region: SegPreviewRegion
 ): void {
   const placement = committed.viewport.displayRectangle(region.crop);
@@ -321,36 +277,6 @@ function drawRegionMask(
     placement.width,
     placement.height
   );
-}
-
-function regionPreviewCanvas(
-  committed: CommittedPreview,
-  region: SegPreviewRegion,
-  maximumWidth: number,
-  maximumHeight: number
-): HTMLCanvasElement {
-  const aspect = region.crop.width / region.crop.height;
-  const width = Math.max(80, Math.min(maximumWidth, Math.round(maximumHeight * aspect)));
-  const height = Math.max(64, Math.min(maximumHeight, Math.round(width / aspect)));
-  const canvas = sizedCanvas({ width, height });
-  const context = context2d(canvas);
-  const source = committed.viewport.displayRectangle(region.crop);
-  context.drawImage(
-    committed.image,
-    source.x,
-    source.y,
-    source.width,
-    source.height,
-    0,
-    0,
-    width,
-    height
-  );
-  context.globalAlpha = 0.45;
-  const mask = committed.masks.get(region.id);
-  if (mask) context.drawImage(mask, 0, 0, width, height);
-  context.globalAlpha = 1;
-  return canvas;
 }
 
 function maskCanvas(atlas: MaskAtlas, region: SegPreviewRegion): HTMLCanvasElement {
@@ -375,13 +301,6 @@ function context2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 function regionTitle(region: SegPreviewRegion): string {
   const label = region.label.trim();
   return `${String(region.index + 1)}. ${label || "region"}`;
-}
-
-function modeButton(label: string): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = label;
-  return button;
 }
 
 function required<T>(value: T | undefined): T {
@@ -413,25 +332,19 @@ function installStyles(): void {
   const style = document.createElement("style");
   style.dataset.simpleSyrupSegsPreview = "true";
   style.textContent = `
-    .ss-segs-preview { box-sizing: border-box; width: 100%; min-height: 360px; color: var(--fg-color, #ddd); font: 12px sans-serif; }
+    .ss-segs-preview { box-sizing: border-box; width: 100%; color: var(--fg-color, #ddd); font: 12px sans-serif; }
     .ss-segs-preview * { box-sizing: border-box; }
     .ss-segs-preview__toolbar { display: flex; gap: 4px; margin: 0 0 6px; }
     .ss-segs-preview__toolbar button { flex: 1; min-height: 26px; border: 1px solid var(--border-color, #555); border-radius: 5px; color: inherit; background: var(--comfy-input-bg, #222); cursor: pointer; }
     .ss-segs-preview__toolbar button[aria-pressed="true"] { border-color: var(--p-primary-color, #6aa9ff); background: color-mix(in srgb, var(--p-primary-color, #6aa9ff) 28%, var(--comfy-input-bg, #222)); }
-    .ss-segs-preview__body { min-height: 320px; overflow: hidden; border: 1px solid var(--border-color, #444); border-radius: 6px; background: var(--comfy-menu-bg, #181818); }
+    .ss-segs-preview__body { overflow: hidden; border: 1px solid var(--border-color, #444); border-radius: 6px; background: var(--comfy-menu-bg, #181818); }
+    .ss-segs-preview[data-mode="grid"] .ss-segs-preview__body { display: none; }
+    .ss-segs-preview[data-mode="grid"] .ss-segs-preview__status { display: none; }
     .ss-segs-preview__canvas-stack { position: relative; line-height: 0; background: #111; }
     .ss-segs-preview__canvas-stack canvas { display: block; width: 100%; height: auto; }
     .ss-segs-preview__highlight { position: absolute; inset: 0; cursor: crosshair; }
     .ss-segs-preview__status { min-height: 22px; padding: 5px 2px 0; color: var(--descrip-text, #aaa); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ss-segs-preview__focus { display: grid; grid-template-columns: minmax(96px, 42%) 1fr; gap: 3px 9px; align-items: start; padding: 7px; border-top: 1px solid var(--border-color, #444); }
-    .ss-segs-preview__focus canvas { grid-row: 1 / span 2; width: 100%; height: auto; border-radius: 4px; background: #111; }
-    .ss-segs-preview__focus span { color: var(--descrip-text, #aaa); }
-    .ss-segs-preview__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 6px; max-height: 430px; padding: 7px; overflow: auto; }
-    .ss-segs-preview__card { min-width: 0; padding: 4px; border: 1px solid var(--border-color, #444); border-radius: 5px; color: inherit; background: var(--comfy-input-bg, #222); cursor: pointer; text-align: left; }
-    .ss-segs-preview__card[data-highlighted="true"], .ss-segs-preview__card[aria-selected="true"] { border-color: var(--p-primary-color, #6aa9ff); box-shadow: 0 0 0 1px var(--p-primary-color, #6aa9ff); }
-    .ss-segs-preview__card canvas { display: block; width: 100%; height: 94px; object-fit: contain; margin-bottom: 4px; background: #111; }
-    .ss-segs-preview__card span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ss-segs-preview__message, .ss-segs-preview__empty { display: grid; min-height: 320px; place-items: center; padding: 18px; color: var(--descrip-text, #aaa); text-align: center; }
+    .ss-segs-preview__message { display: grid; min-height: 160px; place-items: center; padding: 18px; color: var(--descrip-text, #aaa); text-align: center; }
     .ss-segs-preview__message[data-error="true"] { color: var(--error-text, #ff8a80); }
   `;
   document.head.append(style);
