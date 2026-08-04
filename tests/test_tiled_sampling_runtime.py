@@ -171,6 +171,78 @@ def test_tile_transformer_options_repeats_model_metadata() -> None:
     assert torch.equal(tiled["sample_sigmas"], torch.tensor([1.0, 0.0]))
 
 
+def test_tile_conditioning_repeats_complete_reference_latents() -> None:
+    """Independent reference images remain complete for every tiled model call."""
+
+    canvas_sized_reference = torch.arange(
+        1 * 4 * 4 * 8,
+        dtype=torch.float32,
+    ).reshape((1, 4, 4, 8))
+    smaller_reference = torch.full((1, 4, 3, 5), 7.0)
+    tiles = (LatentTile(0, 0, 4, 4), LatentTile(4, 0, 4, 4))
+
+    transformed = tiled_sampling.tile_conditioning(
+        conditioning={
+            "ref_latents": [canvas_sized_reference, smaller_reference],
+            "ref_latents_method": "index",
+        },
+        tiles=tiles,
+        input_batch_size=1,
+        latent_height=4,
+        latent_width=8,
+        tiled_timestep=torch.tensor([1.0, 1.0]),
+    )
+
+    references = transformed["ref_latents"]
+    assert isinstance(references, list)
+    assert torch.equal(
+        references[0],
+        torch.cat([canvas_sized_reference, canvas_sized_reference], dim=0),
+    )
+    assert torch.equal(
+        references[1],
+        torch.cat([smaller_reference, smaller_reference], dim=0),
+    )
+    assert transformed["ref_latents_method"] == "index"
+
+
+def test_spatial_context_conditioning_repeats_complete_reference_latents() -> None:
+    """Global and semantic contexts share complete independent reference images."""
+
+    reference = torch.arange(1 * 4 * 8 * 12, dtype=torch.float32).reshape((1, 4, 8, 12))
+    contexts = (
+        SpatialContext(0, 0, 12, 8, 6, 4),
+        SpatialContext(2, 1, 8, 6, 6, 4),
+    )
+
+    transformed = tiled_sampling.spatial_context_conditioning(
+        conditioning={"ref_latents": [reference]},
+        contexts=contexts,
+        input_batch_size=1,
+        latent_height=8,
+        latent_width=12,
+        context_timestep=torch.tensor([1.0, 1.0]),
+    )
+
+    references = transformed["ref_latents"]
+    assert isinstance(references, list)
+    assert torch.equal(references[0], torch.cat([reference, reference], dim=0))
+
+
+def test_reference_latents_reject_ambiguous_batch_alignment() -> None:
+    """Reference batches must align explicitly with each model input batch."""
+
+    with pytest.raises(ValueError, match="ref_latents tensor batch size"):
+        tiled_sampling.tile_conditioning(
+            conditioning={"ref_latents": [torch.zeros((3, 4, 8, 12))]},
+            tiles=(LatentTile(0, 0, 6, 8), LatentTile(6, 0, 6, 8)),
+            input_batch_size=2,
+            latent_height=8,
+            latent_width=12,
+            tiled_timestep=torch.ones((4,)),
+        )
+
+
 def test_spatial_context_args_resize_latent_and_canvas_conditioning() -> None:
     """A global context resizes spatial tensors and repeats aligned metadata."""
 
