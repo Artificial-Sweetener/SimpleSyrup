@@ -6,11 +6,10 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import torch
 
-from simple_syrup.nodes_v3 import load_mask_batch as node_module
 from simple_syrup.nodes_v3.load_mask_batch import LoadMaskBatchV3
 
 
@@ -55,7 +54,7 @@ def test_schema_exposes_native_ordered_mask_multiselect() -> None:
     image = inputs["image"].as_dict()
     assert schema.node_id == "SimpleSyrup.LoadMaskBatch"
     assert schema.display_name == "Load Mask Batch"
-    assert schema.has_intermediate_output is True
+    assert schema.has_intermediate_output is False
     assert image["image_upload"] is True
     assert image["allow_batch"] is True
     assert image["image_folder"] == "input"
@@ -69,20 +68,11 @@ def test_schema_exposes_native_ordered_mask_multiselect() -> None:
     assert [output.io_type for output in schema.outputs] == ["MASK"]
 
 
-def test_execute_preserves_order_and_returns_native_preview(monkeypatch: Any) -> None:
-    """Execution returns one MASK batch and previews that exact tensor."""
-
-    previews: list[tuple[torch.Tensor, object]] = []
-
-    def fake_preview(mask: torch.Tensor, cls: object) -> str:
-        """Record the native preview payload."""
-
-        previews.append((mask, cls))
-        return "preview"
+def test_execute_preserves_order_and_returns_one_mask_batch() -> None:
+    """Execution returns one MASK batch without adding a duplicate UI gallery."""
 
     original = LoadMaskBatchV3.service_class
     LoadMaskBatchV3.service_class = FakeService  # type: ignore[assignment]
-    monkeypatch.setattr(node_module._comfy_ui, "PreviewMask", fake_preview)
     try:
         output = LoadMaskBatchV3.execute(["b.png", "a.png"], "green")
         fingerprint = LoadMaskBatchV3.fingerprint_inputs(["b.png", "a.png"], "green")
@@ -93,8 +83,7 @@ def test_execute_preserves_order_and_returns_native_preview(monkeypatch: Any) ->
     assert output.result is not None
     mask_batch = output.result[0]
     assert mask_batch.shape == (2, 2, 2)
-    assert previews == [(mask_batch, LoadMaskBatchV3)]
-    assert output.ui == "preview"
+    assert output.ui is None
     assert fingerprint == "green:b.png|a.png"
 
 

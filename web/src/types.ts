@@ -28,11 +28,22 @@ export interface ComfySettingsApi {
 
 export interface ComfyApp {
   nodeOutputs?: Record<string, ComfyNodeExecutionOutput>;
+  canvas?: ComfyCanvasApi;
   ui: {
     settings: ComfySettingsApi;
   };
   refreshComboInNodes?: () => Promise<void>;
   registerExtension(extension: ComfyExtension): void;
+}
+
+/** Stable coordinate operations exposed by Comfy's graph canvas. */
+export interface ComfyCanvasApi {
+  canvas: HTMLCanvasElement;
+  graph_mouse?: readonly [number, number];
+  convertEventToCanvasOffset(event: MouseEvent): [number, number];
+  convertOffsetToCanvas(
+    position: readonly [number, number]
+  ): [number, number];
 }
 
 export interface ComfyApi extends ComfyExecutionEvents {

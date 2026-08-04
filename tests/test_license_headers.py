@@ -71,6 +71,30 @@ def test_direct_vendored_and_generated_source_are_excluded() -> None:
     assert should_update(Path("simple_syrup/runtime/a1111_sampling.py"))
 
 
+def test_tracked_source_discovery_ignores_worktree_deletions(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """Ignore tracked source paths removed from the working tree."""
+
+    deleted = tmp_path / "deleted.py"
+    present = tmp_path / "present.py"
+    present.write_text("# source", encoding="utf-8")
+
+    class Result:
+        """Represent deterministic git output for the loaded tool module."""
+
+        stdout = f"{deleted}\n{present}\n"
+
+    monkeypatch.setattr(
+        license_headers.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    assert license_headers._tracked_source_files() == [present]
+
+
 def test_tracked_first_party_source_has_project_license_header() -> None:
     """Require tracked SimpleSyrup-owned source to carry the AGPL project header."""
 

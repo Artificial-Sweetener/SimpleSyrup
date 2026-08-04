@@ -14,10 +14,17 @@ describe("SegPreviewInspector", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shares pinned selection between overlay and grid views", async () => {
+  it("hands overlay selection to Comfy's native preview navigator", async () => {
     installCanvasMock();
     const loadImage = vi.fn(() => Promise.resolve(document.createElement("img")));
-    const inspector = new SegPreviewInspector((path) => path, loadImage);
+    const inspectRegion = vi.fn<(index: number) => void>();
+    const changeMode = vi.fn<(mode: "overlay" | "grid") => void>();
+    const inspector = new SegPreviewInspector(
+      inspectRegion,
+      changeMode,
+      (path) => path,
+      loadImage
+    );
     const prepared = await inspector.prepare(previewDocument());
     prepared.commit();
     const highlight = requiredElement(
@@ -34,17 +41,44 @@ describe("SegPreviewInspector", () => {
     );
     expect(inspector.element.textContent).toContain("subject");
     highlight.click();
-    buttonNamed(inspector.element, "Grid").click();
 
-    const card = requiredElement(
-      inspector.element,
-      ".ss-segs-preview__card"
+    expect(changeMode).not.toHaveBeenCalled();
+    expect(inspectRegion).toHaveBeenCalledWith(0);
+    expect(
+      inspector.element.querySelector(".ss-segs-preview__canvas-stack")
+    ).toBeNull();
+  });
+
+  it("switches to the native grid without implementing another gallery", async () => {
+    installCanvasMock();
+    const loadImage = vi.fn(() => Promise.resolve(document.createElement("img")));
+    const changeMode = vi.fn<(mode: "overlay" | "grid") => void>();
+    const inspector = new SegPreviewInspector(
+      () => undefined,
+      changeMode,
+      (path) => path,
+      loadImage
     );
-    if (!(card instanceof HTMLButtonElement)) {
-      throw new Error("Missing region card.");
-    }
-    expect(card.getAttribute("aria-selected")).toBe("true");
-    expect(card.dataset.highlighted).toBe("true");
+    const prepared = await inspector.prepare(previewDocument());
+    prepared.commit();
+
+    expect(inspector.element.querySelector(".ss-segs-preview__grid")).toBeNull();
+    expect(
+      inspector.element.querySelector(".ss-segs-preview__inspection")
+    ).toBeNull();
+    const buttons = Array.from(inspector.element.querySelectorAll("button"));
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "Overlay",
+      "Grid"
+    ]);
+
+    buttons[1]?.click();
+
+    expect(changeMode).toHaveBeenCalledWith("grid");
+    expect(inspector.element.dataset.mode).toBe("grid");
+    expect(inspector.element.querySelector(".ss-segs-preview__body")?.childNodes)
+      .toHaveLength(0);
+    expect(inspector.preferredHeight()).toBe(38);
   });
 
   it("switches to an actionable error without throwing from the node lifecycle", () => {
@@ -82,14 +116,6 @@ function previewDocument(): SegPreviewDocument {
       }
     ]
   };
-}
-
-function buttonNamed(root: ParentNode, name: string): HTMLButtonElement {
-  const button = Array.from(root.querySelectorAll("button")).find(
-    (candidate) => candidate.textContent === name
-  );
-  if (!button) throw new Error(`Missing '${name}' button.`);
-  return button;
 }
 
 function requiredElement(root: ParentNode, selector: string): Element {

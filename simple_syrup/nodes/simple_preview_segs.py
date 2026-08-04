@@ -57,8 +57,11 @@ class SimplePreviewSEGS:
 
         native_segs = coerce_segs(segs)
         document = self.service_class().build(image=image, segs=native_segs)
-        manifest = self.publisher_class().publish(document)
+        publication = self.publisher_class().publish(document)
         return {
-            "ui": {SEG_PREVIEW_UI_KEY: [manifest]},
+            "ui": {
+                "images": list(publication.images),
+                SEG_PREVIEW_UI_KEY: [publication.manifest],
+            },
             "result": (segs,),
         }

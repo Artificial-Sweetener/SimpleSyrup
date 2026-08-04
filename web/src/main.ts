@@ -8,6 +8,7 @@ import { app } from "../../../scripts/app.js";
 import { registerSimpleSyrupSettings } from "./settings";
 import { registerExternalLLMRefreshHook } from "./refresh";
 import { registerMaskBatchUpload } from "./maskBatchUpload";
+import { registerImageListUpload } from "./imageListUpload";
 import { registerSimplePreviewSEGS } from "./segPreviewNode";
 import type { ComfyApi, ComfyApp } from "./types";
 
@@ -28,4 +29,5 @@ comfyApp.registerExtension({
 });
 
 registerMaskBatchUpload(comfyApp, comfyApi);
+registerImageListUpload(comfyApp, comfyApi);
 registerSimplePreviewSEGS(comfyApp, comfyApi);

@@ -84,7 +84,7 @@ def _tracked_source_files() -> list[Path]:
     return sorted(
         path
         for path_text in result.stdout.splitlines()
-        if _should_update(path := Path(path_text))
+        if _should_update(path := Path(path_text)) and path.is_file()
     )
 
 
