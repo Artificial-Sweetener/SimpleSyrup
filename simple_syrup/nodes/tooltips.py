@@ -137,6 +137,10 @@ DENOISE_STRENGTH = (
     "larger changes."
 )
 DENOISED_LATENT_OUTPUT = "Denoised latent for VAE decode or more latent processing."
+CONTEXTUAL_DIFFUSION_CONTEXTS_OUTPUT = (
+    "Rectangular non-global contexts actually evaluated during sampling. Their "
+    "SEGS masks are created only when this output is connected."
+)
 TILED_DIFFUSION_MODE = (
     "Tile overlap blend. MultiDiffusion averages predictions; Mixture of Diffusers "
     "gives tile centers more influence."

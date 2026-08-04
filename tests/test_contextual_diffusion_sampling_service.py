@@ -47,7 +47,12 @@ def test_service_builds_global_context_and_segs_guided_tile_plan(
         **_sample_kwargs(latent=latent, segs=_segs(512, 768))
     )
 
-    assert torch.equal(result["samples"], latent["samples"])
+    assert torch.equal(result.latent["samples"], latent["samples"])
+    assert result.contexts[0] == (512, 768)
+    assert len(result.contexts[1]) == len(calls[0]["plan"].tile_plan.tiles)
+    assert not result.contexts[1].is_materialized
+    assert all(segment.label.startswith("context_") for segment in result.contexts[1])
+    assert result.contexts[1].is_materialized
     assert len(calls) == 1
     assert calls[0]["diffusion_mode"] == "mixture_of_diffusers"
     plan = calls[0]["plan"]

@@ -6,11 +6,17 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, TypeAlias
 
 import torch
 
 from ..domain.conditioning_batch import ConditioningBatch, select_conditioning
+from ..domain.context_segs import (
+    ContextSegs,
+    context_segs_from_tile_plan,
+    merge_context_segs,
+)
 from ..domain.contextual_diffusion import (
     ContextualDiffusionControls,
     build_contextual_diffusion_plan,
@@ -18,6 +24,7 @@ from ..domain.contextual_diffusion import (
 from ..domain.segs import NativeSegs, coerce_segs_group
 from ..domain.tiled_diffusion import validate_tiled_diffusion_mode
 from ..runtime.contextual_diffusion_sampling import sample_contextual_diffusion
+from ..runtime.latent_geometry import decoded_image_dimensions
 from .sampling_batch import (
     combine_latent_outputs,
     latent_batch_size,
@@ -25,6 +32,14 @@ from .sampling_batch import (
 )
 
 Latent: TypeAlias = dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ContextualDiffusionSamplingResult:
+    """Return the sampled latent and lazy non-global context SEGS."""
+
+    latent: Latent
+    contexts: ContextSegs
 
 
 class ContextualDiffusionSamplingService:
@@ -51,7 +66,7 @@ class ContextualDiffusionSamplingService:
         global_steps: int,
         global_decay: float,
         segs: object | None = None,
-    ) -> Latent:
+    ) -> ContextualDiffusionSamplingResult:
         """Sample a latent with global and bounded detail contexts."""
 
         validate_tiled_diffusion_mode(diffusion_mode)
@@ -71,6 +86,16 @@ class ContextualDiffusionSamplingService:
                 "Contextual Diffusion requires one SEGS payload or one per latent "
                 f"batch item; received {len(segs_group)} for batch size {batch_size}."
             )
+        image_height, image_width = (
+            segs_group[0][0]
+            if segs_group
+            else decoded_image_dimensions(
+                model=model,
+                latent_image=latent_image,
+                latent_height=int(latent_image["samples"].shape[-2]),
+                latent_width=int(latent_image["samples"].shape[-1]),
+            )
+        )
         split_batch = (
             bool(segs_group)
             or isinstance(positive, ConditioningBatch)
@@ -91,11 +116,14 @@ class ContextualDiffusionSamplingService:
                 diffusion_mode=diffusion_mode,
                 controls=controls,
                 segs=None,
+                image_height=image_height,
+                image_width=image_width,
             )
 
         outputs: list[torch.Tensor] = []
+        contexts: list[ContextSegs] = []
         for index in range(batch_size):
-            item_output = self._sample_item(
+            item_result = self._sample_item(
                 model=model,
                 seed=seed,
                 steps=steps,
@@ -121,14 +149,20 @@ class ContextualDiffusionSamplingService:
                     if segs_group
                     else None
                 ),
+                image_height=image_height,
+                image_width=image_width,
             )
-            samples = item_output.get("samples")
+            samples = item_result.latent.get("samples")
             if not isinstance(samples, torch.Tensor):
                 raise TypeError(
                     "Contextual Diffusion output samples must be a torch.Tensor."
                 )
             outputs.append(samples)
-        return combine_latent_outputs(latent_image, outputs)
+            contexts.append(item_result.contexts)
+        return ContextualDiffusionSamplingResult(
+            latent=combine_latent_outputs(latent_image, outputs),
+            contexts=merge_context_segs(contexts),
+        )
 
     def _sample_item(
         self,
@@ -146,7 +180,9 @@ class ContextualDiffusionSamplingService:
         diffusion_mode: str,
         controls: ContextualDiffusionControls,
         segs: NativeSegs | None,
-    ) -> Latent:
+        image_height: int,
+        image_width: int,
+    ) -> ContextualDiffusionSamplingResult:
         """Build one canvas plan and execute it through the runtime adapter."""
 
         samples = latent_image.get("samples")
@@ -160,7 +196,7 @@ class ContextualDiffusionSamplingService:
             controls=controls,
             segs=segs,
         )
-        return sample_contextual_diffusion(
+        latent = sample_contextual_diffusion(
             model=model,
             seed=seed,
             steps=steps,
@@ -174,4 +210,12 @@ class ContextualDiffusionSamplingService:
             diffusion_mode=diffusion_mode,
             controls=controls,
             plan=plan,
+        )
+        return ContextualDiffusionSamplingResult(
+            latent=latent,
+            contexts=context_segs_from_tile_plan(
+                plan.tile_plan,
+                image_height=image_height,
+                image_width=image_width,
+            ),
         )

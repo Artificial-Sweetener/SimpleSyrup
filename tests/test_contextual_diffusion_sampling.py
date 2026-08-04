@@ -119,6 +119,59 @@ def test_global_prediction_decays_then_stops_after_configured_steps() -> None:
     assert torch.allclose(output, torch.ones_like(output))
 
 
+def test_every_prediction_receives_each_complete_reference_image() -> None:
+    """Local and global predictions preserve ordered multi-image conditioning."""
+
+    controls = _controls()
+    plan = build_contextual_diffusion_plan(
+        latent_width=32,
+        latent_height=16,
+        controls=controls,
+        segs=None,
+    )
+    wrapper = ContextualDiffusionModelWrapper(
+        plan=plan,
+        controls=controls,
+        sigmas=torch.tensor([1.0, 0.0]),
+        existing_wrapper=None,
+    )
+    image_1 = torch.arange(1 * 4 * 16 * 32, dtype=torch.float32).reshape((1, 4, 16, 32))
+    image_2 = torch.full((1, 4, 10, 12), 2.0)
+    received: list[list[torch.Tensor]] = []
+
+    def apply_model(
+        x: torch.Tensor,
+        timestep: torch.Tensor,
+        **conditioning: object,
+    ) -> torch.Tensor:
+        """Capture reference batches presented to each bounded prediction."""
+
+        del timestep
+        references = conditioning["ref_latents"]
+        assert isinstance(references, list)
+        assert all(isinstance(reference, torch.Tensor) for reference in references)
+        received.append(references)
+        return torch.zeros_like(x)
+
+    wrapper(
+        apply_model,
+        {
+            "input": torch.zeros((1, 1, 16, 32)),
+            "timestep": torch.tensor([1.0]),
+            "c": {
+                "ref_latents": [image_1, image_2],
+                "ref_latents_method": "index",
+            },
+        },
+    )
+
+    assert len(received) == 2
+    assert torch.equal(received[0][0], torch.cat([image_1, image_1], dim=0))
+    assert torch.equal(received[0][1], torch.cat([image_2, image_2], dim=0))
+    assert torch.equal(received[1][0], image_1)
+    assert torch.equal(received[1][1], image_2)
+
+
 def test_native_sized_canvas_delegates_to_one_original_model_call() -> None:
     """A canvas already inside the model view limit behaves like normal sampling."""
 
