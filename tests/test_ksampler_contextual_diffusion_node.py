@@ -11,8 +11,12 @@ from typing import Any
 import pytest
 import torch
 
+from simple_syrup.domain.segs import NativeSegs
 from simple_syrup.nodes.ksampler_contextual_diffusion import (
     KSamplerContextualDiffusion,
+)
+from simple_syrup.nodes_v3.legacy_node_wrappers import (
+    KSamplerContextualDiffusionV3,
 )
 from simple_syrup.runtime import sampling_samplers, sampling_schedulers
 
@@ -68,12 +72,22 @@ def test_input_types_expose_concise_klein_oriented_controls(
 
 
 def test_node_metadata_matches_separate_sampler_contract() -> None:
-    """Contextual Diffusion remains a distinct sampler with latent output."""
+    """Contextual Diffusion exposes its latent and actual local contexts."""
 
-    assert KSamplerContextualDiffusion.RETURN_TYPES == ("LATENT",)
+    assert KSamplerContextualDiffusion.RETURN_TYPES == ("LATENT", "SEGS")
+    assert KSamplerContextualDiffusion.RETURN_NAMES == ("latent", "contexts_segs")
+    assert len(KSamplerContextualDiffusion.OUTPUT_TOOLTIPS) == 2
     assert KSamplerContextualDiffusion.FUNCTION == "sample"
     assert KSamplerContextualDiffusion.CATEGORY == "SimpleSyrup/Sampling"
     assert "composition" in KSamplerContextualDiffusion.DESCRIPTION
+
+
+def test_v3_schema_names_both_contextual_diffusion_outputs() -> None:
+    """The exported v3 schema exposes the workflow-facing context socket."""
+
+    schema = KSamplerContextualDiffusionV3.define_schema()
+
+    assert [output.id for output in schema.outputs] == ["latent", "contexts_segs"]
 
 
 def test_sample_delegates_every_control_to_service(
@@ -90,7 +104,7 @@ def test_sample_delegates_every_control_to_service(
     latent = {"samples": torch.zeros((1, 4, 32, 48))}
     segs = object()
 
-    (result,) = KSamplerContextualDiffusion().sample(
+    result, contexts = KSamplerContextualDiffusion().sample(
         model="model",
         seed=12,
         steps=8,
@@ -112,6 +126,7 @@ def test_sample_delegates_every_control_to_service(
     )
 
     assert result is fake_service.output
+    assert contexts is fake_service.contexts
     assert fake_service.calls == [
         {
             "model": "model",
@@ -143,10 +158,15 @@ class _FakeContextualDiffusionService:
         """Create a stable output and empty call history."""
 
         self.output: dict[str, Any] = {"samples": torch.ones((1, 4, 32, 48))}
+        self.contexts: NativeSegs = ((256, 384), ())
         self.calls: list[dict[str, Any]] = []
 
-    def sample(self, **kwargs: Any) -> dict[str, Any]:
+    def sample(self, **kwargs: Any) -> Any:
         """Record one call and return the stable latent."""
 
         self.calls.append(kwargs)
-        return self.output
+        return type(
+            "Result",
+            (),
+            {"latent": self.output, "contexts": self.contexts},
+        )()

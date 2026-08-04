@@ -31,6 +31,7 @@ ModelFunctionWrapper: TypeAlias = Callable[[ApplyModel, dict[str, Any]], torch.T
 TileEvaluator: TypeAlias = Callable[[dict[str, Any]], torch.Tensor]
 
 UNSUPPORTED_CONDITIONING_KEYS = frozenset({"area", "control", "gligen"})
+CONTEXT_INVARIANT_CONDITIONING_KEYS = frozenset({"ref_latents"})
 
 
 @dataclass(frozen=True)
@@ -463,6 +464,14 @@ def spatial_context_conditioning(
                 tiled_timestep=context_timestep,
             )
             continue
+        if key in CONTEXT_INVARIANT_CONDITIONING_KEYS:
+            transformed[key] = repeat_context_invariant_value(
+                value,
+                context_count=len(contexts),
+                input_batch_size=input_batch_size,
+                conditioning_key=key,
+            )
+            continue
         transformed[key] = spatial_context_value(
             value,
             contexts=contexts,
@@ -587,6 +596,14 @@ def tile_conditioning(
                 tiled_timestep=tiled_timestep,
             )
             continue
+        if key in CONTEXT_INVARIANT_CONDITIONING_KEYS:
+            tiled[key] = repeat_context_invariant_value(
+                value,
+                context_count=len(tiles),
+                input_batch_size=input_batch_size,
+                conditioning_key=key,
+            )
+            continue
         tiled[key] = tile_value(
             value,
             tiles=tiles,
@@ -595,6 +612,52 @@ def tile_conditioning(
             latent_width=latent_width,
         )
     return tiled
+
+
+def repeat_context_invariant_value(
+    value: Any,
+    *,
+    context_count: int,
+    input_batch_size: int,
+    conditioning_key: str,
+) -> Any:
+    """Repeat non-spatial conditioning without cropping its tensor contents."""
+
+    if isinstance(value, torch.Tensor):
+        if value.ndim < 1:
+            raise ValueError(
+                f"{conditioning_key} tensors must include a batch dimension."
+            )
+        if value.shape[0] == input_batch_size:
+            return torch.cat([value] * context_count, dim=0)
+        if value.shape[0] == 1:
+            repeats = [input_batch_size * context_count] + [1] * (value.ndim - 1)
+            return value.repeat(repeats)
+        raise ValueError(
+            f"{conditioning_key} tensor batch size must be 1 or match the model "
+            f"input batch size {input_batch_size}; received {value.shape[0]}."
+        )
+    if isinstance(value, list):
+        return [
+            repeat_context_invariant_value(
+                item,
+                context_count=context_count,
+                input_batch_size=input_batch_size,
+                conditioning_key=conditioning_key,
+            )
+            for item in value
+        ]
+    if isinstance(value, tuple):
+        return tuple(
+            repeat_context_invariant_value(
+                item,
+                context_count=context_count,
+                input_batch_size=input_batch_size,
+                conditioning_key=conditioning_key,
+            )
+            for item in value
+        )
+    return value
 
 
 def tile_transformer_options(
