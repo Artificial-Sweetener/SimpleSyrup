@@ -60,19 +60,6 @@ export function parseSegPreviewDocument(
   return { version: 1, source, preview, atlas, regions };
 }
 
-/** Build a Comfy view URL without assuming it is hosted at the origin root. */
-export function previewAssetUrl(
-  reference: ComfyImageResult,
-  apiURL: (path: string) => string = (path) => path
-): string {
-  const query = new URLSearchParams({
-    filename: reference.filename,
-    subfolder: reference.subfolder,
-    type: reference.type
-  });
-  return apiURL(`/view?${query.toString()}`);
-}
-
 function parseRegion(value: unknown, index: number): SegPreviewRegion {
   if (!isRecord(value)) {
     throw new Error(

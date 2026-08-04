@@ -58,9 +58,20 @@ def test_publisher_stores_both_assets_and_builds_versioned_manifest(
     document = _document()
     manifest = ComfySegPreviewAssetPublisher().publish(document)
 
-    assert _PreviewImage.calls == [document.image, document.atlas]
-    assert manifest["version"] == 1
-    assert manifest["preview"] == {
+    assert _PreviewImage.calls == [
+        document.image,
+        document.atlas,
+        *document.region_images,
+    ]
+    assert manifest.images == (
+        {
+            "filename": "asset-3.png",
+            "subfolder": "preview",
+            "type": "temp",
+        },
+    )
+    assert manifest.manifest["version"] == 1
+    assert manifest.manifest["preview"] == {
         "width": 4,
         "height": 3,
         "image": {
@@ -69,7 +80,7 @@ def test_publisher_stores_both_assets_and_builds_versioned_manifest(
             "type": "temp",
         },
     }
-    assert manifest["atlas"] == {
+    assert manifest.manifest["atlas"] == {
         "width": 2,
         "height": 1,
         "image": {
@@ -78,7 +89,7 @@ def test_publisher_stores_both_assets_and_builds_versioned_manifest(
             "type": "temp",
         },
     }
-    assert manifest["regions"] == [
+    assert manifest.manifest["regions"] == [
         {
             "id": "seg-0001",
             "index": 0,
@@ -128,6 +139,7 @@ def _document() -> SegPreviewDocument:
         preview_height=3,
         image=torch.zeros((1, 3, 4, 3)),
         atlas=torch.ones((1, 1, 2, 3)),
+        region_images=(torch.zeros((1, 3, 2, 4)),),
         regions=(
             SegPreviewRegion(
                 region_id="seg-0001",
