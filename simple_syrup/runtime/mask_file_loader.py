@@ -11,13 +11,13 @@ from importlib import import_module
 from pathlib import Path
 
 import torch
-from PIL import Image
+from PIL import Image, ImageOps
 
 MASK_CHANNELS: tuple[str, ...] = ("alpha", "red", "green", "blue")
 
 
 class MaskFileLoader:
-    """Load one static mask through ComfyUI's native mask implementation."""
+    """Load one static mask while preserving authored image geometry."""
 
     def available_files(self) -> tuple[str, ...]:
         """Return choices declared by ComfyUI's native mask loader."""
@@ -38,12 +38,15 @@ class MaskFileLoader:
             raise ValueError(str(result))
 
     def load(self, annotated_path: str, channel: str) -> torch.Tensor:
-        """Return exactly one BHW mask from a validated annotated path."""
+        """Return one BHW mask with zero source-sized coverage when alpha is absent."""
 
         self.validate(annotated_path, channel)
         path = self._resolve_path(annotated_path)
         with Image.open(path) as image:
             frame_count = int(getattr(image, "n_frames", 1))
+            normalized_image = ImageOps.exif_transpose(image)
+            source_width, source_height = normalized_image.size
+            has_alpha = "A" in normalized_image.getbands()
         if frame_count != 1:
             raise ValueError(
                 f"Load Mask Batch requires one mask per file; {annotated_path!r} "
@@ -55,6 +58,8 @@ class MaskFileLoader:
         mask = result[0]
         if not isinstance(mask, torch.Tensor):
             raise TypeError(f"ComfyUI did not return a MASK for {annotated_path!r}.")
+        if channel == "alpha" and not has_alpha:
+            mask = mask.new_zeros((1, source_height, source_width))
         if mask.ndim != 3 or int(mask.shape[0]) != 1:
             raise ValueError(
                 f"Load Mask Batch requires one mask per file; {annotated_path!r} "
