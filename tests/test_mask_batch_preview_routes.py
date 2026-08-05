@@ -198,6 +198,55 @@ def test_preview_route_uses_real_native_loader_and_renderer_on_synthetic_masks(
             assert preview.size == (8, 6)
 
 
+def test_preview_route_preserves_rgb_geometry_for_missing_alpha(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An RGB file previews as source-sized zero coverage for the alpha channel."""
+
+    input_directory = tmp_path / "input"
+    preview_directory = tmp_path / "preview"
+    input_directory.mkdir()
+    preview_directory.mkdir()
+    mask_path = input_directory / "rgb.png"
+    Image.new("RGB", (9, 7), color=(255, 255, 255)).save(mask_path)
+
+    folder_paths = import_module("folder_paths")
+    monkeypatch.setattr(
+        folder_paths,
+        "exists_annotated_filepath",
+        lambda value: value == "rgb.png",
+    )
+    monkeypatch.setattr(
+        folder_paths,
+        "get_annotated_filepath",
+        lambda value: str(mask_path),
+    )
+    monkeypatch.setattr(
+        folder_paths,
+        "get_temp_directory",
+        lambda: str(preview_directory),
+    )
+
+    handler = MaskBatchPreviewHandlers(
+        LoadMaskBatchService(),
+        NativeMaskBatchPreviewRenderer(),
+    )
+    response = asyncio.run(
+        handler.post_preview(FakeRequest({"files": ["rgb.png"], "channel": "alpha"}))
+    )
+
+    payload = json.loads(response_text(response))
+    assert response.status == 200
+    preview_record = payload["images"][0]
+    preview_path = (
+        preview_directory / preview_record["subfolder"] / preview_record["filename"]
+    )
+    with Image.open(preview_path) as preview:
+        assert preview.size == (9, 7)
+        assert preview.convert("L").getextrema() == (0, 0)
+
+
 def test_preview_route_renders_mixed_dimensions_independently(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
