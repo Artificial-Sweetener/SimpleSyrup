@@ -400,12 +400,61 @@ describe("ordered-media node integration", () => {
   it("normalizes scalar workflows and survives Nodes 2.0 reactive assignments", async () => {
     const fixture = configured("saved.png", true);
 
-    fixture.node.onGraphConfigured?.();
+    const onGraphConfigured = fixture.node.onGraphConfigured;
+    if (!onGraphConfigured) throw new Error("Expected graph configuration callback.");
+    onGraphConfigured();
 
     expect(fixture.imageWidget.value).toEqual(["saved.png"]);
     await vi.waitFor(() => {
       expect(fixture.app.nodeOutputs?.["7"]?.images).toEqual(
         references("saved.png")
+      );
+    });
+  });
+
+  it("retains array-valued media when the legacy graph lifecycle clears the widget", async () => {
+    const fixture = createFixture(["one.png", "two.png"]);
+    fixture.node.onGraphConfigured = () => {
+      fixture.imageWidget.value = undefined;
+    };
+    configureOrderedMediaNode(
+      fixture.node,
+      fixture.app,
+      fixture.api,
+      CONFIG
+    );
+    fixture.node.onGraphConfigured();
+
+    expect(fixture.imageWidget.value).toEqual(["one.png", "two.png"]);
+    await vi.waitFor(() => {
+      expect(fixture.app.nodeOutputs?.["7"]?.images).toEqual(
+        references("one.png", "two.png")
+      );
+    });
+  });
+
+  it("restores persisted widget values when Comfy clears the live media widget", async () => {
+    const fixture = createFixture(undefined);
+    fixture.node.widgets_values = [
+      ["one.png", "two.png"],
+      "image",
+      "ordered_media",
+      "ordered_media"
+    ];
+    configureOrderedMediaNode(
+      fixture.node,
+      fixture.app,
+      fixture.api,
+      CONFIG
+    );
+    fixture.imageWidget.value = undefined;
+
+    fixture.node.onGraphConfigured?.();
+
+    expect(fixture.imageWidget.value).toEqual(["one.png", "two.png"]);
+    await vi.waitFor(() => {
+      expect(fixture.app.nodeOutputs?.["7"]?.images).toEqual(
+        references("one.png", "two.png")
       );
     });
   });
@@ -511,6 +560,7 @@ function createFixture(value: unknown, reactive = false) {
     constructor: { comfyClass: "SimpleSyrup.LoadImageList" },
     id: 7,
     widgets,
+    widgets_values: undefined as unknown[] | undefined,
     imgs: undefined as HTMLImageElement[] | undefined,
     graph: { setDirtyCanvas: vi.fn() },
     pasteFiles: vi.fn(() => true) as (...args: unknown[]) => unknown,

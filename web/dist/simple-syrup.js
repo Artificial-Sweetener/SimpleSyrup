@@ -561,15 +561,19 @@ var NativeNodePreview = class {
   publishListeners = /* @__PURE__ */ new Set();
   /** Publish media as an execution-shaped output for both node renderers. */
   publish(output) {
-    const nodeId = this.nodeId();
-    if (!nodeId) return;
+    const localNodeId = this.localNodeId();
+    if (!localNodeId) return;
+    const outputLocator = this.outputLocator(localNodeId);
     this.app.nodeOutputs ??= {};
-    this.app.nodeOutputs[nodeId] = output;
-    this.api.dispatchEvent(
-      new CustomEvent("executed", {
-        detail: { node: nodeId, display_node: nodeId, output }
-      })
-    );
+    this.app.nodeOutputs[localNodeId] = output;
+    this.app.nodeOutputs[outputLocator] = output;
+    for (const executionId of this.executionIds(localNodeId)) {
+      this.api.dispatchEvent(
+        new CustomEvent("executed", {
+          detail: { node: executionId, display_node: executionId, output }
+        })
+      );
+    }
     for (const listener of this.publishListeners) listener();
   }
   /** Notify renderer adapters after native output changes. */
@@ -581,11 +585,51 @@ var NativeNodePreview = class {
   clear() {
     this.publish({ images: [], animated: [] });
   }
-  nodeId() {
+  localNodeId() {
     if (this.node.id === void 0) return void 0;
     return String(this.node.id);
   }
+  /** Match the output key selected by Comfy's Nodes 2.0 subgraph renderer. */
+  outputLocator(localNodeId) {
+    const graphId = this.node.graph?.id;
+    const isSubgraph = this.node.graph && this.node.graph !== this.app.rootGraph;
+    return isSubgraph && graphId !== void 0 ? `${String(graphId)}:${localNodeId}` : localNodeId;
+  }
+  /** Resolve instance paths because Comfy events consume execution IDs, not graph locators. */
+  executionIds(localNodeId) {
+    const graph = this.node.graph;
+    const rootGraph = this.app.rootGraph;
+    if (!graph || !rootGraph || graph === rootGraph || graph.isRootGraph) {
+      return [localNodeId];
+    }
+    const parentPaths = findGraphInstancePaths(rootGraph, graph);
+    return parentPaths.length > 0 ? parentPaths.map((path) => `${path}:${localNodeId}`) : [];
+  }
 };
+function findGraphInstancePaths(root, target, visited = /* @__PURE__ */ new Set()) {
+  if (visited.has(root)) return [];
+  const nextVisited = new Set(visited);
+  nextVisited.add(root);
+  const paths = [];
+  for (const node of root.nodes ?? []) {
+    const nodeId = graphNodeId(node);
+    if (!nodeId || !node.subgraph) continue;
+    if (node.subgraph === target) paths.push(nodeId);
+    for (const nestedPath of findGraphInstancePaths(
+      node.subgraph,
+      target,
+      nextVisited
+    )) {
+      paths.push(`${nodeId}:${nestedPath}`);
+    }
+  }
+  return paths;
+}
+function graphNodeId(node) {
+  if (node.id === void 0) return void 0;
+  const identity = String(node.id);
+  return identity.length > 0 ? identity : void 0;
+}
 
 // web/src/orderedMediaPreview.ts
 var OrderedMediaPreviewController = class {
@@ -663,7 +707,7 @@ function ensureObserver() {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["src"]
+    attributeFilter: ["aria-current", "src"]
   });
 }
 
@@ -678,15 +722,19 @@ var OrderedMediaPreviewAffordances = class {
     window.addEventListener("resize", this.requestRefresh, true);
     document.addEventListener("click", this.requestRefresh, true);
     document.addEventListener("keydown", this.requestRefresh, true);
+    document.addEventListener("pointerdown", this.suspendViewportControls, true);
     document.addEventListener("pointermove", this.requestRefresh, true);
-    document.addEventListener("pointerup", this.requestRefresh, true);
+    document.addEventListener("pointerup", this.resumeViewportControls, true);
+    document.addEventListener("pointercancel", this.resumeViewportControls, true);
     document.addEventListener("wheel", this.requestRefresh, true);
     this.refresh();
   }
   options;
   elements = [];
+  positionedContainers = /* @__PURE__ */ new Map();
   animationFrame = null;
   remainingSyncFrames = 0;
+  viewportControlsSuspended = false;
   /** Recheck native layout across several frames after Comfy rerenders output. */
   refresh() {
     this.remainingSyncFrames = Math.max(this.remainingSyncFrames, 4);
@@ -697,8 +745,10 @@ var OrderedMediaPreviewAffordances = class {
     window.removeEventListener("resize", this.requestRefresh, true);
     document.removeEventListener("click", this.requestRefresh, true);
     document.removeEventListener("keydown", this.requestRefresh, true);
+    document.removeEventListener("pointerdown", this.suspendViewportControls, true);
     document.removeEventListener("pointermove", this.requestRefresh, true);
-    document.removeEventListener("pointerup", this.requestRefresh, true);
+    document.removeEventListener("pointerup", this.resumeViewportControls, true);
+    document.removeEventListener("pointercancel", this.resumeViewportControls, true);
     document.removeEventListener("wheel", this.requestRefresh, true);
     if (this.animationFrame !== null) {
       cancelAnimationFrame(this.animationFrame);
@@ -706,10 +756,23 @@ var OrderedMediaPreviewAffordances = class {
     }
     for (const element of this.elements) element.root.remove();
     this.elements = [];
+    this.releasePositionedContainers(/* @__PURE__ */ new Set());
   }
   requestRefresh = () => {
     this.remainingSyncFrames = Math.max(this.remainingSyncFrames, 2);
     this.scheduleSync();
+  };
+  suspendViewportControls = (event) => {
+    if (!(event.target instanceof HTMLCanvasElement)) return;
+    this.viewportControlsSuspended = true;
+    for (const elements of this.elements) {
+      if (elements.root.parentElement === document.body) elements.root.hidden = true;
+    }
+  };
+  resumeViewportControls = () => {
+    if (!this.viewportControlsSuspended) return;
+    this.viewportControlsSuspended = false;
+    this.refresh();
   };
   scheduleSync() {
     if (this.animationFrame !== null) return;
@@ -722,42 +785,87 @@ var OrderedMediaPreviewAffordances = class {
   }
   sync() {
     const slots = this.options.getSlots();
+    const activeContainers = /* @__PURE__ */ new Set();
     this.resizeElements(slots.length);
     for (const [index, elements] of this.elements.entries()) {
-      const slot = slots[index];
-      if (!slot || slot.width <= 0 || slot.height <= 0) {
+      const actionSlot = slots[index];
+      const slot = actionSlot?.bounds;
+      if (!actionSlot || !slot || slot.width <= 0 || slot.height <= 0 || !actionSlot.container && this.viewportControlsSuspended) {
         elements.root.hidden = true;
         continue;
       }
+      const itemIndex = actionSlot.itemIndex;
       elements.root.hidden = false;
-      const stripHeight = Math.max(18, Math.min(26, slot.height * 0.16));
+      const position = this.mount(elements.root, actionSlot, activeContainers);
+      const stripHeight = Math.max(18, Math.min(26, position.height * 0.16));
       Object.assign(elements.root.style, {
-        left: `${String(slot.left)}px`,
-        top: `${String(slot.top)}px`,
-        width: `${String(slot.width)}px`,
+        left: `${String(position.left)}px`,
+        top: `${String(position.top)}px`,
+        width: `${String(position.width)}px`,
         height: `${String(stripHeight)}px`
       });
-      elements.root.dataset.ssMediaIndex = String(index);
-      elements.earlier.dataset.ssMediaIndex = String(index);
-      elements.later.dataset.ssMediaIndex = String(index);
-      elements.remove.dataset.ssMediaIndex = String(index);
-      setActionAvailability(elements.earlier, index > 0);
+      elements.root.dataset.ssMediaIndex = String(itemIndex);
+      elements.earlier.dataset.ssMediaIndex = String(itemIndex);
+      elements.later.dataset.ssMediaIndex = String(itemIndex);
+      elements.remove.dataset.ssMediaIndex = String(itemIndex);
+      setActionAvailability(elements.earlier, itemIndex > 0);
       setActionAvailability(
         elements.later,
-        index < this.elements.length - 1
+        itemIndex < this.options.getItemCount() - 1
       );
       elements.earlier.setAttribute(
         "aria-label",
-        `Move ${this.options.itemLabel} ${String(index + 1)} earlier`
+        `Move ${this.options.itemLabel} ${String(itemIndex + 1)} earlier`
       );
       elements.later.setAttribute(
         "aria-label",
-        `Move ${this.options.itemLabel} ${String(index + 1)} later`
+        `Move ${this.options.itemLabel} ${String(itemIndex + 1)} later`
       );
       elements.remove.setAttribute(
         "aria-label",
-        `Remove ${this.options.itemLabel} ${String(index + 1)}`
+        `Remove ${this.options.itemLabel} ${String(itemIndex + 1)}`
       );
+    }
+    this.releasePositionedContainers(activeContainers);
+  }
+  /** Mount one control strip in the preview surface that owns its geometry. */
+  mount(root, actionSlot, activeContainers) {
+    const container = actionSlot.container;
+    if (!container) {
+      if (root.parentElement !== document.body) document.body.append(root);
+      root.style.position = "fixed";
+      root.style.zIndex = "2";
+      return actionSlot.bounds;
+    }
+    activeContainers.add(container);
+    this.positionContainer(container);
+    if (root.parentElement !== container) container.append(root);
+    root.style.position = "absolute";
+    root.style.zIndex = "1";
+    const containerRect = container.getBoundingClientRect();
+    const scaleX = containerScale(containerRect.width, container.offsetWidth);
+    const scaleY = containerScale(containerRect.height, container.offsetHeight);
+    return {
+      left: (actionSlot.bounds.left - containerRect.left) / scaleX - container.clientLeft + container.scrollLeft,
+      top: (actionSlot.bounds.top - containerRect.top) / scaleY - container.clientTop + container.scrollTop,
+      width: actionSlot.bounds.width / scaleX,
+      height: actionSlot.bounds.height / scaleY
+    };
+  }
+  /** Establish a local containing block without overriding authored positioning. */
+  positionContainer(container) {
+    if (this.positionedContainers.has(container)) return;
+    const position = getComputedStyle(container).position;
+    if (position !== "" && position !== "static") return;
+    this.positionedContainers.set(container, container.style.position);
+    container.style.position = "relative";
+  }
+  /** Restore preview surfaces that no longer contain loader controls. */
+  releasePositionedContainers(activeContainers) {
+    for (const [container, originalPosition] of this.positionedContainers) {
+      if (activeContainers.has(container)) continue;
+      container.style.position = originalPosition;
+      this.positionedContainers.delete(container);
     }
   }
   resizeElements(count) {
@@ -771,14 +879,12 @@ var OrderedMediaPreviewAffordances = class {
     root.className = "ss-native-preview-affordance";
     Object.assign(root.style, {
       position: "fixed",
-      zIndex: "9990",
+      zIndex: "2",
       display: "flex",
       alignItems: "stretch",
       pointerEvents: "none",
       overflow: "hidden",
-      borderRadius: "4px 4px 0 0",
-      background: "rgba(20, 20, 20, 0.72)",
-      boxShadow: "inset 0 -1px 0 rgba(255, 255, 255, 0.16)"
+      background: "rgba(20, 20, 20, 0.72)"
     });
     const earlier = controlButton("pi-arrow-left", "Move earlier");
     earlier.setAttribute(MEDIA_MOVE_EARLIER_ATTRIBUTE, "true");
@@ -846,6 +952,11 @@ function setActionAvailability(button, available) {
 function stopControlPointerEvent(event) {
   event.preventDefault();
   event.stopPropagation();
+}
+function containerScale(renderedSize, localSize) {
+  if (renderedSize <= 0 || localSize <= 0) return 1;
+  const scale = renderedSize / localSize;
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
 // web/src/orderedMediaPreviewTransaction.ts
@@ -951,6 +1062,9 @@ function loadedImagesMatchReferences(images, references) {
 }
 
 // web/src/orderedMediaPreviewActions.ts
+var CUBE_FACE_PROJECTION_SYMBOL = /* @__PURE__ */ Symbol.for(
+  "sugarcubes.cube-face-projection.v1"
+);
 var OrderedMediaPreviewActions = class {
   constructor(options) {
     this.options = options;
@@ -961,25 +1075,39 @@ var OrderedMediaPreviewActions = class {
         this.affordances.refresh();
       }
     });
+    const moveEarlier = (index) => {
+      const destination = index - 1;
+      this.transaction.move(index, destination);
+      this.followMovedDetail(index, destination);
+      options.moveEarlier(index);
+    };
+    const moveLater = (index) => {
+      const destination = index + 1;
+      this.transaction.move(index, destination);
+      this.followMovedDetail(index, destination);
+      options.moveLater(index);
+    };
+    const remove = (index) => {
+      const removedDetail = this.selectedItemIndex() === index;
+      this.transaction.remove(index);
+      options.remove(index);
+      this.followRemovedDetail(index, removedDetail);
+    };
+    const actionOptions = {
+      getItemCount: () => this.itemCount(),
+      moveEarlier,
+      moveLater,
+      remove
+    };
     this.affordances = new OrderedMediaPreviewAffordances({
       itemLabel: options.itemLabel,
-      getSlots: () => this.nativeSlots(),
-      moveEarlier: (index) => {
-        this.transaction.move(index, index - 1);
-        options.moveEarlier(index);
-      },
-      moveLater: (index) => {
-        this.transaction.move(index, index + 1);
-        options.moveLater(index);
-      },
-      remove: (index) => {
-        this.transaction.remove(index);
-        options.remove(index);
-      }
+      getSlots: () => this.nativeActionSlots(),
+      ...actionOptions
     });
     this.unsubscribePreview = options.preview.subscribe(() => {
       this.affordances.refresh();
       this.transaction.authoritativePublished();
+      this.restorePendingDetail();
     });
     this.unsubscribeLifecycle = subscribeNativePreviewLifecycle(() => {
       this.affordances.refresh();
@@ -990,12 +1118,19 @@ var OrderedMediaPreviewActions = class {
   transaction;
   unsubscribePreview;
   unsubscribeLifecycle;
+  lastCanvasPreviewRect = null;
+  pendingDetailIndex = null;
+  detailRestoreFrame = null;
   /** Remove layout listeners and every loader-owned overlay control. */
   dispose() {
     this.unsubscribePreview();
     this.unsubscribeLifecycle();
     this.transaction.dispose();
     this.affordances.dispose();
+    if (this.detailRestoreFrame !== null) {
+      cancelAnimationFrame(this.detailRestoreFrame);
+      this.detailRestoreFrame = null;
+    }
   }
   itemCount() {
     const files = this.options.getFiles();
@@ -1031,36 +1166,35 @@ var OrderedMediaPreviewActions = class {
     ) ?? null;
   }
   canvasSlots() {
-    const canvasApi = this.options.app.canvas;
-    const nodePosition = this.options.node.pos;
     const imageRects = this.options.node.imageRects;
-    if (!canvasApi || !nodePosition || !imageRects) return [];
-    const canvasRect = canvasApi.canvas.getBoundingClientRect();
-    return imageRects.map(([x, y, width, height]) => {
-      const topLeft = canvasApi.convertOffsetToCanvas([
-        nodePosition[0] + x,
-        nodePosition[1] + y
-      ]);
-      const bottomRight = canvasApi.convertOffsetToCanvas([
-        nodePosition[0] + x + width,
-        nodePosition[1] + y + height
-      ]);
-      return {
-        left: canvasRect.left + topLeft[0],
-        top: canvasRect.top + topLeft[1],
-        width: bottomRight[0] - topLeft[0],
-        height: bottomRight[1] - topLeft[1]
-      };
-    });
+    if (!imageRects) return [];
+    if (imageRects.length > 0) {
+      this.lastCanvasPreviewRect = unionImageRects(imageRects);
+    }
+    const slots = [];
+    for (const rect of imageRects) {
+      const slot = this.canvasLocalSlot(rect);
+      if (slot) slots.push(slot);
+    }
+    return slots;
   }
-  nativeSlots() {
-    if (this.options.node.flags?.collapsed || this.options.node.imageIndex != null) {
-      return [];
+  nativeActionSlots() {
+    if (!this.belongsToActiveWorkflow()) return [];
+    if (this.options.node.flags?.collapsed) return [];
+    const selectedIndex = this.selectedItemIndex();
+    if (selectedIndex !== null) {
+      return this.detailActionSlots(selectedIndex);
     }
     const activeSlots = this.transaction.activeSlots();
-    if (activeSlots) return activeSlots;
+    const domImages = this.domImages();
+    if (activeSlots) {
+      return indexedSlots(
+        activeSlots,
+        this.domPreviewContainer(domImages) ?? this.cubeFaceProjection()?.container ?? null
+      );
+    }
     if (!this.isGridVisible()) return [];
-    const domSlots = this.domImages().map((image) => {
+    const domSlots = domImages.map((image) => {
       const rect = image.getBoundingClientRect();
       return {
         left: rect.left,
@@ -1069,7 +1203,146 @@ var OrderedMediaPreviewActions = class {
         height: rect.height
       };
     });
-    return domSlots.length === this.itemCount() ? domSlots : this.canvasSlots();
+    if (domSlots.length === this.itemCount()) {
+      return indexedSlots(domSlots, this.domPreviewContainer(domImages));
+    }
+    return indexedSlots(
+      this.canvasSlots(),
+      this.cubeFaceProjection()?.container ?? null
+    );
+  }
+  /** Prevent inactive workflow tabs with reused node IDs from claiming active Nodes 2 DOM. */
+  belongsToActiveWorkflow() {
+    const nodeGraph = this.options.node.graph;
+    const nodeRoot = nodeGraph?._rootGraph ?? nodeGraph;
+    const activeRoot = this.options.app.rootGraph ?? this.options.app.canvas?.graph;
+    return !nodeRoot || !activeRoot || nodeRoot === activeRoot;
+  }
+  /** Expose one selected-item control strip in native detail mode. */
+  detailActionSlots(selectedIndex) {
+    const domSlot = this.domDetailSlot(selectedIndex);
+    if (domSlot) return [domSlot];
+    const canvasSlot = this.canvasDetailSlot();
+    if (!canvasSlot) return [];
+    const container = this.cubeFaceProjection()?.container;
+    return [
+      container ? { itemIndex: selectedIndex, bounds: canvasSlot, container } : { itemIndex: selectedIndex, bounds: canvasSlot }
+    ];
+  }
+  /** Locate the selected Nodes 2.0 preview without replacing native UI. */
+  domDetailSlot(selectedIndex) {
+    const root = this.domRoot();
+    const reference = this.currentImages()?.[selectedIndex];
+    if (!root || !reference) return null;
+    const expectedKey = comfyImageReferenceKey(reference);
+    const candidates = Array.from(
+      root.querySelectorAll("img")
+    ).filter((image2) => {
+      const rect = image2.getBoundingClientRect();
+      return comfyImageSourceKey(image2.src) === expectedKey && rect.width > 0 && rect.height > 0;
+    });
+    const image = candidates.reduce(
+      (largest, candidate) => !largest || imageArea(candidate) > imageArea(largest) ? candidate : largest,
+      null
+    );
+    const previewRegion = root.querySelector(
+      '[role="region"][aria-label^="Image preview"]'
+    );
+    const previewElement = image ?? previewRegion;
+    if (!previewElement) return null;
+    return {
+      itemIndex: selectedIndex,
+      bounds: elementSlot(previewElement),
+      container: previewRegion ?? this.domPreviewContainer(image ? [image] : []) ?? root
+    };
+  }
+  /** Return the closest native preview surface shared by rendered media. */
+  domPreviewContainer(images) {
+    const root = this.domRoot();
+    if (!root || images.length === 0) return null;
+    const previewRegion = root.querySelector(
+      '[role="region"][aria-label^="Image preview"]'
+    );
+    if (previewRegion && images.every((image) => previewRegion.contains(image))) {
+      return previewRegion;
+    }
+    let candidate = images[0]?.parentElement ?? null;
+    while (candidate && candidate !== root) {
+      if (images.every((image) => candidate?.contains(image) === true)) {
+        return candidate;
+      }
+      candidate = candidate.parentElement;
+    }
+    return root;
+  }
+  /** Resolve selected preview geometry in node-local canvas coordinates. */
+  canvasDetailLocalSlot() {
+    const previewWidget = this.options.node.widgets?.find(
+      (widget) => widget.options?.canvasOnly === true && typeof widget.y === "number" && typeof widget.computedHeight === "number" && widget.computedHeight > 0
+    );
+    const nodeWidth = this.options.node.size?.[0];
+    const previewY = previewWidget?.y;
+    const previewHeight = previewWidget?.computedHeight;
+    if (typeof nodeWidth !== "number" || nodeWidth <= 0 || typeof previewY !== "number" || typeof previewHeight !== "number") {
+      if (!this.lastCanvasPreviewRect) return null;
+      const [left, top, width, height] = this.lastCanvasPreviewRect;
+      return { left, top, width, height };
+    }
+    return { left: 0, top: previewY, width: nodeWidth, height: previewHeight };
+  }
+  /** Locate the selected Nodes 1.0 preview from its canvas widget geometry. */
+  canvasDetailSlot() {
+    const localSlot = this.canvasDetailLocalSlot();
+    return localSlot ? this.canvasLocalSlot([
+      localSlot.left,
+      localSlot.top,
+      localSlot.width,
+      localSlot.height
+    ]) : null;
+  }
+  /** Project one node-local canvas rectangle into viewport coordinates. */
+  canvasLocalSlot(rect) {
+    const projection = this.cubeFaceProjection();
+    if (projection) {
+      try {
+        const slot = projection.projectRect(rect);
+        if (validSlot(slot)) return slot;
+      } catch {
+        return null;
+      }
+    }
+    const canvasApi = this.options.app.canvas;
+    const nodePosition = this.options.node.pos;
+    if (!canvasApi || !nodePosition) return null;
+    const [x, y, width, height] = rect;
+    const canvasRect = canvasApi.canvas.getBoundingClientRect();
+    const topLeft = canvasApi.convertOffsetToCanvas([
+      nodePosition[0] + x,
+      nodePosition[1] + y
+    ]);
+    const bottomRight = canvasApi.convertOffsetToCanvas([
+      nodePosition[0] + x + width,
+      nodePosition[1] + y + height
+    ]);
+    return {
+      left: canvasRect.left + topLeft[0],
+      top: canvasRect.top + topLeft[1],
+      width: bottomRight[0] - topLeft[0],
+      height: bottomRight[1] - topLeft[1]
+    };
+  }
+  /** Read SugarCubes' renderer-neutral projection contract when this node is embedded. */
+  cubeFaceProjection() {
+    const value = Reflect.get(
+      this.options.node,
+      CUBE_FACE_PROJECTION_SYMBOL
+    );
+    if (typeof value !== "object" || value === null) return null;
+    const candidate = value;
+    if (!(candidate.container instanceof HTMLElement) || typeof candidate.projectRect !== "function") {
+      return null;
+    }
+    return candidate;
   }
   captureSurface() {
     const domImages = this.domImages();
@@ -1080,7 +1353,9 @@ var OrderedMediaPreviewActions = class {
     }
     return {
       items: previewItems(canvasImages),
-      slots: canvasImages.map((_, index) => () => this.canvasSlots()[index]),
+      slots: canvasImages.map(
+        (_, index) => () => this.canvasSlots()[index]
+      ),
       apply: (items) => {
         this.options.node.imgs = items.map((item) => item.image);
         delete this.options.node.imageRects;
@@ -1136,6 +1411,84 @@ var OrderedMediaPreviewActions = class {
   isGridVisible() {
     return !this.options.node.flags?.collapsed && this.options.node.imageIndex == null && this.itemCount() > 1;
   }
+  /** Read detail selection from the renderer that currently owns it. */
+  selectedItemIndex() {
+    const index = this.options.node.imageIndex;
+    if (typeof index === "number" && Number.isInteger(index) && index >= 0 && index < this.itemCount()) {
+      return index;
+    }
+    const currentButton = this.domDetailButtons().find(
+      (button) => button.getAttribute("aria-current") === "true"
+    );
+    if (!currentButton) return null;
+    const detailIndex = this.domDetailButtons().indexOf(currentButton);
+    return detailIndex >= 0 && detailIndex < this.itemCount() ? detailIndex : null;
+  }
+  /** Keep the moved item selected across both native renderer state models. */
+  followMovedDetail(index, destination) {
+    if (this.selectedItemIndex() !== index) return;
+    this.pendingDetailIndex = destination;
+    if (this.options.node.imageIndex === index) {
+      this.options.node.imageIndex = destination;
+    } else {
+      this.domDetailButtons()[destination]?.click();
+    }
+    this.affordances.refresh();
+  }
+  /** Select the nearest remaining item after removing an inspected item. */
+  followRemovedDetail(index, removedDetail) {
+    if (!removedDetail) return;
+    const remaining = this.itemCount();
+    const destination = remaining > 0 ? Math.min(index, remaining - 1) : null;
+    this.pendingDetailIndex = destination;
+    if (this.options.node.imageIndex === index) {
+      this.options.node.imageIndex = destination;
+    } else if (destination !== null) {
+      this.domDetailButtons()[destination]?.click();
+    }
+    this.affordances.refresh();
+  }
+  /** Re-enter Nodes 2.0 detail mode after output publication resets its grid. */
+  restorePendingDetail() {
+    if (this.pendingDetailIndex === null || this.detailRestoreFrame !== null) {
+      return;
+    }
+    let stableFrames = 0;
+    let remainingFrames = 12;
+    const restore = () => {
+      this.detailRestoreFrame = null;
+      const destination = this.pendingDetailIndex;
+      if (destination === null) return;
+      const buttons = this.domDetailButtons();
+      const selected = buttons.findIndex(
+        (button) => button.getAttribute("aria-current") === "true"
+      );
+      if (selected === destination) {
+        stableFrames += 1;
+      } else {
+        stableFrames = 0;
+        buttons[destination]?.click();
+      }
+      remainingFrames -= 1;
+      if (stableFrames >= 3 || remainingFrames <= 0) {
+        this.pendingDetailIndex = null;
+        this.affordances.refresh();
+        return;
+      }
+      this.detailRestoreFrame = requestAnimationFrame(restore);
+    };
+    this.detailRestoreFrame = requestAnimationFrame(restore);
+  }
+  /** Return Comfy's ordered detail navigation controls for this node. */
+  domDetailButtons() {
+    const root = this.domRoot();
+    if (!root) return [];
+    return Array.from(
+      root.querySelectorAll(
+        'button[aria-label^="View image "]'
+      )
+    );
+  }
   nodeId() {
     const nodeId = this.options.node.id;
     return nodeId === void 0 ? void 0 : String(nodeId);
@@ -1148,15 +1501,35 @@ function previewItems(images) {
   }));
 }
 function imageSlot(image) {
-  return () => {
-    const rect = image.getBoundingClientRect();
-    return {
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height
-    };
+  return () => elementSlot(image);
+}
+function elementSlot(element) {
+  const rect = element.getBoundingClientRect();
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height
   };
+}
+function validSlot(slot) {
+  return Number.isFinite(slot.left) && Number.isFinite(slot.top) && Number.isFinite(slot.width) && Number.isFinite(slot.height) && slot.width >= 0 && slot.height >= 0;
+}
+function imageArea(image) {
+  const rect = image.getBoundingClientRect();
+  return rect.width * rect.height;
+}
+function indexedSlots(slots, container = null) {
+  return slots.map(
+    (bounds, itemIndex) => container ? { itemIndex, bounds, container } : { itemIndex, bounds }
+  );
+}
+function unionImageRects(rects) {
+  const left = Math.min(...rects.map(([x]) => x));
+  const top = Math.min(...rects.map(([, y]) => y));
+  const right = Math.max(...rects.map(([x, , width]) => x + width));
+  const bottom = Math.max(...rects.map(([, y, , height]) => y + height));
+  return [left, top, right - left, bottom - top];
 }
 
 // web/src/orderedMediaSelection.ts
@@ -1331,8 +1704,12 @@ function configureOrderedMediaNode(candidate, app2, api, config, logger = consol
   const restoreExternalUploads = wrapExternalAppendUploads(candidate, beginAppend);
   const originalOnGraphConfigured = candidate.onGraphConfigured;
   candidate.onGraphConfigured = function(...args) {
+    const configuredValue = imageWidget.value;
+    const serializedValue = configuredWidgetValue(candidate, imageWidget);
     const result = originalOnGraphConfigured?.apply(this, args);
-    const restored = selection.replace(imageWidget.value);
+    const restored = selection.replace(
+      Array.isArray(configuredValue) ? configuredValue : Array.isArray(serializedValue) ? serializedValue : imageWidget.value
+    );
     if (!Array.isArray(imageWidget.value)) setPersistedFiles(restored);
     refresh(restored);
     return result;
@@ -1347,6 +1724,10 @@ function configureOrderedMediaNode(candidate, app2, api, config, logger = consol
   const initial = selection.snapshot();
   if (!Array.isArray(imageWidget.value)) setPersistedFiles(initial);
   refresh(initial);
+}
+function configuredWidgetValue(node, widget) {
+  const index = node.widgets?.indexOf(widget) ?? -1;
+  return index >= 0 ? node.widgets_values?.[index] : void 0;
 }
 function registerOrderedMediaNode(app2, api, extensionName, config, logger = console) {
   app2.registerExtension({

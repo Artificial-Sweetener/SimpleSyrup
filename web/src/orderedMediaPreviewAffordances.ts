@@ -14,9 +14,17 @@ export interface NativePreviewSlot {
   readonly height: number;
 }
 
+/** Bind one native preview footprint to its authoritative media position. */
+export interface NativePreviewActionSlot {
+  readonly itemIndex: number;
+  readonly bounds: NativePreviewSlot;
+  readonly container?: HTMLElement;
+}
+
 export interface OrderedMediaPreviewAffordanceOptions {
   readonly itemLabel: string;
-  readonly getSlots: () => NativePreviewSlot[];
+  readonly getSlots: () => NativePreviewActionSlot[];
+  readonly getItemCount: () => number;
   readonly moveEarlier: (index: number) => void;
   readonly moveLater: (index: number) => void;
   readonly remove: (index: number) => void;
@@ -32,15 +40,19 @@ interface AffordanceElements {
 /** Overlay compact controls without replacing Comfy's native preview surface. */
 export class OrderedMediaPreviewAffordances {
   private elements: AffordanceElements[] = [];
+  private readonly positionedContainers = new Map<HTMLElement, string>();
   private animationFrame: number | null = null;
   private remainingSyncFrames = 0;
+  private viewportControlsSuspended = false;
 
   constructor(private readonly options: OrderedMediaPreviewAffordanceOptions) {
     window.addEventListener("resize", this.requestRefresh, true);
     document.addEventListener("click", this.requestRefresh, true);
     document.addEventListener("keydown", this.requestRefresh, true);
+    document.addEventListener("pointerdown", this.suspendViewportControls, true);
     document.addEventListener("pointermove", this.requestRefresh, true);
-    document.addEventListener("pointerup", this.requestRefresh, true);
+    document.addEventListener("pointerup", this.resumeViewportControls, true);
+    document.addEventListener("pointercancel", this.resumeViewportControls, true);
     document.addEventListener("wheel", this.requestRefresh, true);
     this.refresh();
   }
@@ -56,8 +68,10 @@ export class OrderedMediaPreviewAffordances {
     window.removeEventListener("resize", this.requestRefresh, true);
     document.removeEventListener("click", this.requestRefresh, true);
     document.removeEventListener("keydown", this.requestRefresh, true);
+    document.removeEventListener("pointerdown", this.suspendViewportControls, true);
     document.removeEventListener("pointermove", this.requestRefresh, true);
-    document.removeEventListener("pointerup", this.requestRefresh, true);
+    document.removeEventListener("pointerup", this.resumeViewportControls, true);
+    document.removeEventListener("pointercancel", this.resumeViewportControls, true);
     document.removeEventListener("wheel", this.requestRefresh, true);
     if (this.animationFrame !== null) {
       cancelAnimationFrame(this.animationFrame);
@@ -65,11 +79,26 @@ export class OrderedMediaPreviewAffordances {
     }
     for (const element of this.elements) element.root.remove();
     this.elements = [];
+    this.releasePositionedContainers(new Set());
   }
 
   private readonly requestRefresh = (): void => {
     this.remainingSyncFrames = Math.max(this.remainingSyncFrames, 2);
     this.scheduleSync();
+  };
+
+  private readonly suspendViewportControls = (event: Event): void => {
+    if (!(event.target instanceof HTMLCanvasElement)) return;
+    this.viewportControlsSuspended = true;
+    for (const elements of this.elements) {
+      if (elements.root.parentElement === document.body) elements.root.hidden = true;
+    }
+  };
+
+  private readonly resumeViewportControls = (): void => {
+    if (!this.viewportControlsSuspended) return;
+    this.viewportControlsSuspended = false;
+    this.refresh();
   };
 
   private scheduleSync(): void {
@@ -84,42 +113,106 @@ export class OrderedMediaPreviewAffordances {
 
   private sync(): void {
     const slots = this.options.getSlots();
+    const activeContainers = new Set<HTMLElement>();
     this.resizeElements(slots.length);
     for (const [index, elements] of this.elements.entries()) {
-      const slot = slots[index];
-      if (!slot || slot.width <= 0 || slot.height <= 0) {
+      const actionSlot = slots[index];
+      const slot = actionSlot?.bounds;
+      if (
+        !actionSlot ||
+        !slot ||
+        slot.width <= 0 ||
+        slot.height <= 0 ||
+        (!actionSlot.container && this.viewportControlsSuspended)
+      ) {
         elements.root.hidden = true;
         continue;
       }
+      const itemIndex = actionSlot.itemIndex;
       elements.root.hidden = false;
-      const stripHeight = Math.max(18, Math.min(26, slot.height * 0.16));
+      const position = this.mount(elements.root, actionSlot, activeContainers);
+      const stripHeight = Math.max(18, Math.min(26, position.height * 0.16));
       Object.assign(elements.root.style, {
-        left: `${String(slot.left)}px`,
-        top: `${String(slot.top)}px`,
-        width: `${String(slot.width)}px`,
+        left: `${String(position.left)}px`,
+        top: `${String(position.top)}px`,
+        width: `${String(position.width)}px`,
         height: `${String(stripHeight)}px`
       });
-      elements.root.dataset.ssMediaIndex = String(index);
-      elements.earlier.dataset.ssMediaIndex = String(index);
-      elements.later.dataset.ssMediaIndex = String(index);
-      elements.remove.dataset.ssMediaIndex = String(index);
-      setActionAvailability(elements.earlier, index > 0);
+      elements.root.dataset.ssMediaIndex = String(itemIndex);
+      elements.earlier.dataset.ssMediaIndex = String(itemIndex);
+      elements.later.dataset.ssMediaIndex = String(itemIndex);
+      elements.remove.dataset.ssMediaIndex = String(itemIndex);
+      setActionAvailability(elements.earlier, itemIndex > 0);
       setActionAvailability(
         elements.later,
-        index < this.elements.length - 1
+        itemIndex < this.options.getItemCount() - 1
       );
       elements.earlier.setAttribute(
         "aria-label",
-        `Move ${this.options.itemLabel} ${String(index + 1)} earlier`
+        `Move ${this.options.itemLabel} ${String(itemIndex + 1)} earlier`
       );
       elements.later.setAttribute(
         "aria-label",
-        `Move ${this.options.itemLabel} ${String(index + 1)} later`
+        `Move ${this.options.itemLabel} ${String(itemIndex + 1)} later`
       );
       elements.remove.setAttribute(
         "aria-label",
-        `Remove ${this.options.itemLabel} ${String(index + 1)}`
+        `Remove ${this.options.itemLabel} ${String(itemIndex + 1)}`
       );
+    }
+    this.releasePositionedContainers(activeContainers);
+  }
+
+  /** Mount one control strip in the preview surface that owns its geometry. */
+  private mount(
+    root: HTMLElement,
+    actionSlot: NativePreviewActionSlot,
+    activeContainers: Set<HTMLElement>
+  ): NativePreviewSlot {
+    const container = actionSlot.container;
+    if (!container) {
+      if (root.parentElement !== document.body) document.body.append(root);
+      root.style.position = "fixed";
+      root.style.zIndex = "2";
+      return actionSlot.bounds;
+    }
+    activeContainers.add(container);
+    this.positionContainer(container);
+    if (root.parentElement !== container) container.append(root);
+    root.style.position = "absolute";
+    root.style.zIndex = "1";
+    const containerRect = container.getBoundingClientRect();
+    const scaleX = containerScale(containerRect.width, container.offsetWidth);
+    const scaleY = containerScale(containerRect.height, container.offsetHeight);
+    return {
+      left:
+        (actionSlot.bounds.left - containerRect.left) / scaleX -
+        container.clientLeft +
+        container.scrollLeft,
+      top:
+        (actionSlot.bounds.top - containerRect.top) / scaleY -
+        container.clientTop +
+        container.scrollTop,
+      width: actionSlot.bounds.width / scaleX,
+      height: actionSlot.bounds.height / scaleY
+    };
+  }
+
+  /** Establish a local containing block without overriding authored positioning. */
+  private positionContainer(container: HTMLElement): void {
+    if (this.positionedContainers.has(container)) return;
+    const position = getComputedStyle(container).position;
+    if (position !== "" && position !== "static") return;
+    this.positionedContainers.set(container, container.style.position);
+    container.style.position = "relative";
+  }
+
+  /** Restore preview surfaces that no longer contain loader controls. */
+  private releasePositionedContainers(activeContainers: Set<HTMLElement>): void {
+    for (const [container, originalPosition] of this.positionedContainers) {
+      if (activeContainers.has(container)) continue;
+      container.style.position = originalPosition;
+      this.positionedContainers.delete(container);
     }
   }
 
@@ -135,14 +228,12 @@ export class OrderedMediaPreviewAffordances {
     root.className = "ss-native-preview-affordance";
     Object.assign(root.style, {
       position: "fixed",
-      zIndex: "9990",
+      zIndex: "2",
       display: "flex",
       alignItems: "stretch",
       pointerEvents: "none",
       overflow: "hidden",
-      borderRadius: "4px 4px 0 0",
-      background: "rgba(20, 20, 20, 0.72)",
-      boxShadow: "inset 0 -1px 0 rgba(255, 255, 255, 0.16)"
+      background: "rgba(20, 20, 20, 0.72)"
     });
     const earlier = controlButton("pi-arrow-left", "Move earlier");
     earlier.setAttribute(MEDIA_MOVE_EARLIER_ATTRIBUTE, "true");
@@ -222,4 +313,11 @@ function setActionAvailability(
 function stopControlPointerEvent(event: PointerEvent): void {
   event.preventDefault();
   event.stopPropagation();
+}
+
+/** Return a finite rendered-to-local scale for one preview axis. */
+function containerScale(renderedSize: number, localSize: number): number {
+  if (renderedSize <= 0 || localSize <= 0) return 1;
+  const scale = renderedSize / localSize;
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }

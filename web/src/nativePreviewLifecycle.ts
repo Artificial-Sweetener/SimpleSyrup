@@ -20,6 +20,7 @@ export function subscribeNativePreviewLifecycle(
   };
 }
 
+/** Observe native preview mounting, source replacement, and detail selection. */
 function ensureObserver(): void {
   if (observer) return;
   observer = new MutationObserver(() => {
@@ -29,6 +30,6 @@ function ensureObserver(): void {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["src"]
+    attributeFilter: ["aria-current", "src"]
   });
 }
