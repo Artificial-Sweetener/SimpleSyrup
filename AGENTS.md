@@ -260,6 +260,7 @@ npm run build:web
 ## ComfyUI Frontend Rules
 
 - ComfyUI frontend extensions must be registered from TypeScript source under `web/src`.
+- If an element belongs to a component, integrate it into that component's structure, layout, input handling, and lifecycle. Do not fake ownership by positioning an unrelated element over the component or synchronizing it through external coordinates. Use detached overlays only for UI that is semantically an overlay, such as menus, tooltips, dialogs, and drag ghosts.
 - Settings-panel behavior must use Comfy's frontend settings API.
 - Browser settings are not authoritative for backend behavior.
 - Any frontend setting that affects backend node declarations or execution must be mirrored through an explicit backend route or persisted backend settings file.
