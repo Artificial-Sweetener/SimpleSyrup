@@ -24,7 +24,10 @@ interface NativePreviewNode {
     hidden?: boolean;
     options?: { hidden?: boolean };
   }>;
-  graph?: { setDirtyCanvas?: (foreground: boolean, background: boolean) => void };
+  graph?: {
+    id?: string | number;
+    setDirtyCanvas?: (foreground: boolean, background: boolean) => void;
+  };
 }
 
 type SegPreviewExecutionOutput = ComfyNodeExecutionOutput &
