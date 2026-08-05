@@ -68,6 +68,40 @@ def test_load_uses_native_mask_loader_and_validated_path(
     assert torch.all(result == 0.75)
 
 
+def test_missing_alpha_returns_zero_coverage_at_source_dimensions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RGB masks retain their authored geometry instead of Comfy's 64px fallback."""
+
+    path = tmp_path / "rgb-mask.png"
+    Image.new("RGB", (3, 2), color=(255, 255, 255)).save(path)
+    _patch_path(monkeypatch, path)
+
+    class FakeNativeLoader:
+        """Reproduce Comfy's missing-alpha fallback mask."""
+
+        @classmethod
+        def VALIDATE_INPUTS(cls, value: str) -> bool:
+            """Accept the annotated path through the native contract."""
+
+            del cls, value
+            return True
+
+        def load_image_mask(self, value: str, channel: str) -> tuple[torch.Tensor]:
+            """Return the native 64x64 zero mask for missing alpha."""
+
+            del self, value, channel
+            return (torch.zeros((1, 64, 64)),)
+
+    monkeypatch.setattr(import_module("nodes"), "LoadImageMask", FakeNativeLoader)
+
+    result = MaskFileLoader().load("rgb-mask.png", "alpha")
+
+    assert result.shape == (1, 2, 3)
+    assert torch.count_nonzero(result) == 0
+
+
 def test_available_files_uses_native_mask_loader_choices(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
