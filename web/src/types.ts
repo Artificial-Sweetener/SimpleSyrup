@@ -26,8 +26,20 @@ export interface ComfySettingsApi {
   ): ComfySetting<TValue>;
 }
 
+export interface ComfyGraphNode {
+  readonly id?: string | number;
+  readonly subgraph?: ComfyGraph;
+}
+
+export interface ComfyGraph {
+  readonly id?: string | number;
+  readonly isRootGraph?: boolean;
+  readonly nodes?: readonly ComfyGraphNode[];
+}
+
 export interface ComfyApp {
   nodeOutputs?: Record<string, ComfyNodeExecutionOutput>;
+  rootGraph?: ComfyGraph;
   canvas?: ComfyCanvasApi;
   ui: {
     settings: ComfySettingsApi;
@@ -39,6 +51,7 @@ export interface ComfyApp {
 /** Stable coordinate operations exposed by Comfy's graph canvas. */
 export interface ComfyCanvasApi {
   canvas: HTMLCanvasElement;
+  graph?: ComfyGraph;
   graph_mouse?: readonly [number, number];
   convertEventToCanvasOffset(event: MouseEvent): [number, number];
   convertOffsetToCanvas(

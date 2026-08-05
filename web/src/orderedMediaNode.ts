@@ -60,6 +60,7 @@ export interface OrderedMediaNode {
   constructor: { comfyClass?: string };
   id?: string | number;
   widgets?: OrderedMediaWidget[];
+  widgets_values?: unknown[];
   pasteFiles?: NativeCallback;
   onDragDrop?: NativeCallback;
   onRemoved?: NativeCallback;
@@ -70,7 +71,10 @@ export interface OrderedMediaNode {
     previousValue: unknown,
     widget: OrderedMediaWidget
   ) => void;
-  graph?: { setDirtyCanvas?: (foreground: boolean, background: boolean) => void };
+  graph?: {
+    id?: string | number;
+    setDirtyCanvas?: (foreground: boolean, background: boolean) => void;
+  };
   addWidget(
     type: WidgetType,
     name: string,
@@ -238,8 +242,16 @@ export function configureOrderedMediaNode(
   const restoreExternalUploads = wrapExternalAppendUploads(candidate, beginAppend);
   const originalOnGraphConfigured = candidate.onGraphConfigured;
   candidate.onGraphConfigured = function (...args: unknown[]): unknown {
+    const configuredValue = imageWidget.value;
+    const serializedValue = configuredWidgetValue(candidate, imageWidget);
     const result = originalOnGraphConfigured?.apply(this, args);
-    const restored = selection.replace(imageWidget.value);
+    const restored = selection.replace(
+      Array.isArray(configuredValue)
+        ? configuredValue
+        : Array.isArray(serializedValue)
+          ? serializedValue
+          : imageWidget.value
+    );
     if (!Array.isArray(imageWidget.value)) setPersistedFiles(restored);
     refresh(restored);
     return result;
@@ -256,6 +268,15 @@ export function configureOrderedMediaNode(
   const initial = selection.snapshot();
   if (!Array.isArray(imageWidget.value)) setPersistedFiles(initial);
   refresh(initial);
+}
+
+/** Read the persisted value aligned with one native widget when Comfy clears its live value. */
+function configuredWidgetValue(
+  node: OrderedMediaNode,
+  widget: OrderedMediaWidget
+): unknown {
+  const index = node.widgets?.indexOf(widget) ?? -1;
+  return index >= 0 ? node.widgets_values?.[index] : undefined;
 }
 
 /** Register one renderer-neutral ordered-media loader extension. */
