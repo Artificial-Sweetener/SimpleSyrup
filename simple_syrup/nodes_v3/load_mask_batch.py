@@ -68,8 +68,8 @@ class LoadMaskBatchV3(_ComfyNodeBase):
                     options=list(MASK_CHANNELS),
                     default="alpha",
                     tooltip=(
-                        "Image channel read from every file using ComfyUI mask "
-                        "loading semantics."
+                        "Image channel read from every file. Missing alpha "
+                        "produces zero coverage at the source image dimensions."
                     ),
                 ),
             ],

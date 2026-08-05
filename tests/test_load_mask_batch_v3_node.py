@@ -52,6 +52,7 @@ def test_schema_exposes_native_ordered_mask_multiselect() -> None:
 
     inputs = {value.id: value for value in schema.inputs}
     image = inputs["image"].as_dict()
+    channel = inputs["channel"].as_dict()
     assert schema.node_id == "SimpleSyrup.LoadMaskBatch"
     assert schema.display_name == "Load Mask Batch"
     assert schema.has_intermediate_output is False
@@ -65,6 +66,8 @@ def test_schema_exposes_native_ordered_mask_multiselect() -> None:
     }
     assert image["default"] == []
     assert image["options"] == ["b.png", "a.png"]
+    assert channel["default"] == "alpha"
+    assert "zero coverage" in channel["tooltip"]
     assert [output.io_type for output in schema.outputs] == ["MASK"]
 
 
