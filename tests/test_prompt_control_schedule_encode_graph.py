@@ -96,6 +96,30 @@ def test_schedule_encode_graph_packs_both_sides_to_matched_segment_counts(
     ]
 
 
+def test_schedule_encode_graph_uses_named_default_separators(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recognize named separators on the fixed-default scheduling path."""
+
+    calls = _install_fake_prompt_control(monkeypatch)
+
+    PromptControlScheduleEncodeGraphBuilder().build(
+        model=["model", 0],
+        clip=["clip", 0],
+        positive_prompt="global [SEP|Sky] clouds [SEP|Ground] field",
+        negative_prompt="blur",
+    )
+
+    assert [call["text"] for call in calls["encode"]] == [
+        "global",
+        "clouds",
+        "field",
+        "blur",
+        "blur",
+        "blur",
+    ]
+
+
 def test_schedule_encode_graph_matches_lora_region_on_both_cfg_sides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

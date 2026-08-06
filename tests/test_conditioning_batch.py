@@ -12,35 +12,7 @@ from simple_syrup.domain.conditioning_batch import (
     ConditioningBatch,
     batch_conditioning,
     select_conditioning,
-    split_prompt_batch,
 )
-
-
-def test_split_prompt_batch_without_separator_returns_single_chunk() -> None:
-    """Plain prompt text remains one prompt entry."""
-
-    assert split_prompt_batch("cat", "[SEP]") == ("cat",)
-
-
-def test_split_prompt_batch_trims_separator_whitespace() -> None:
-    """Whitespace around separators does not become prompt text."""
-
-    assert split_prompt_batch("cat [SEP] dog", "[SEP]") == ("cat", "dog")
-    assert split_prompt_batch("cat[SEP]dog", "[SEP]") == ("cat", "dog")
-
-
-def test_split_prompt_batch_preserves_blank_prompt_and_empty_chunks() -> None:
-    """Blank prompts and trailing separator chunks remain explicit entries."""
-
-    assert split_prompt_batch("", "[SEP]") == ("",)
-    assert split_prompt_batch("cat [SEP]", "[SEP]") == ("cat", "")
-
-
-def test_split_prompt_batch_rejects_empty_separator() -> None:
-    """An empty separator would split between every character."""
-
-    with pytest.raises(ValueError, match="separator must not be empty"):
-        split_prompt_batch("cat", "")
 
 
 def test_conditioning_batch_requires_entries() -> None:
