@@ -21,6 +21,7 @@ def test_prompt_control_prompt_batch_node_schema() -> None:
     assert schema.enable_expand is True
     assert schema.category == "SimpleSyrup/Conditioning"
     assert "global" in schema.description.lower()
+    assert "[sep|name]" in schema.description.lower()
     assert [output.io_type for output in schema.outputs] == [
         "CONDITIONING_BATCH",
         "CONDITIONING_BATCH",
@@ -49,5 +50,6 @@ def test_prompt_control_prompt_batch_input_types() -> None:
     ]
     assert inputs["required"]["clip"][0] == "CLIP"
     assert inputs["required"]["separator"][1]["default"] == "[SEP]"
+    assert "[sep|name]" in inputs["required"]["separator"][1]["tooltip"].lower()
     assert "global" in inputs["required"]["positive_prompt"][1]["tooltip"].lower()
     assert "global" in inputs["required"]["negative_prompt"][1]["tooltip"].lower()

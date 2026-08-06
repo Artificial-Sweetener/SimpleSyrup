@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from ..domain.conditioning_batch import ConditioningBatch, split_prompt_batch
+from ..domain.conditioning_batch import ConditioningBatch
+from ..domain.prompt_batch_parser import split_prompt_batch
 from ..domain.prompt_segment_alignment import build_prompt_segment_alignment
 
 
