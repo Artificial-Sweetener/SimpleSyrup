@@ -38,6 +38,30 @@ def test_planner_combines_lora_tags_only_at_aligned_indexes() -> None:
     ]
 
 
+def test_planner_aligns_lora_hooks_across_named_separators() -> None:
+    """Treat separator names as comments while aligning segment-local hooks."""
+
+    plan = PromptControlSegmentPlanningService().prepare(
+        positive_prompt=(
+            "global [SEP|Sky] clouds <lora:sky:1> [SEP|Ground] field <lora:ground:0.5>"
+        ),
+        negative_prompt="bad [SEP|Sky] haze",
+        separator="[SEP]",
+    )
+
+    assert [chunk.text for chunk in plan.positive.chunks] == [
+        "global",
+        "clouds ",
+        "field ",
+    ]
+    assert [chunk.text for chunk in plan.negative.chunks] == ["bad", "haze", "bad"]
+    assert [hook.lora_tags for hook in plan.hooks] == [
+        "",
+        "<lora:sky:1>",
+        "<lora:ground:0.5>",
+    ]
+
+
 def test_planner_preserves_empties_and_fills_missing_side_from_global() -> None:
     """Authored empties remain while missing negative positions reuse global text."""
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from ..domain.prompt_batch_parser import DEFAULT_PROMPT_BATCH_SEPARATOR
 from ..runtime.conditioning_encoding import ComfyConditioningEncoder
 from ..services.prompt_batch_encoding_service import PromptBatchEncodingService
 
@@ -24,8 +25,9 @@ class EncodePromptBatch:
     FUNCTION = "encode"
     CATEGORY = "SimpleSyrup/Conditioning"
     DESCRIPTION = (
-        "Encodes [SEP]-separated prompts into matched conditioning batches, "
-        "reusing each side's global prompt when a regional entry is missing."
+        "Encodes prompts separated by [SEP] or [SEP|name] into matched "
+        "conditioning batches, reusing each side's global prompt when a "
+        "regional entry is missing."
     )
     SEARCH_ALIASES = ["conditioning batch", "prompt batch", "segs prompts"]
 
@@ -55,8 +57,9 @@ class EncodePromptBatch:
                         "default": "",
                         "multiline": True,
                         "tooltip": (
-                            "Ordered positive prompt entries separated by [SEP]; "
-                            "the global entry fills missing positive regions."
+                            "Ordered positive prompt entries separated by [SEP] "
+                            "or [SEP|name]; the global entry fills missing "
+                            "positive regions."
                         ),
                     },
                 ),
@@ -66,16 +69,21 @@ class EncodePromptBatch:
                         "default": "",
                         "multiline": True,
                         "tooltip": (
-                            "Ordered negative prompt entries separated by [SEP]; "
-                            "the global entry fills missing negative regions."
+                            "Ordered negative prompt entries separated by [SEP] "
+                            "or [SEP|name]; the global entry fills missing "
+                            "negative regions."
                         ),
                     },
                 ),
                 "separator": (
                     "STRING",
                     {
-                        "default": "[SEP]",
-                        "tooltip": "Text marker that separates prompt entries.",
+                        "default": DEFAULT_PROMPT_BATCH_SEPARATOR,
+                        "tooltip": (
+                            "Text marker that separates prompt entries. With the "
+                            "default [SEP], use [SEP|name] to add an organizational "
+                            "label."
+                        ),
                     },
                 ),
             }

@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .conditioning_batch import split_prompt_batch
+from .prompt_batch_parser import split_prompt_batch
 
 PROMPT_TEXT_PATTERN = r"(?:^|>)([^<]+)(?=<|$)"
 LORA_TAG_PATTERN = r"<[^>]*>"

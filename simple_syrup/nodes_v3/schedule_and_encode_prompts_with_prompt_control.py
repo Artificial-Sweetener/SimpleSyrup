@@ -49,9 +49,9 @@ class ScheduleAndEncodePromptsWithPromptControl(_ComfyNodeBase):
             enable_expand=True,
             category="SimpleSyrup/Conditioning",
             description=(
-                "Schedules Prompt-Control LoRAs and encodes prompts. With [SEP], "
-                "both sides are matched using global text for missing regions and "
-                "share each segment's LoRA hooks."
+                "Schedules Prompt-Control LoRAs and encodes prompts. With [SEP] "
+                "or [SEP|name], both sides are matched using global text for "
+                "missing regions and share each segment's LoRA hooks."
             ),
             inputs=[
                 _comfy_io.Model.Input(
@@ -85,9 +85,9 @@ class ScheduleAndEncodePromptsWithPromptControl(_ComfyNodeBase):
                     multiline=False,
                     default="",
                     tooltip=(
-                        "Positive Prompt-Control text; [SEP] creates ordered "
-                        "conditioning entries, and global text fills missing "
-                        "positive regions."
+                        "Positive Prompt-Control text; [SEP] or [SEP|name] creates "
+                        "ordered conditioning entries, and global text fills "
+                        "missing positive regions."
                     ),
                 ),
                 _comfy_io.String.Input(
@@ -95,9 +95,9 @@ class ScheduleAndEncodePromptsWithPromptControl(_ComfyNodeBase):
                     multiline=False,
                     default="",
                     tooltip=(
-                        "Negative Prompt-Control text; [SEP] creates ordered "
-                        "conditioning entries, and global text fills missing "
-                        "negative regions."
+                        "Negative Prompt-Control text; [SEP] or [SEP|name] creates "
+                        "ordered conditioning entries, and global text fills "
+                        "missing negative regions."
                     ),
                 ),
             ],

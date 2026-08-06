@@ -70,15 +70,15 @@ The regional node is different from the per-crop detailers. It samples one full-
 
 ### Per-Segment Prompt Batches
 
-SimpleSyrup layers the ADetailer habit I missed from WebUI on top of the Impact-style detailer shape: writing per-segment prompt batches inline with `[SEP]`.
+SimpleSyrup layers the ADetailer habit I missed from WebUI on top of the Impact-style detailer shape: writing per-segment prompt batches inline with `[SEP]`. Separators can carry an organizational name, such as `[SEP|Sky]`; the name is discarded during parsing, and prompt-to-SEG matching remains positional.
 
 Those prompts become an ordered `CONDITIONING_BATCH`, so prompt 1 stays matched to SEG 1, prompt 2 stays matched to SEG 2, and so on. This keeps the graph readable when each detected item needs its own prompt.
 
-- **Encode Prompt Batch** splits prompt text with `[SEP]` and encodes ordered positive and negative `CONDITIONING_BATCH` values.
+- **Encode Prompt Batch** splits prompt text with `[SEP]` or `[SEP|name]` and encodes ordered positive and negative `CONDITIONING_BATCH` values.
 - **Conditioning Batch Start** and **Conditioning Batch Append** build ordered conditioning batches for per-segment and regional workflows.
 - **Batch Region Conditioning** combines normal `CONDITIONING` values and existing `CONDITIONING_BATCH` values into one ordered regional batch.
-- **Encode Prompt Batch w/ Prompt Control** is exported when Prompt Control is installed. It keeps the `[SEP]` batching workflow while letting Prompt Control handle prompt scheduling and encoding.
-- **Schedule & Encode Prompts** is also exported when Prompt Control is installed. It schedules Prompt Control LoRA tags, encodes positive and negative prompts, and returns normal conditioning or SimpleSyrup batches depending on whether `[SEP]` is used.
+- **Encode Prompt Batch w/ Prompt Control** is exported when Prompt Control is installed. It keeps the `[SEP]` and `[SEP|name]` batching workflow while letting Prompt Control handle prompt scheduling and encoding.
+- **Schedule & Encode Prompts** is also exported when Prompt Control is installed. It schedules Prompt Control LoRA tags, encodes positive and negative prompts, and returns normal conditioning or SimpleSyrup batches depending on whether `[SEP]` or `[SEP|name]` is used.
 
 ### Tile, Tag, and Guide
 
