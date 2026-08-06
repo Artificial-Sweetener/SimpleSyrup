@@ -9,6 +9,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from ..domain.prompt_batch_parser import DEFAULT_PROMPT_BATCH_SEPARATOR
 from ..runtime.prompt_control_batch_graph import PromptControlBatchGraphBuilder
 
 if TYPE_CHECKING:
@@ -47,8 +48,9 @@ class EncodePromptBatchWithPromptControl(_ComfyNodeBase):
             enable_expand=True,
             category="SimpleSyrup/Conditioning",
             description=(
-                "Encodes [SEP]-separated prompts into matched Prompt Control "
-                "batches, reusing each side's global text for missing regions."
+                "Encodes prompts separated by [SEP] or [SEP|name] into matched "
+                "Prompt Control batches, reusing each side's global text for "
+                "missing regions."
             ),
             inputs=[
                 _comfy_io.Clip.Input(
@@ -64,9 +66,9 @@ class EncodePromptBatchWithPromptControl(_ComfyNodeBase):
                     multiline=True,
                     default="",
                     tooltip=(
-                        "Positive Prompt Control prompts in positional order; each "
-                        "segment keeps its aligned LoRA hooks, and global text "
-                        "fills missing positive regions."
+                        "Positive Prompt Control prompts separated by [SEP] or "
+                        "[SEP|name] in positional order; each segment keeps its "
+                        "aligned LoRA hooks, and global text fills missing regions."
                     ),
                 ),
                 _comfy_io.String.Input(
@@ -74,15 +76,20 @@ class EncodePromptBatchWithPromptControl(_ComfyNodeBase):
                     multiline=True,
                     default="",
                     tooltip=(
-                        "Negative Prompt Control prompts in positional order; each "
-                        "segment shares hooks with the matching positive index, "
-                        "and global text fills missing negative regions."
+                        "Negative Prompt Control prompts separated by [SEP] or "
+                        "[SEP|name] in positional order; each segment shares hooks "
+                        "with the matching positive index, and global text fills "
+                        "missing regions."
                     ),
                 ),
                 _comfy_io.String.Input(
                     "separator",
-                    default="[SEP]",
-                    tooltip="Text marker that splits prompts into per-SEGS entries.",
+                    default=DEFAULT_PROMPT_BATCH_SEPARATOR,
+                    tooltip=(
+                        "Text marker that splits prompts into per-SEGS entries. "
+                        "With the default [SEP], use [SEP|name] to add an "
+                        "organizational label."
+                    ),
                 ),
             ],
             outputs=[

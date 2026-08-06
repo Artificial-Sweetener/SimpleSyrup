@@ -33,6 +33,7 @@ def test_legacy_schedule_and_encode_prompt_control_node_contract() -> None:
     )
     assert LegacyScheduleAndEncode.FUNCTION == "execute"
     assert LegacyScheduleAndEncode.CATEGORY == "SimpleSyrup/Conditioning"
+    assert "[sep|name]" in LegacyScheduleAndEncode.DESCRIPTION.lower()
     assert list(inputs["required"]) == [
         "model",
         "clip",
@@ -46,6 +47,7 @@ def test_legacy_schedule_and_encode_prompt_control_node_contract() -> None:
     assert inputs["optional"]["encode_style"][1]["forceInput"] is True
     assert inputs["required"]["positive_prompt"][1]["multiline"] is False
     assert inputs["required"]["negative_prompt"][1]["multiline"] is False
+    assert "[sep|name]" in inputs["required"]["positive_prompt"][1]["tooltip"].lower()
 
 
 def test_legacy_schedule_and_encode_prompt_control_execute_delegates(
@@ -141,6 +143,7 @@ def test_schedule_and_encode_prompt_control_node_schema() -> None:
     assert schema.enable_expand is True
     assert schema.category == "SimpleSyrup/Conditioning"
     assert "global" in schema.description.lower()
+    assert "[sep|name]" in schema.description.lower()
     assert [output.io_type for output in schema.outputs] == [
         "MODEL",
         "CONDITIONING,CONDITIONING_BATCH",
@@ -189,6 +192,7 @@ def test_schedule_and_encode_prompt_control_input_types() -> None:
     assert inputs["optional"]["encode_style"][1]["forceInput"] is True
     assert inputs["required"]["positive_prompt"][1]["multiline"] is False
     assert inputs["required"]["negative_prompt"][1]["multiline"] is False
+    assert "[sep|name]" in inputs["required"]["positive_prompt"][1]["tooltip"].lower()
 
 
 def test_schedule_and_encode_prompt_control_execute_delegates(

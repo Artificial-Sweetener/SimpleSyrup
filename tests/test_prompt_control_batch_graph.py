@@ -86,6 +86,25 @@ def test_prompt_control_batch_graph_builds_pack_chain_for_multiple_chunks(
     assert output.args[1] == ["BATCH.0.5.2", 0]
 
 
+def test_prompt_control_batch_graph_encodes_named_separator_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Build one Prompt Control encoding per named default-separator chunk."""
+
+    calls = _install_fake_prompt_control(monkeypatch)
+    graph_utils = import_module("comfy_execution.graph_utils")
+    graph_utils.GraphBuilder.set_default_prefix("NAMED", 0, 0)
+
+    PromptControlBatchGraphBuilder().build(
+        clip=[0, 0],
+        positive_prompt="global [SEP|Sky] clouds",
+        negative_prompt="blur [SEP|Sky] haze",
+        separator="[SEP]",
+    )
+
+    assert [call["text"] for call in calls] == ["global", "clouds", "blur", "haze"]
+
+
 def test_prompt_control_batch_graph_attaches_segment_local_lora_hooks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

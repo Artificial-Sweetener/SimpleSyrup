@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any, TypeAlias
 
@@ -55,15 +54,6 @@ def batch_conditioning(
         else:
             entries.append(value)
     return ConditioningBatch(tuple(entries))
-
-
-def split_prompt_batch(text: str, separator: str = "[SEP]") -> tuple[str, ...]:
-    """Split prompt text into ordered chunks using a configurable separator."""
-
-    if separator == "":
-        raise ValueError("separator must not be empty.")
-    pattern = rf"\s*{re.escape(separator)}\s*"
-    return tuple(re.split(pattern, text))
 
 
 def select_conditioning(

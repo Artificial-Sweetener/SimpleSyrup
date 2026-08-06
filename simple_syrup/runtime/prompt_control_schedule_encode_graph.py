@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..domain.prompt_batch_parser import DEFAULT_PROMPT_BATCH_SEPARATOR
 from ..domain.prompt_control_prompt import PreparedPromptSide, apply_encode_style
 from ..services.prompt_control_segment_planning_service import (
     PromptControlSegmentPlan,
@@ -22,7 +23,6 @@ PROMPT_CONTROL_MISSING_MESSAGE = (
     "Schedule & Encode Prompts requires comfyui-prompt-control. "
     "Install Prompt Control or remove this node from the workflow."
 )
-PROMPT_BATCH_SEPARATOR = "[SEP]"
 
 
 class PromptControlScheduleEncodeGraphBuilder:
@@ -44,7 +44,7 @@ class PromptControlScheduleEncodeGraphBuilder:
         plan = self.planning_service_class().prepare(
             positive_prompt=positive_prompt,
             negative_prompt=negative_prompt,
-            separator=PROMPT_BATCH_SEPARATOR,
+            separator=DEFAULT_PROMPT_BATCH_SEPARATOR,
         )
         adapter = self.graph_adapter_class.load(PROMPT_CONTROL_MISSING_MESSAGE)
         expand: dict[str, dict[str, Any]] = {}

@@ -26,6 +26,7 @@ def test_encode_prompt_batch_contract() -> None:
     assert EncodePromptBatch.RETURN_NAMES == ("positive", "negative")
     assert EncodePromptBatch.CATEGORY == "SimpleSyrup/Conditioning"
     assert "global" in EncodePromptBatch.DESCRIPTION.lower()
+    assert "[sep|name]" in EncodePromptBatch.DESCRIPTION.lower()
     assert list(inputs["required"]) == [
         "clip",
         "positive_prompt",
@@ -36,6 +37,7 @@ def test_encode_prompt_batch_contract() -> None:
     assert inputs["required"]["positive_prompt"][1]["default"] == ""
     assert inputs["required"]["negative_prompt"][1]["default"] == ""
     assert inputs["required"]["separator"][1]["default"] == "[SEP]"
+    assert "[sep|name]" in inputs["required"]["separator"][1]["tooltip"].lower()
     assert "global" in inputs["required"]["positive_prompt"][1]["tooltip"].lower()
     assert "global" in inputs["required"]["negative_prompt"][1]["tooltip"].lower()
 
@@ -58,6 +60,26 @@ def test_encode_prompt_batch_aligns_missing_negative_chunks_to_global(
     assert isinstance(negative, ConditioningBatch)
     assert positive.entries == ("clip:face", "clip:hair")
     assert negative.entries == ("clip:blur", "clip:blur")
+
+
+def test_encode_prompt_batch_accepts_named_default_separators(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Organizational separator names do not enter encoded prompt text."""
+
+    monkeypatch.setattr(EncodePromptBatch, "encoder_class", _FakeEncoder)
+
+    positive, negative = EncodePromptBatch().encode(
+        clip="clip",
+        positive_prompt="global [SEP|Sky] clouds [SEP|Ground] field",
+        negative_prompt="blur",
+        separator="[SEP]",
+    )
+
+    assert isinstance(positive, ConditioningBatch)
+    assert isinstance(negative, ConditioningBatch)
+    assert positive.entries == ("clip:global", "clip:clouds", "clip:field")
+    assert negative.entries == ("clip:blur", "clip:blur", "clip:blur")
 
 
 def test_encode_prompt_batch_encodes_blank_and_empty_chunks(
