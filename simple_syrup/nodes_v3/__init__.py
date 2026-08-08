@@ -52,6 +52,8 @@ def get_nodes() -> list[type[object]]:
     from .mask_to_segs import MaskToSEGSV3
     from .scale_factor import ScaleFactorV3
     from .simple_load_checkpoint import SimpleLoadCheckpointV3
+    from .simple_load_flux import SimpleLoadFluxV3
+    from .simple_load_flux2 import SimpleLoadFlux2V3
     from .tag_segs_with_external_llm import TagSEGSWithExternalLLMV3
     from .tag_segs_with_wd14 import TagSEGSWithWD14V3
     from .tile_and_tag_segs import TileAndTagSEGSV3
@@ -95,6 +97,8 @@ def get_nodes() -> list[type[object]]:
         SimpleLoadAnimaV3,
         SimplePreviewSEGSV3,
         SimpleLoadCheckpointV3,
+        SimpleLoadFluxV3,
+        SimpleLoadFlux2V3,
         SimpleVAEEncodeV3,
         TagSEGSWithExternalLLMV3,
         TagSEGSWithWD14V3,

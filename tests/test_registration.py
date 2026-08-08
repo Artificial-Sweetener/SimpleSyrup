@@ -52,6 +52,8 @@ BASE_NODE_IDS = [
     "SimpleSyrup.SimpleLoadAnima",
     "SimpleSyrup.SimplePreviewSEGS",
     "SimpleSyrup.SimpleLoadCheckpoint",
+    "SimpleSyrup.SimpleLoadFlux",
+    "SimpleSyrup.SimpleLoadFlux2",
     "SimpleSyrup.SimpleVAEEncode",
     "SimpleSyrup.TagSEGSWithExternalLLM",
     "SimpleSyrup.TagSEGSWithWD14",

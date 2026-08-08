@@ -128,6 +128,22 @@ class ModelDownloader:
         self._validate_destination(destination, request.expected_folder)
 
         if destination.is_file():
+            if request.expected_sha256 is not None:
+                actual_sha256 = sha256_file(destination)
+                if actual_sha256.lower() != request.expected_sha256.lower():
+                    LOGGER.error(
+                        "existing model artifact checksum mismatch",
+                        extra={
+                            "destination": str(destination),
+                            "description": request.description,
+                        },
+                    )
+                    raise ValueError(
+                        "Existing model artifact checksum mismatch for "
+                        f"'{destination}'. Expected {request.expected_sha256}, "
+                        f"got {actual_sha256}. Remove or replace this file before "
+                        "using automatic selection."
+                    )
             return DownloadResult(
                 path=destination,
                 bytes_downloaded=0,
@@ -153,7 +169,7 @@ class ModelDownloader:
                 description=request.description,
             )
             if request.expected_sha256 is not None:
-                actual_sha256 = _sha256_file(temporary_path)
+                actual_sha256 = sha256_file(temporary_path)
                 if actual_sha256.lower() != request.expected_sha256.lower():
                     raise ValueError(
                         "Downloaded model artifact checksum mismatch for "
@@ -231,7 +247,7 @@ def _content_length(response: BinaryIO) -> int | None:
         return None
 
 
-def _sha256_file(path: Path) -> str:
+def sha256_file(path: Path) -> str:
     """Return the SHA256 hex digest for a file."""
 
     digest = hashlib.sha256()
