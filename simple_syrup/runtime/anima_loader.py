@@ -13,8 +13,9 @@ from typing import Any, Protocol
 
 import torch
 
+from .anima_artifacts import ANIMA_QWEN_TEXT_ENCODER, ANIMA_QWEN_VAE
+from .auto_model_artifact import AutoModelArtifact
 from .auto_model_resolver import AutoModelResolution, AutoModelResolver
-from .model_catalog import ANIMA_QWEN_TEXT_ENCODER, ANIMA_QWEN_VAE, AutoModelArtifact
 from .model_downloads import ProgressReporter
 from .vae_loader import VaeLoaderService, load_vae_path
 

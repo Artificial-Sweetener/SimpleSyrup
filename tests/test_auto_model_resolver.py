@@ -6,10 +6,12 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
 
+from simple_syrup.runtime.auto_model_artifact import AutoModelArtifact
 from simple_syrup.runtime.auto_model_cache import AutoModelCache, AutoModelCacheEntry
 from simple_syrup.runtime.auto_model_resolver import (
     AutoModelResolver,
@@ -17,7 +19,6 @@ from simple_syrup.runtime.auto_model_resolver import (
     find_model_by_basename,
     relative_model_name,
 )
-from simple_syrup.runtime.model_catalog import AutoModelArtifact
 from simple_syrup.runtime.model_downloads import DownloadRequest, DownloadResult
 from test_helpers import FakeFolderPaths
 
@@ -104,6 +105,57 @@ def test_resolver_repairs_stale_cache_with_recursive_search(tmp_path: Path) -> N
     assert resolved.path == found_path
     assert resolved.source == "found"
     assert cache.load()[artifact.cache_id].path == found_path
+
+
+def test_resolver_rejects_legacy_cached_file_with_wrong_checksum(
+    tmp_path: Path,
+) -> None:
+    """A metadata-free legacy cache entry is hashed before it is trusted."""
+
+    fake = FakeFolderPaths(tmp_path / "models")
+    artifact = _artifact("text_encoders", "model.safetensors")
+    cached_path = tmp_path / "models" / "text_encoders" / "old" / artifact.filename
+    cached_path.parent.mkdir(parents=True)
+    cached_path.write_bytes(b"wrong")
+    cache = AutoModelCache(fake)
+    cache.save_entry(
+        artifact.cache_id,
+        AutoModelCacheEntry(
+            folder_name=artifact.folder_name,
+            filename=artifact.filename,
+            path=cached_path,
+            source="found",
+            sha256=artifact.sha256,
+        ),
+    )
+    downloader = RecordingDownloader()
+
+    resolved = AutoModelResolver(cache, downloader, fake).resolve(artifact)
+
+    assert resolved.source == "downloaded"
+    assert resolved.path != cached_path
+    assert len(downloader.requests) == 1
+
+
+def test_resolver_ignores_same_named_file_with_wrong_checksum(tmp_path: Path) -> None:
+    """Recursive discovery accepts only the checksum-pinned artifact bytes."""
+
+    fake = FakeFolderPaths(tmp_path / "models")
+    artifact = _artifact("text_encoders", "model.safetensors")
+    wrong_path = tmp_path / "models" / "text_encoders" / "unrelated" / artifact.filename
+    wrong_path.parent.mkdir(parents=True)
+    wrong_path.write_bytes(b"wrong")
+    downloader = RecordingDownloader()
+
+    resolved = AutoModelResolver(
+        AutoModelCache(fake),
+        downloader,
+        fake,
+    ).resolve(artifact)
+
+    assert resolved.source == "downloaded"
+    assert resolved.path != wrong_path
+    assert len(downloader.requests) == 1
 
 
 def test_find_model_by_basename_respects_folder_priority(tmp_path: Path) -> None:
@@ -221,5 +273,5 @@ def _artifact(folder_name: str, filename: str) -> AutoModelArtifact:
         source_url=f"https://example.invalid/{filename}",
         source_repo="example/model",
         description=f"test {filename}",
-        sha256="abc123",
+        sha256=hashlib.sha256(b"model").hexdigest(),
     )

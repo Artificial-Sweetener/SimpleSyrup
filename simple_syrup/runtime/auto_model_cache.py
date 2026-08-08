@@ -33,17 +33,24 @@ class AutoModelCacheEntry:
     path: Path
     source: CacheSource
     sha256: str
+    file_size: int | None = None
+    modified_time_ns: int | None = None
 
-    def to_payload(self) -> dict[str, str]:
+    def to_payload(self) -> dict[str, str | int]:
         """Return this cache entry as a JSON-serializable payload."""
 
-        return {
+        payload: dict[str, str | int] = {
             "folder_name": self.folder_name,
             "filename": self.filename,
             "path": str(self.path),
             "source": self.source,
             "sha256": self.sha256,
         }
+        if self.file_size is not None:
+            payload["file_size"] = self.file_size
+        if self.modified_time_ns is not None:
+            payload["modified_time_ns"] = self.modified_time_ns
+        return payload
 
     @classmethod
     def from_payload(
@@ -62,12 +69,20 @@ class AutoModelCacheEntry:
         path = _required_string(payload, cache_id, "path")
         source = _required_source(payload, cache_id)
         sha256 = _required_string(payload, cache_id, "sha256")
+        file_size = _optional_nonnegative_integer(payload, cache_id, "file_size")
+        modified_time_ns = _optional_nonnegative_integer(
+            payload,
+            cache_id,
+            "modified_time_ns",
+        )
         return cls(
             folder_name=folder_name,
             filename=filename,
             path=Path(path),
             source=source,
             sha256=sha256,
+            file_size=file_size,
+            modified_time_ns=modified_time_ns,
         )
 
 
@@ -198,6 +213,24 @@ def _required_source(payload: dict[Any, Any], cache_id: str) -> CacheSource:
             f"Auto model cache entry '{cache_id}' source is invalid."
         )
     return cast(CacheSource, value)
+
+
+def _optional_nonnegative_integer(
+    payload: dict[Any, Any],
+    cache_id: str,
+    field_name: str,
+) -> int | None:
+    """Return one optional nonnegative integer cache field."""
+
+    value = payload.get(field_name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise AutoModelCacheError(
+            f"Auto model cache entry '{cache_id}' field '{field_name}' "
+            "must be a nonnegative integer."
+        )
+    return cast(int, value)
 
 
 def _user_directory(folder_paths: ModuleType) -> Path:

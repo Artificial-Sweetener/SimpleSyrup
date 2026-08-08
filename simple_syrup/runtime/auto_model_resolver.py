@@ -12,13 +12,14 @@ from types import ModuleType
 from typing import Protocol
 
 from ..shared.logging import get_logger
+from .auto_model_artifact import AutoModelArtifact
 from .auto_model_cache import AutoModelCache, AutoModelCacheEntry, CacheSource
-from .model_catalog import AutoModelArtifact
 from .model_downloads import (
     DownloadRequest,
     DownloadResult,
     ModelDownloader,
     ProgressReporter,
+    sha256_file,
 )
 from .model_folders import get_model_folder_paths
 
@@ -69,6 +70,8 @@ class AutoModelResolver:
         entries = self._cache.load()
         cached = entries.get(artifact.cache_id)
         if cached is not None and self._cache_entry_is_valid(cached, artifact):
+            if cached.file_size is None or cached.modified_time_ns is None:
+                self._save_resolution(artifact, cached.path, cached.source)
             LOGGER.info(
                 "auto model cache hit",
                 extra={"cache_id": artifact.cache_id, "path": str(cached.path)},
@@ -80,11 +83,7 @@ class AutoModelResolver:
                 extra={"cache_id": artifact.cache_id, "path": str(cached.path)},
             )
 
-        found = find_model_by_basename(
-            artifact.folder_name,
-            artifact.filename,
-            self._folder_paths_module,
-        )
+        found = find_model_artifact(artifact, self._folder_paths_module)
         if found is not None:
             self._save_resolution(artifact, found, "found")
             LOGGER.info(
@@ -124,6 +123,7 @@ class AutoModelResolver:
     ) -> None:
         """Persist one successful automatic model resolution."""
 
+        file_stat = path.stat()
         self._cache.save_entry(
             artifact.cache_id,
             AutoModelCacheEntry(
@@ -132,6 +132,8 @@ class AutoModelResolver:
                 path=path,
                 source=source,
                 sha256=artifact.sha256,
+                file_size=file_stat.st_size,
+                modified_time_ns=file_stat.st_mtime_ns,
             ),
         )
 
@@ -160,7 +162,42 @@ class AutoModelResolver:
             )
         except ValueError:
             return False
-        return True
+        stat = entry.path.stat()
+        if entry.file_size is not None and entry.modified_time_ns is not None:
+            return (
+                entry.file_size == stat.st_size
+                and entry.modified_time_ns == stat.st_mtime_ns
+            )
+        return sha256_file(entry.path).lower() == artifact.sha256.lower()
+
+
+def find_model_artifact(
+    artifact: AutoModelArtifact,
+    folder_paths_module: ModuleType | None = None,
+) -> Path | None:
+    """Return the first same-named local file matching the catalog checksum."""
+
+    _validate_basename(artifact.filename)
+    for root in get_model_folder_paths(artifact.folder_name, folder_paths_module):
+        if not root.is_dir():
+            continue
+        matches = sorted(
+            path for path in root.rglob(artifact.filename) if path.is_file()
+        )
+        for match in matches:
+            if match.name != artifact.filename or not _path_is_under(match, root):
+                continue
+            if sha256_file(match).lower() == artifact.sha256.lower():
+                return match
+            LOGGER.warning(
+                "same-named auto model artifact has a different checksum",
+                extra={
+                    "cache_id": artifact.cache_id,
+                    "path": str(match),
+                    "artifact_filename": artifact.filename,
+                },
+            )
+    return None
 
 
 def find_model_by_basename(
