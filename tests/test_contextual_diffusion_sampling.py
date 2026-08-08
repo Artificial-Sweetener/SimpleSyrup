@@ -323,17 +323,22 @@ def _controls(
 class _FakeModel:
     """Provide the ModelPatcher surface used by the semantic runtime."""
 
-    def __init__(self, model_options: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        model_options: dict[str, Any] | None = None,
+        parent: _FakeModel | None = None,
+    ) -> None:
         """Create a CPU-backed fake model patcher."""
 
         self.load_device = torch.device("cpu")
         self.model_options = {} if model_options is None else model_options
         self.wrapper: object | None = None
+        self.parent = parent
 
     def clone(self) -> _FakeModel:
         """Return a clone with copied model options."""
 
-        return _FakeModel(self.model_options.copy())
+        return _FakeModel(self.model_options.copy(), parent=self)
 
     def set_model_unet_function_wrapper(self, wrapper: object) -> None:
         """Capture the installed wrapper."""

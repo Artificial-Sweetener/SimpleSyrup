@@ -22,7 +22,15 @@ from ..domain.regional_detailing import LatentRegion
 from ..shared.logging import get_logger
 from . import sampling_samplers, sampling_schedulers
 from .detail_previews import DetailPreviewContext, prepare_detail_preview_callback
-from .differential_diffusion import install_differential_diffusion
+from .differential_diffusion import (
+    differential_diffusion_mutation,
+    has_denoise_mask_function,
+)
+from .patcher_lifecycle import (
+    PATCHER_LIFECYCLE,
+    ModelCalcCondBatchMutation,
+    ModelMutation,
+)
 from .tiled_sampling import (
     Latent,
     reject_unsupported_conditioning,
@@ -168,7 +176,7 @@ def clone_model_with_regional_multidiffusion(
     global_prompt_weight: float = 0.0,
     differential_diffusion: bool = False,
 ) -> tuple[Any, RegionalMultiDiffusionSummary]:
-    """Return a model clone patched with regional calc-cond-batch blending."""
+    """Return a derived model patched with regional calc-cond-batch blending."""
 
     _validate_sampling_controls(
         steps=1,
@@ -180,10 +188,7 @@ def clone_model_with_regional_multidiffusion(
         latent_height=latent_height,
         regions=regions,
     )
-    cloned_model = model.clone()
-    if differential_diffusion:
-        install_differential_diffusion(cloned_model)
-    old_wrapper = cloned_model.model_options.get("sampler_calc_cond_batch_function")
+    old_wrapper = model.model_options.get("sampler_calc_cond_batch_function")
     if old_wrapper is not None and not callable(old_wrapper):
         raise ValueError("Existing sampler_calc_cond_batch_function is not callable.")
 
@@ -194,7 +199,15 @@ def clone_model_with_regional_multidiffusion(
         existing_calc_cond_batch=cast(CalcCondBatchFunction | None, old_wrapper),
         global_prompt_weight=global_prompt_weight,
     )
-    cloned_model.set_model_sampler_calc_cond_batch_function(wrapper)
+    mutations: list[ModelMutation] = []
+    if differential_diffusion and not has_denoise_mask_function(model):
+        mutations.append(differential_diffusion_mutation())
+    mutations.append(ModelCalcCondBatchMutation(wrapper))
+    derived_model = PATCHER_LIFECYCLE.derive_model(
+        model,
+        mutations,
+        operation="SimpleSyrup regional MultiDiffusion",
+    )
     summary = RegionalMultiDiffusionSummary(
         latent_width=latent_width,
         latent_height=latent_height,
@@ -208,7 +221,7 @@ def clone_model_with_regional_multidiffusion(
             default=0,
         ),
     )
-    return cloned_model, summary
+    return derived_model, summary
 
 
 class RegionalMultiDiffusionCalcCondBatch:
