@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -24,18 +24,23 @@ from simple_syrup.runtime.checkpoint_loader import (
 class FakeClip:
     """CLIP double that records clone and layer selection behavior."""
 
-    def __init__(self, name: str = "checkpoint_clip") -> None:
+    def __init__(
+        self,
+        name: str = "checkpoint_clip",
+        parent_patcher: object | None = None,
+    ) -> None:
         """Create a CLIP double with no selected layer."""
 
         self.name = name
         self.layer: int | None = None
         self.clone_count = 0
+        self.patcher = SimpleNamespace(parent=parent_patcher)
 
     def clone(self) -> FakeClip:
         """Return an independent CLIP double and record the clone call."""
 
         self.clone_count += 1
-        return FakeClip(f"{self.name}_clone")
+        return FakeClip(f"{self.name}_clone", parent_patcher=self.patcher)
 
     def clip_layer(self, layer: int) -> None:
         """Record the selected CLIP layer."""

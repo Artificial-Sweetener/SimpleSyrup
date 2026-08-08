@@ -9,8 +9,13 @@ from __future__ import annotations
 import importlib
 from collections.abc import Iterable
 from types import ModuleType
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import Any, Protocol, cast
 
+from .patcher_lifecycle import (
+    PATCHER_LIFECYCLE,
+    ClipLayerMutation,
+    ComfyPatcherLifecycle,
+)
 from .vae_loader import VaeLoaderService
 
 USE_CHECKPOINT_VAE_CHOICE = "Use Checkpoint VAE"
@@ -25,11 +30,13 @@ class CheckpointLoaderService:
         self,
         folder_paths_module: ModuleType | None = None,
         vae_loader: VaeLoaderBoundary | None = None,
+        patcher_lifecycle: ComfyPatcherLifecycle | None = None,
     ) -> None:
         """Create a checkpoint loader with injectable runtime boundaries."""
 
         self._folder_paths_module = folder_paths_module
         self._vae_loader = vae_loader or VaeLoaderService(folder_paths_module)
+        self._patcher_lifecycle = patcher_lifecycle or PATCHER_LIFECYCLE
 
     def load_checkpoint(
         self,
@@ -57,12 +64,32 @@ class CheckpointLoaderService:
         model = loaded[0]
         clip = loaded[1]
         checkpoint_vae = loaded[2]
-        selected_clip = _selected_clip(clip, clip_skip)
+        selected_clip = self._selected_clip(clip, clip_skip)
 
         if vae_name == USE_CHECKPOINT_VAE_CHOICE:
-            return model, selected_clip, checkpoint_vae
+            selected_vae = checkpoint_vae
+        else:
+            selected_vae = self._vae_loader.load_vae(vae_name)
 
-        return model, selected_clip, self._vae_loader.load_vae(vae_name)
+        return (
+            model,
+            selected_clip,
+            self._patcher_lifecycle.preserve_vae(
+                selected_vae,
+                operation="SimpleSyrup checkpoint loading",
+            ),
+        )
+
+    def _selected_clip(self, clip: object, clip_skip: bool) -> object:
+        """Return the loaded CLIP or a lifecycle-owned clip-skip derivation."""
+
+        if not clip_skip:
+            return clip
+        return self._patcher_lifecycle.derive_clip(
+            clip,
+            (ClipLayerMutation(CLIP_SKIP_LAYER),),
+            operation="SimpleSyrup checkpoint clip skip",
+        )
 
     def _folder_paths(self) -> ModuleType:
         """Return the ComfyUI folder_paths module."""
@@ -83,38 +110,11 @@ class VaeLoaderBoundary(Protocol):
         """Load the named external VAE."""
 
 
-@runtime_checkable
-class ClipLayerBoundary(Protocol):
-    """CLIP interface required to apply the ComfyUI clip-skip layer."""
-
-    def clone(self) -> ClipLayerBoundary:
-        """Return an independent CLIP object."""
-
-    def clip_layer(self, layer_idx: int) -> None:
-        """Set the CLIP layer index used during prompt encoding."""
-
-
 def _validate_clip_skip(clip_skip: object) -> None:
     """Reject non-boolean clip-skip selections from runtime callers."""
 
     if not isinstance(clip_skip, bool):
         raise TypeError("clip_skip must be a boolean.")
-
-
-def _selected_clip(clip: object, clip_skip: bool) -> object:
-    """Return the loaded CLIP or a cloned CLIP with clip skip applied."""
-
-    if not clip_skip:
-        return clip
-
-    if not isinstance(clip, ClipLayerBoundary):
-        raise TypeError(
-            "clip_skip requires a CLIP object with clone() and clip_layer()."
-        )
-
-    selected_clip = clip.clone()
-    selected_clip.clip_layer(CLIP_SKIP_LAYER)
-    return selected_clip
 
 
 def _comfy_sd() -> Any:
