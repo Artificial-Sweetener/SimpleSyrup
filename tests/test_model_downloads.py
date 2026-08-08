@@ -7,14 +7,19 @@
 from __future__ import annotations
 
 import hashlib
+import sys
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import TracebackType
+from types import ModuleType, TracebackType
 
 import pytest
 
-from simple_syrup.runtime.model_downloads import DownloadRequest, ModelDownloader
+from simple_syrup.runtime.model_downloads import (
+    ComfyProgressReporter,
+    DownloadRequest,
+    ModelDownloader,
+)
 
 
 @dataclass
@@ -71,6 +76,41 @@ class FakeResponse:
         if not self._chunks:
             return b""
         return self._chunks.pop(0)
+
+
+def test_comfy_progress_reporter_updates_the_active_node_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Comfy progress reporting creates and completes a host progress bar."""
+
+    updates: list[tuple[int, int | None]] = []
+
+    class FakeProgressBar:
+        """Record ComfyUI absolute progress updates."""
+
+        def __init__(self, total: int) -> None:
+            """Record the total selected for the progress bar."""
+
+            updates.append((-1, total))
+
+        def update_absolute(self, value: int, total: int | None = None) -> None:
+            """Record one absolute progress update."""
+
+            updates.append((value, total))
+
+    comfy_module = ModuleType("comfy")
+    comfy_utils = ModuleType("comfy.utils")
+    comfy_utils.ProgressBar = FakeProgressBar  # type: ignore[attr-defined]
+    comfy_module.utils = comfy_utils  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "comfy", comfy_module)
+    monkeypatch.setitem(sys.modules, "comfy.utils", comfy_utils)
+
+    reporter = ComfyProgressReporter()
+    reporter.start("Downloading Anima text encoder", 6)
+    reporter.advance(3, 6)
+    reporter.finish()
+
+    assert updates == [(-1, 6), (0, 6), (3, 6), (6, 6)]
 
 
 def test_downloader_streams_file_and_reports_progress(
@@ -180,6 +220,47 @@ def test_downloader_skips_existing_file(tmp_path: Path) -> None:
 
     assert result.skipped_existing is True
     assert result.bytes_downloaded == 0
+
+
+def test_downloader_verifies_existing_checksum_before_skipping(tmp_path: Path) -> None:
+    """Checksum-pinned existing files are verified before they are trusted."""
+
+    destination = tmp_path / "models" / "vae" / "model.safetensors"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"existing")
+
+    result = ModelDownloader().download(
+        DownloadRequest(
+            source_url="https://example.invalid/model.safetensors",
+            destination_path=destination,
+            expected_folder=destination.parent,
+            description="test model",
+            expected_sha256=hashlib.sha256(b"existing").hexdigest(),
+        )
+    )
+
+    assert result.skipped_existing is True
+
+
+def test_downloader_rejects_existing_checksum_mismatch(tmp_path: Path) -> None:
+    """A wrong file at the canonical path fails closed without replacement."""
+
+    destination = tmp_path / "models" / "vae" / "model.safetensors"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"wrong")
+
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        ModelDownloader().download(
+            DownloadRequest(
+                source_url="https://example.invalid/model.safetensors",
+                destination_path=destination,
+                expected_folder=destination.parent,
+                description="test model",
+                expected_sha256=hashlib.sha256(b"expected").hexdigest(),
+            )
+        )
+
+    assert destination.read_bytes() == b"wrong"
 
 
 def test_downloader_removes_partial_file_on_failure(

@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import pytest
 
-from simple_syrup.runtime.model_catalog import (
+from simple_syrup.runtime.anima_artifacts import (
     ANIMA_QWEN_TEXT_ENCODER,
     ANIMA_QWEN_VAE,
+)
+from simple_syrup.runtime.model_catalog import (
     BERT_ENTRY,
     GROUNDING_DINO_ENTRIES,
     SAM_ENTRIES,

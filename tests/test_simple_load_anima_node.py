@@ -13,6 +13,8 @@ from typing import Any
 import pytest
 
 from simple_syrup.nodes.simple_load_anima import SimpleLoadAnima
+from simple_syrup.nodes_v3.legacy_node_wrappers import SimpleLoadAnimaV3
+from simple_syrup.runtime.model_downloads import ComfyProgressReporter
 
 
 class FakeFolderPaths(ModuleType):
@@ -62,17 +64,42 @@ def test_simple_load_anima_declares_expected_inputs(
         "vae",
     ]
     assert required["diffusion_model"][0] == ["anima.safetensors"]
+    assert "advanced" not in required["diffusion_model"][1]
     assert required["diffusion_weight_dtype"][0] == [
         "default",
         "fp8_e4m3fn",
         "fp8_e4m3fn_fast",
         "fp8_e5m2",
     ]
+    assert required["diffusion_weight_dtype"][1]["advanced"] is True
     assert required["text_encoder"][0][0] == "auto"
     assert required["text_encoder"][1]["default"] == "auto"
+    assert required["text_encoder"][1]["advanced"] is True
     assert required["text_encoder_device"][0] == ["default", "cpu"]
+    assert required["text_encoder_device"][1]["advanced"] is True
     assert required["vae"][0][0] == "auto"
     assert required["vae"][1]["default"] == "auto"
+    assert required["vae"][1]["advanced"] is True
+
+
+def test_simple_load_anima_v3_keeps_only_diffusion_model_primary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The v3 schema marks every control after diffusion selection as advanced."""
+
+    monkeypatch.setitem(sys.modules, "folder_paths", FakeFolderPaths())
+
+    schema = SimpleLoadAnimaV3.define_schema()
+
+    assert [input_item.id for input_item in schema.inputs] == [
+        "diffusion_model",
+        "diffusion_weight_dtype",
+        "text_encoder",
+        "text_encoder_device",
+        "vae",
+    ]
+    assert schema.inputs[0].advanced is None
+    assert all(input_item.advanced is True for input_item in schema.inputs[1:])
 
 
 def test_simple_load_anima_delegates_to_service() -> None:
@@ -110,4 +137,4 @@ def test_simple_load_anima_delegates_to_service() -> None:
     assert fake_service.kwargs is not None
     assert fake_service.kwargs["text_encoder"] == "auto"
     assert fake_service.kwargs["vae"] == "auto"
-    assert "progress" in fake_service.kwargs
+    assert isinstance(fake_service.kwargs["progress"], ComfyProgressReporter)
