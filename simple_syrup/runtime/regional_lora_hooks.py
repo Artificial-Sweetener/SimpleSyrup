@@ -10,6 +10,8 @@ import logging
 from importlib import import_module
 from typing import Any
 
+from .patcher_lifecycle import PATCHER_LIFECYCLE, ClipHookScheduleMutation
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -32,12 +34,18 @@ def prepare_regional_lora_clip(clip: Any, hooks: object) -> tuple[Any, object]:
         "text-encoder hook group entries.",
         matching_hook_count,
     )
-    prepared_clip = clip.clone(disable_dynamic=True)
-    prepared_clip.patcher.forced_hooks = hooks.clone()
-    prepared_clip.use_clip_schedule = True
-    prepared_clip.patcher.register_all_hook_patches(
-        hooks,
-        comfy_hooks.create_target_dict(comfy_hooks.EnumWeightTarget.Clip),
+    prepared_clip = PATCHER_LIFECYCLE.derive_clip(
+        clip,
+        (
+            ClipHookScheduleMutation(
+                hooks=hooks,
+                target=comfy_hooks.create_target_dict(
+                    comfy_hooks.EnumWeightTarget.Clip
+                ),
+            ),
+        ),
+        operation="SimpleSyrup regional LoRA CLIP preparation",
+        disable_dynamic=True,
     )
     return prepared_clip, hooks
 

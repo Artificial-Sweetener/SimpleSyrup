@@ -18,6 +18,7 @@ from ..domain.contextual_diffusion import (
 )
 from ..shared.logging import get_logger
 from . import sampling_samplers, sampling_schedulers
+from .patcher_lifecycle import PATCHER_LIFECYCLE, ModelUnetWrapperMutation
 from .tiled_sampling import (
     ApplyModel,
     Latent,
@@ -156,10 +157,9 @@ def clone_model_with_contextual_diffusion(
     sigmas: torch.Tensor,
     diffusion_mode: str,
 ) -> Any:
-    """Clone a model and install one pre-CFG contextual prediction wrapper."""
+    """Derive a model with one pre-CFG contextual prediction wrapper."""
 
-    cloned_model = model.clone()
-    old_wrapper = cloned_model.model_options.get("model_function_wrapper")
+    old_wrapper = model.model_options.get("model_function_wrapper")
     if old_wrapper is not None and not callable(old_wrapper):
         raise ValueError("Existing model_function_wrapper is not callable.")
     wrapper = ContextualDiffusionModelWrapper(
@@ -169,8 +169,11 @@ def clone_model_with_contextual_diffusion(
         diffusion_mode=diffusion_mode,
         existing_wrapper=cast(ModelFunctionWrapper | None, old_wrapper),
     )
-    cloned_model.set_model_unet_function_wrapper(wrapper)
-    return cloned_model
+    return PATCHER_LIFECYCLE.derive_model(
+        model,
+        (ModelUnetWrapperMutation(wrapper),),
+        operation="SimpleSyrup contextual diffusion",
+    )
 
 
 class ContextualDiffusionModelWrapper:
