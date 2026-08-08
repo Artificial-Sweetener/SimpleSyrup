@@ -14,6 +14,8 @@ from typing import Any
 
 import torch
 
+from .patcher_lifecycle import PATCHER_LIFECYCLE
+
 VIDEO_TAES = ("taehv", "lighttaew2_2", "lighttaew2_1", "lighttaehy1_5", "taeltx_2")
 IMAGE_TAES = ("taesd", "taesdxl", "taesd3", "taef1")
 
@@ -156,7 +158,10 @@ def _build_vae(sd: dict[str, object], metadata: object | None) -> object:
     comfy_sd = _comfy_sd()
     vae = comfy_sd.VAE(sd=sd, metadata=metadata)
     vae.throw_exception_if_invalid()
-    return vae
+    return PATCHER_LIFECYCLE.preserve_vae(
+        vae,
+        operation="SimpleSyrup VAE loading",
+    )
 
 
 def _folder_paths() -> ModuleType:

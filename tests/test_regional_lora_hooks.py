@@ -19,13 +19,14 @@ from simple_syrup.runtime.regional_lora_hooks import prepare_regional_lora_clip
 class _FakeClip:
     """Record whether regional preparation clones the text encoder."""
 
-    def __init__(self) -> None:
+    def __init__(self, parent_patcher: object | None = None) -> None:
         """Create a clip and its minimal patcher collaboration."""
 
         self.cond_stage_model = object()
         self.registrations: list[tuple[Any, Any]] = []
         self.patcher = SimpleNamespace(
             forced_hooks=None,
+            parent=parent_patcher,
             register_all_hook_patches=self._register_hooks,
         )
         self.use_clip_schedule = False
@@ -35,7 +36,7 @@ class _FakeClip:
         """Return a distinct clip while recording clone policy."""
 
         self.clone_calls.append(disable_dynamic)
-        clone = _FakeClip()
+        clone = _FakeClip(parent_patcher=self.patcher)
         clone.clone_calls = self.clone_calls
         clone.registrations = self.registrations
         clone.patcher.register_all_hook_patches = clone._register_hooks

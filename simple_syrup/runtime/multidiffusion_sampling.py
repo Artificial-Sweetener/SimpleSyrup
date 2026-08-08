@@ -23,7 +23,15 @@ from ..domain.tiled_diffusion import (
 from ..shared.logging import get_logger
 from . import sampling_samplers, sampling_schedulers
 from .detail_previews import DetailPreviewContext, prepare_detail_preview_callback
-from .differential_diffusion import install_differential_diffusion
+from .differential_diffusion import (
+    differential_diffusion_mutation,
+    has_denoise_mask_function,
+)
+from .patcher_lifecycle import (
+    PATCHER_LIFECYCLE,
+    ModelMutation,
+    ModelUnetWrapperMutation,
+)
 from .tiled_sampling import (
     ApplyModel,
     Latent,
@@ -179,7 +187,7 @@ def clone_model_with_multidiffusion(
     differential_diffusion: bool = False,
     tiled_plan: TiledDiffusionPlan | None = None,
 ) -> tuple[Any, TiledDiffusionPlan]:
-    """Return a model clone patched with a pre-CFG MultiDiffusion wrapper."""
+    """Return a derived model patched with a pre-CFG MultiDiffusion wrapper."""
 
     plan = tiled_plan or build_tiled_diffusion_plan(
         latent_width=latent_width,
@@ -190,10 +198,7 @@ def clone_model_with_multidiffusion(
         tile_batch_size=tile_batch_size,
     )
     _validate_supplied_plan(plan, latent_width, latent_height)
-    cloned_model = model.clone()
-    if differential_diffusion:
-        install_differential_diffusion(cloned_model)
-    old_wrapper = cloned_model.model_options.get("model_function_wrapper")
+    old_wrapper = model.model_options.get("model_function_wrapper")
     if old_wrapper is not None and not callable(old_wrapper):
         raise ValueError("Existing model_function_wrapper is not callable.")
 
@@ -201,8 +206,16 @@ def clone_model_with_multidiffusion(
         plan=plan,
         existing_wrapper=cast(ModelFunctionWrapper | None, old_wrapper),
     )
-    cloned_model.set_model_unet_function_wrapper(wrapper)
-    return cloned_model, plan
+    mutations: list[ModelMutation] = []
+    if differential_diffusion and not has_denoise_mask_function(model):
+        mutations.append(differential_diffusion_mutation())
+    mutations.append(ModelUnetWrapperMutation(wrapper))
+    derived_model = PATCHER_LIFECYCLE.derive_model(
+        model,
+        mutations,
+        operation="SimpleSyrup MultiDiffusion",
+    )
+    return derived_model, plan
 
 
 class MultiDiffusionModelWrapper:
