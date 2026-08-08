@@ -62,11 +62,17 @@ def test_cache_saves_and_loads_entry(tmp_path: Path) -> None:
         / "qwen_3_06b_base.safetensors",
         source="downloaded",
         sha256="abc123",
+        file_size=123,
+        modified_time_ns=456,
     )
 
     cache.save_entry("anima_qwen_text_encoder", entry)
 
     assert cache.load() == {"anima_qwen_text_encoder": entry}
+    payload = json.loads(cache.cache_path().read_text(encoding="utf-8"))
+    saved_entry = payload["entries"]["anima_qwen_text_encoder"]
+    assert saved_entry["file_size"] == 123
+    assert saved_entry["modified_time_ns"] == 456
 
 
 def test_cache_preserves_unrelated_entries(tmp_path: Path) -> None:

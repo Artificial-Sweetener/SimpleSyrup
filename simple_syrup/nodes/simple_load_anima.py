@@ -68,6 +68,7 @@ class SimpleLoadAnima:
                     _choices_with_auto(folder_paths.get_filename_list("text_encoders")),
                     {
                         "default": AUTO_CHOICE,
+                        "advanced": True,
                         "tooltip": (
                             "Qwen text encoder used for Anima prompt understanding. "
                             "Auto selects the expected model."
@@ -89,6 +90,7 @@ class SimpleLoadAnima:
                     _choices_with_auto(vae_choices(folder_paths)),
                     {
                         "default": AUTO_CHOICE,
+                        "advanced": True,
                         "tooltip": (
                             "VAE used to decode Anima latents. Auto selects the "
                             "expected Qwen image VAE."
