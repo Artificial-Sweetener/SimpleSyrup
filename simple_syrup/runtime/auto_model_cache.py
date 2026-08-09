@@ -222,7 +222,7 @@ def _optional_nonnegative_integer(
 ) -> int | None:
     """Return one optional nonnegative integer cache field."""
 
-    value = payload.get(field_name)
+    value: object = payload.get(field_name)
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -230,7 +230,7 @@ def _optional_nonnegative_integer(
             f"Auto model cache entry '{cache_id}' field '{field_name}' "
             "must be a nonnegative integer."
         )
-    return cast(int, value)
+    return value
 
 
 def _user_directory(folder_paths: ModuleType) -> Path:
