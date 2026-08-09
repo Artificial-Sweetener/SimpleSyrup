@@ -1,3 +1,27 @@
+# [1.6.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.5.0...v1.6.0) (2026-08-09)
+
+
+### Bug Fixes
+
+* **cache:** make integer narrowing checker-independent ([6e2d1e1](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/6e2d1e1844b361f9b2f3a31c8538cfde0ce7c6b1))
+* **mask:** preserve missing-alpha image geometry ([70ffeb5](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/70ffeb530acb1f5e55ac6e06adcc07ba4560d776))
+* **media:** stabilize native ordered preview controls ([3d03b1d](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/3d03b1dfbc2eef3cee900173ddda57e03d5bc43d))
+* **regional:** align prompt batches and LoRA hooks ([646e4e7](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/646e4e7cab0ed299e704c4acbf64849181180076))
+* **runtime:** centralize Comfy patcher lifecycle ([fda2ef4](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/fda2ef4074e8550a406ada317f0a3bfb7db39cf6))
+
+
+### Features
+
+* **conditioning:** add regional prompting and SEP-local LoRAs ([be26493](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/be264935a8cb0e805222de9d615a197a788d8f01))
+* **conditioning:** support labeled prompt separators ([a24da13](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/a24da1359cc9966762d8e1fa4fde3dbdef879cfa))
+* **loaders:** add automatic FLUX model loaders ([08fd18c](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/08fd18cc6fdf6a7f9ff3657c323b31e8960a235a))
+* **media:** add native ordered loaders and SEGS preview ([dbde2a9](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/dbde2a9266dd043b92126e42e502cc88d9fba777))
+* **sampling:** add contextual diffusion sampler ([6c2e2da](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/6c2e2dad9c6db42a2a2a82d1e4a17e4db4bb0fbf))
+* **sampling:** expose evaluated context SEGS ([53a2771](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/53a2771ce815a0705b92f4766e56f11adbd9dedb))
+* **segmentation:** add interactive SEGS preview ([21db62d](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/21db62d3acee0b1d087f83e01fb5b92c912f4df6))
+* **segmentation:** add SAM region overlay ([d1ead71](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/d1ead71ca714e365bf27448170e6c8c8fccd2f5a))
+* **segmentation:** add SAM-guided tiled diffusion ([e50ec0e](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/e50ec0ea79620af63f32c25a934b2b06fc4d9484))
+
 # [1.5.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.4.0...v1.5.0) (2026-07-14)
 
 
