@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import torch
 
@@ -16,6 +16,12 @@ from ..domain.segs_tiled_diffusion import build_segs_guided_tiled_diffusion_plan
 from ..domain.tiled_diffusion import TiledDiffusionPlan, validate_tiled_diffusion_mode
 from ..runtime import mixture_of_diffusers_sampling, multidiffusion_sampling
 from ..runtime.detail_previews import DetailPreviewContext
+from .regional_sampling_preparation_service import (
+    RegionalSamplingPreparationService,
+)
+from .regional_tiled_diffusion_sampling_service import (
+    RegionalTiledDiffusionSamplingService,
+)
 from .sampling_batch import combine_latent_outputs, single_item_latent
 
 Latent = dict[str, Any]
@@ -23,6 +29,13 @@ Latent = dict[str, Any]
 
 class TiledDiffusionSamplingService:
     """Route tiled diffusion sampling requests to the selected runtime."""
+
+    regional_preparation_service_class: ClassVar[
+        type[RegionalSamplingPreparationService]
+    ] = RegionalSamplingPreparationService
+    regional_sampling_service_class: ClassVar[
+        type[RegionalTiledDiffusionSamplingService]
+    ] = RegionalTiledDiffusionSamplingService
 
     def sample(
         self,
@@ -46,10 +59,46 @@ class TiledDiffusionSamplingService:
         differential_diffusion: bool = False,
         allow_full_context_masks: bool = False,
         segs: object | None = None,
+        region_masks: object | None = None,
+        regional_prompt_weight: float = 0.5,
+        region_mask_feather: int = 0,
     ) -> Latent:
         """Sample a latent with the selected tiled diffusion method."""
 
         validate_tiled_diffusion_mode(diffusion_mode)
+        regional = self.regional_preparation_service_class().prepare(
+            positive=positive,
+            negative=negative,
+            latent_image=latent_image,
+            region_masks=region_masks,
+            regional_prompt_weight=regional_prompt_weight,
+            region_mask_feather=region_mask_feather,
+        )
+        if regional.active:
+            if regional.planning_masks is None:
+                raise RuntimeError("Active regional sampling requires planning masks.")
+            return self.regional_sampling_service_class().sample(
+                item_sampler=self._sample_single,
+                region_masks=regional.planning_masks,
+                segs=segs,
+                diffusion_mode=diffusion_mode,
+                model=model,
+                seed=seed,
+                steps=steps,
+                cfg=cfg,
+                sampler_name=sampler_name,
+                scheduler=scheduler,
+                positive=regional.positive,
+                negative=regional.negative,
+                latent_image=latent_image,
+                denoise=denoise,
+                latent_tile_width=latent_tile_width,
+                latent_tile_height=latent_tile_height,
+                latent_tile_overlap=latent_tile_overlap,
+                latent_tile_batch_size=latent_tile_batch_size,
+                preview_context=preview_context,
+                differential_diffusion=differential_diffusion,
+            )
         if segs is not None:
             return self._sample_segs_guided(
                 diffusion_mode=diffusion_mode,

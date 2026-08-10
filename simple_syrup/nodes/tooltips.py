@@ -187,6 +187,18 @@ GLOBAL_CONTEXT_DECAY = (
 CONTEXTUAL_DIFFUSION_SEGS = (
     "Optional regions that replace the regular grid with SEGS-guided contexts."
 )
+OPTIONAL_REGIONAL_MASKS = (
+    "Optional authored masks that activate regional prompting when positive or "
+    "negative conditioning is a batch; SEGS may further subdivide those regions."
+)
+OPTIONAL_REGIONAL_PROMPT_WEIGHT = (
+    "Balances regional prompts against the global prompt when regional masks and "
+    "a conditioning batch are connected."
+)
+OPTIONAL_REGION_MASK_FEATHER = (
+    "Softens regional conditioning edges by this many source-mask pixels; tile "
+    "boundaries continue to follow the unfeathered authored regions."
+)
 
 DETAIL_IMAGE = (
     "Source image containing the regions to improve. Detailed crops are blended "

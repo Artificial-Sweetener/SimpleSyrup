@@ -257,6 +257,24 @@ def test_runtime_delegates_sampling_to_comfy_with_wrapped_clone(
     )
     monkeypatch.setattr(latent_preview, "prepare_callback", lambda _model, _steps: None)
     monkeypatch.setattr(comfy_utils, "PROGRESS_BAR_ENABLED", False)
+    mask_support: list[bool] = []
+
+    def record_conditioning_policy(
+        _conditioning: object,
+        *,
+        sampler_label: str,
+        allow_full_context_masks: bool = False,
+    ) -> None:
+        """Record the regional mask policy at the runtime boundary."""
+
+        assert sampler_label == "Contextual Diffusion"
+        mask_support.append(allow_full_context_masks)
+
+    monkeypatch.setattr(
+        contextual_diffusion_sampling,
+        "reject_unsupported_conditioning",
+        record_conditioning_policy,
+    )
 
     def fake_sample_custom(
         sampling_model: _FakeModel,
@@ -292,6 +310,7 @@ def test_runtime_delegates_sampling_to_comfy_with_wrapped_clone(
         diffusion_mode="mixture_of_diffusers",
         controls=controls,
         plan=plan,
+        allow_full_context_masks=True,
     )
 
     assert calls["model"] is not model
@@ -301,6 +320,7 @@ def test_runtime_delegates_sampling_to_comfy_with_wrapped_clone(
     assert output["samples"] is sampled
     assert output["kept"] == "metadata"
     assert "downscale_ratio_spacial" not in output
+    assert mask_support == [True, True]
 
 
 def _controls(

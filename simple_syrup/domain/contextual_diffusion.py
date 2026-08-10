@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import torch
+
+from .regional_tiled_diffusion import build_region_constrained_tiled_diffusion_plan
 from .segs import NativeSegs
 from .segs_tiled_diffusion import build_segs_guided_tiled_diffusion_plan
 from .tiled_diffusion import TiledDiffusionPlan, build_tiled_diffusion_plan
@@ -72,6 +75,7 @@ def build_contextual_diffusion_plan(
     latent_height: int,
     controls: ContextualDiffusionControls,
     segs: NativeSegs | None,
+    region_masks: torch.Tensor | None = None,
 ) -> ContextualDiffusionPlan:
     """Return a global context plus the regular or SEGS-guided context plan."""
 
@@ -89,8 +93,9 @@ def build_contextual_diffusion_plan(
         context_width=global_width,
         context_height=global_height,
     )
-    tile_plan = (
-        build_segs_guided_tiled_diffusion_plan(
+    if region_masks is not None:
+        tile_plan = build_region_constrained_tiled_diffusion_plan(
+            region_masks=region_masks,
             segs=segs,
             latent_width=latent_width,
             latent_height=latent_height,
@@ -99,8 +104,9 @@ def build_contextual_diffusion_plan(
             overlap=controls.latent_context_overlap,
             tile_batch_size=controls.latent_context_batch_size,
         )
-        if segs is not None
-        else build_tiled_diffusion_plan(
+    elif segs is not None:
+        tile_plan = build_segs_guided_tiled_diffusion_plan(
+            segs=segs,
             latent_width=latent_width,
             latent_height=latent_height,
             tile_width=controls.latent_context_size,
@@ -108,7 +114,15 @@ def build_contextual_diffusion_plan(
             overlap=controls.latent_context_overlap,
             tile_batch_size=controls.latent_context_batch_size,
         )
-    )
+    else:
+        tile_plan = build_tiled_diffusion_plan(
+            latent_width=latent_width,
+            latent_height=latent_height,
+            tile_width=controls.latent_context_size,
+            tile_height=controls.latent_context_size,
+            overlap=controls.latent_context_overlap,
+            tile_batch_size=controls.latent_context_batch_size,
+        )
     return ContextualDiffusionPlan(
         latent_width=latent_width,
         latent_height=latent_height,

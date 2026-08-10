@@ -249,6 +249,121 @@ def test_service_builds_and_forwards_a_segs_guided_plan(
     assert all(tile.weight_mask is not None for tile in plan.tiles)
 
 
+def test_service_selects_conditioning_batch_per_latent_with_shared_segs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SEGS guidance preserves the established per-latent batch interpretation."""
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_multidiffusion(**kwargs: Any) -> dict[str, Any]:
+        """Record one latent item and return it unchanged."""
+
+        calls.append(kwargs)
+        return {"samples": kwargs["latent_image"]["samples"]}
+
+    monkeypatch.setattr(
+        "simple_syrup.services.tiled_diffusion_sampling_service."
+        "multidiffusion_sampling.sample_multidiffusion",
+        fake_multidiffusion,
+    )
+    segs = ((4, 4), (_full_segment(4, 4),))
+
+    TiledDiffusionSamplingService().sample(
+        **(
+            _sample_kwargs(diffusion_mode="multidiffusion")
+            | {
+                "positive": ConditioningBatch(("positive-0", "positive-1")),
+                "negative": ConditioningBatch(("negative-0", "negative-1")),
+                "latent_image": {"samples": torch.zeros((2, 4, 4, 4))},
+                "segs": segs,
+            }
+        )
+    )
+
+    assert [call["positive"] for call in calls] == ["positive-0", "positive-1"]
+    assert [call["negative"] for call in calls] == ["negative-0", "negative-1"]
+    assert all(call["tiled_plan"] is not None for call in calls)
+
+
+def test_service_activates_regional_conditioning_and_constrained_tiles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Masks plus a conditioning batch activate shared regional sampling."""
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_multidiffusion(**kwargs: Any) -> dict[str, Any]:
+        """Record assembled conditioning and its region-constrained plan."""
+
+        calls.append(kwargs)
+        return {"samples": kwargs["latent_image"]["samples"]}
+
+    monkeypatch.setattr(
+        "simple_syrup.services.tiled_diffusion_sampling_service."
+        "multidiffusion_sampling.sample_multidiffusion",
+        fake_multidiffusion,
+    )
+    masks = torch.zeros((2, 4, 4))
+    masks[0, :, :2] = 1.0
+    masks[1, :, 2:] = 1.0
+
+    TiledDiffusionSamplingService().sample(
+        **(
+            _sample_kwargs(diffusion_mode="multidiffusion")
+            | {
+                "positive": ConditioningBatch(
+                    (
+                        _conditioning("global"),
+                        _conditioning("left"),
+                        _conditioning("right"),
+                    )
+                ),
+                "negative": _conditioning("negative"),
+                "region_masks": masks,
+            }
+        )
+    )
+
+    assert len(calls) == 1
+    assert [item[0] for item in calls[0]["positive"]] == [
+        "global",
+        "left",
+        "right",
+    ]
+    assert calls[0]["allow_full_context_masks"] is True
+    assert len(calls[0]["tiled_plan"].tiles) == 2
+
+
+def test_region_masks_without_conditioning_batch_leave_sampling_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Masks alone neither validate nor alter the established ordinary path."""
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_multidiffusion(**kwargs: Any) -> dict[str, Any]:
+        """Record the unchanged runtime request."""
+
+        calls.append(kwargs)
+        return {"samples": kwargs["latent_image"]["samples"]}
+
+    monkeypatch.setattr(
+        "simple_syrup.services.tiled_diffusion_sampling_service."
+        "multidiffusion_sampling.sample_multidiffusion",
+        fake_multidiffusion,
+    )
+
+    TiledDiffusionSamplingService().sample(
+        **(_sample_kwargs(diffusion_mode="multidiffusion") | {"region_masks": object()})
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["positive"] == "positive"
+    assert calls[0]["tiled_plan"] is None
+    assert calls[0]["allow_full_context_masks"] is False
+
+
 def test_invalid_mode_fails_before_runtime_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -318,3 +433,9 @@ def _full_segment(height: int, width: int) -> Segment:
         bbox=BoundingBox(0, 0, width, height),
         label="region",
     )
+
+
+def _conditioning(name: str) -> list[list[object]]:
+    """Return one structurally valid standard conditioning value."""
+
+    return [[name, {}]]

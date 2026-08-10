@@ -60,6 +60,9 @@ def test_input_types_match_tiled_diffusion_contract(
     assert required["latent_tile_overlap"][1]["default"] == 16
     assert required["latent_tile_batch_size"][1]["default"] == 4
     assert optional["segs"][0] == "SEGS"
+    assert optional["region_masks"][0] == "MASK"
+    assert optional["regional_prompt_weight"][1]["default"] == 0.5
+    assert optional["region_mask_feather"][1]["default"] == 0
 
 
 def test_node_metadata_matches_contract() -> None:
@@ -121,6 +124,9 @@ def test_sample_delegates_to_shared_service(
     assert call["latent_tile_batch_size"] == 3
     assert call["preview_context"] is None
     assert call["segs"] is None
+    assert call["region_masks"] is None
+    assert call["regional_prompt_weight"] == 0.5
+    assert call["region_mask_feather"] == 0
 
 
 def test_invalid_diffusion_mode_fails_before_runtime_sampling() -> None:
@@ -175,6 +181,9 @@ class _FakeTiledDiffusionSamplingService:
         latent_tile_batch_size: int,
         preview_context: Any | None = None,
         segs: object | None = None,
+        region_masks: object | None = None,
+        regional_prompt_weight: float = 0.5,
+        region_mask_feather: int = 0,
     ) -> dict[str, Any]:
         """Record sampling arguments and return a fixed latent."""
 
@@ -197,6 +206,9 @@ class _FakeTiledDiffusionSamplingService:
                 "latent_tile_batch_size": latent_tile_batch_size,
                 "preview_context": preview_context,
                 "segs": segs,
+                "region_masks": region_masks,
+                "regional_prompt_weight": regional_prompt_weight,
+                "region_mask_feather": region_mask_feather,
             }
         )
         return self.output

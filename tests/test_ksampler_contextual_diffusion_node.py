@@ -69,6 +69,9 @@ def test_input_types_expose_concise_klein_oriented_controls(
     assert required["global_steps"][1]["default"] == 1
     assert required["global_decay"][1]["default"] == 0.5
     assert declared["optional"]["segs"][0] == "SEGS"
+    assert declared["optional"]["region_masks"][0] == "MASK"
+    assert declared["optional"]["regional_prompt_weight"][1]["default"] == 0.5
+    assert declared["optional"]["region_mask_feather"][1]["default"] == 0
 
 
 def test_node_metadata_matches_separate_sampler_contract() -> None:
@@ -147,6 +150,9 @@ def test_sample_delegates_every_control_to_service(
             "global_steps": 2,
             "global_decay": 0.4,
             "segs": segs,
+            "region_masks": None,
+            "regional_prompt_weight": 0.5,
+            "region_mask_feather": 0,
         }
     ]
 
