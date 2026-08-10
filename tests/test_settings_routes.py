@@ -19,8 +19,8 @@ import simple_syrup.runtime.settings_routes as settings_routes
 from simple_syrup.runtime.settings import (
     ExternalLLMSettings,
     SimpleSyrupSettings,
-    SimpleSyrupSettingsRepository,
 )
+from simple_syrup.runtime.settings_repository import SimpleSyrupSettingsRepository
 from simple_syrup.runtime.settings_routes import (
     SETTINGS_ROUTE,
     Handler,
@@ -121,6 +121,7 @@ def test_get_settings_returns_current_settings(tmp_path: Path) -> None:
             "cached_models": [],
             "default_model": "",
         },
+        "quant_cache_limit_gib": 20,
         "show_downloadable_models": False,
     }
 
@@ -145,9 +146,32 @@ def test_post_settings_validates_and_persists_payload(tmp_path: Path) -> None:
             "cached_models": [],
             "default_model": "",
         },
+        "quant_cache_limit_gib": 20,
         "show_downloadable_models": False,
     }
     assert repository.load().show_downloadable_models is False
+
+
+def test_post_settings_persists_global_quant_cache_limit(tmp_path: Path) -> None:
+    """The settings route persists the user-selected global cache budget."""
+
+    prompt_server = FakePromptServer()
+    repository = SimpleSyrupSettingsRepository(tmp_path / "settings.json")
+    register_fake_routes(repository, prompt_server)
+
+    response = asyncio.run(
+        prompt_server.routes.post_handlers[SETTINGS_ROUTE](
+            FakeRequest(
+                {
+                    "show_downloadable_models": True,
+                    "quant_cache_limit_gib": 35,
+                }
+            )
+        )
+    )
+
+    assert response.status == 200
+    assert repository.load().quant_cache_limit_gib == 35
 
 
 def test_post_settings_preserves_external_llm_when_payload_omits_it(
@@ -183,11 +207,37 @@ def test_post_settings_preserves_external_llm_when_payload_omits_it(
             "cached_models": ["model-a"],
             "default_model": "model-a",
         },
+        "quant_cache_limit_gib": 20,
         "show_downloadable_models": False,
     }
     loaded = repository.load()
     assert loaded.show_downloadable_models is False
     assert loaded.external_llm.base_url == "https://provider.example/v1"
+
+
+def test_post_settings_preserves_quant_limit_when_payload_omits_it(
+    tmp_path: Path,
+) -> None:
+    """Older or focused setting updates do not reset the global cache budget."""
+
+    prompt_server = FakePromptServer()
+    repository = SimpleSyrupSettingsRepository(tmp_path / "settings.json")
+    repository.save(
+        SimpleSyrupSettings(
+            show_downloadable_models=True,
+            quant_cache_limit_gib=42,
+        )
+    )
+    register_fake_routes(repository, prompt_server)
+
+    response = asyncio.run(
+        prompt_server.routes.post_handlers[SETTINGS_ROUTE](
+            FakeRequest({"show_downloadable_models": False})
+        )
+    )
+
+    assert response.status == 200
+    assert repository.load().quant_cache_limit_gib == 42
 
 
 def test_post_settings_rejects_non_boolean_payload(tmp_path: Path) -> None:

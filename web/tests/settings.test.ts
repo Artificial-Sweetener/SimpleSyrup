@@ -6,12 +6,17 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   SIMPLE_SYRUP_SETTING_ID,
-  SIMPLE_SYRUP_SETTING_LABEL,
+  SIMPLE_SYRUP_SETTING_LABEL
+} from "../src/downloadableModelsSetting";
+import {
   EXTERNAL_LLM_API_KEY_SETTING_ID,
-  EXTERNAL_LLM_ENDPOINT_SETTING_ID,
+  EXTERNAL_LLM_ENDPOINT_SETTING_ID
+} from "../src/externalLlmSettings";
+import {
   registerSimpleSyrupSettings
-} from "../src/settings";
-import type { SimpleSyrupSettingsApi } from "../src/settings";
+} from "../src/settingsRegistration";
+import type { SimpleSyrupSettingsApi } from "../src/settingsRegistration";
+import { QUANT_CACHE_SETTING_ID } from "../src/quantCacheSetting";
 import { createFakeComfyApp } from "./testUtils";
 
 describe("Comfy settings registration", () => {
@@ -21,7 +26,7 @@ describe("Comfy settings registration", () => {
 
     await registerSimpleSyrupSettings(app, api);
 
-    expect(app.ui.settings.definitions).toHaveLength(3);
+    expect(app.ui.settings.definitions).toHaveLength(4);
     expect(app.ui.settings.definitions[0]).toMatchObject({
       id: SIMPLE_SYRUP_SETTING_ID,
       name: SIMPLE_SYRUP_SETTING_LABEL,
@@ -30,25 +35,39 @@ describe("Comfy settings registration", () => {
     });
     expect(app.ui.settings.settings[0]?.value).toBe(false);
     expect(app.ui.settings.definitions[1]).toMatchObject({
-      id: EXTERNAL_LLM_ENDPOINT_SETTING_ID,
-      sortOrder: 320
+      id: QUANT_CACHE_SETTING_ID,
+      sortOrder: 321
     });
     expect(typeof app.ui.settings.definitions[1]?.type).toBe("function");
     expect(app.ui.settings.definitions[2]).toMatchObject({
+      id: EXTERNAL_LLM_ENDPOINT_SETTING_ID,
+      sortOrder: 320
+    });
+    expect(typeof app.ui.settings.definitions[2]?.type).toBe("function");
+    expect(app.ui.settings.definitions[3]).toMatchObject({
       id: EXTERNAL_LLM_API_KEY_SETTING_ID,
       sortOrder: 319
     });
-    expect(typeof app.ui.settings.definitions[2]?.type).toBe("function");
+    expect(typeof app.ui.settings.definitions[3]?.type).toBe("function");
   });
 
   it("saves setting changes to the backend", async () => {
     const app = createFakeComfyApp();
     const saveSettings = vi
       .fn<SimpleSyrupSettingsApi["saveSettings"]>()
-      .mockResolvedValue({ show_downloadable_models: true });
+      .mockResolvedValue({
+        show_downloadable_models: true,
+        quant_cache_limit_gib: 20
+      });
     const api: SimpleSyrupSettingsApi = {
-      getSettings: vi.fn().mockResolvedValue({ show_downloadable_models: false }),
+      getSettings: vi.fn().mockResolvedValue({
+        show_downloadable_models: false,
+        quant_cache_limit_gib: 20
+      }),
       saveSettings,
+      getQuantCacheStatus: vi.fn().mockResolvedValue(defaultQuantCacheStatus()),
+      enforceQuantCacheLimit: vi.fn().mockResolvedValue(defaultQuantCacheStatus()),
+      clearQuantCache: vi.fn().mockResolvedValue(defaultQuantCacheStatus()),
       getExternalLLMSettings: vi.fn().mockResolvedValue(defaultExternalLLMSettings()),
       saveExternalLLMSettings: vi.fn().mockResolvedValue(defaultExternalLLMSettings()),
       saveExternalLLMApiKey: vi.fn().mockResolvedValue(defaultExternalLLMSettings())
@@ -58,7 +77,8 @@ describe("Comfy settings registration", () => {
     await app.ui.settings.definitions[0]?.onChange?.(true);
 
     expect(saveSettings).toHaveBeenCalledWith({
-      show_downloadable_models: true
+      show_downloadable_models: true,
+      quant_cache_limit_gib: 20
     });
     expect(app.ui.settings.settings[0]?.value).toBe(true);
   });
@@ -68,7 +88,13 @@ describe("Comfy settings registration", () => {
     const logger = { warn: vi.fn() };
     const api: SimpleSyrupSettingsApi = {
       getSettings: vi.fn().mockRejectedValue(new Error("offline")),
-      saveSettings: vi.fn().mockResolvedValue({ show_downloadable_models: true }),
+      saveSettings: vi.fn().mockResolvedValue({
+        show_downloadable_models: true,
+        quant_cache_limit_gib: 20
+      }),
+      getQuantCacheStatus: vi.fn().mockResolvedValue(defaultQuantCacheStatus()),
+      enforceQuantCacheLimit: vi.fn().mockResolvedValue(defaultQuantCacheStatus()),
+      clearQuantCache: vi.fn().mockResolvedValue(defaultQuantCacheStatus()),
       getExternalLLMSettings: vi.fn().mockResolvedValue(defaultExternalLLMSettings()),
       saveExternalLLMSettings: vi.fn().mockResolvedValue(defaultExternalLLMSettings()),
       saveExternalLLMApiKey: vi.fn().mockResolvedValue(defaultExternalLLMSettings())
@@ -88,11 +114,20 @@ describe("Comfy settings registration", () => {
     const logger = { warn: vi.fn() };
     const saveSettings = vi
       .fn<SimpleSyrupSettingsApi["saveSettings"]>()
-      .mockResolvedValueOnce({ show_downloadable_models: true })
+      .mockResolvedValueOnce({
+        show_downloadable_models: true,
+        quant_cache_limit_gib: 20
+      })
       .mockRejectedValueOnce(new Error("rejected"));
     const api: SimpleSyrupSettingsApi = {
-      getSettings: vi.fn().mockResolvedValue({ show_downloadable_models: false }),
+      getSettings: vi.fn().mockResolvedValue({
+        show_downloadable_models: false,
+        quant_cache_limit_gib: 20
+      }),
       saveSettings,
+      getQuantCacheStatus: vi.fn().mockResolvedValue(defaultQuantCacheStatus()),
+      enforceQuantCacheLimit: vi.fn().mockResolvedValue(defaultQuantCacheStatus()),
+      clearQuantCache: vi.fn().mockResolvedValue(defaultQuantCacheStatus()),
       getExternalLLMSettings: vi.fn().mockResolvedValue(defaultExternalLLMSettings()),
       saveExternalLLMSettings: vi.fn().mockResolvedValue(defaultExternalLLMSettings()),
       saveExternalLLMApiKey: vi.fn().mockResolvedValue(defaultExternalLLMSettings())
@@ -109,6 +144,81 @@ describe("Comfy settings registration", () => {
     expect(app.ui.settings.settings[0]?.value).toBe(true);
   });
 
+  it("shows global quant cache usage and saves its GiB limit", async () => {
+    const app = createFakeComfyApp();
+    const api = fakeSettingsApi(true);
+    const saveSettings = vi
+      .fn<SimpleSyrupSettingsApi["saveSettings"]>()
+      .mockResolvedValue({
+        show_downloadable_models: true,
+        quant_cache_limit_gib: 30
+      });
+    api.saveSettings = saveSettings;
+
+    await registerSimpleSyrupSettings(app, api);
+    const control = renderSetting(getDefinition(app, 1));
+    const input = requiredInput(control, "input[type=number]");
+    const saveButton = requiredButton(control, "button");
+
+    expect(input.value).toBe("20");
+    expect(control.textContent).toContain("models/SyrupQuants");
+    input.value = "30";
+    saveButton.click();
+    await flushPromises();
+
+    expect(saveSettings).toHaveBeenCalledWith({
+      show_downloadable_models: true,
+      quant_cache_limit_gib: 30
+    });
+    expect(input.value).toBe("30");
+  });
+
+  it("clears inactive quant artifacts and refreshes cache status", async () => {
+    const app = createFakeComfyApp();
+    const api = fakeSettingsApi(true);
+    const clearQuantCache = vi.fn().mockResolvedValue({
+      ...defaultQuantCacheStatus(),
+      removed_artifacts: 2,
+      removed_bytes: 1024
+    });
+    api.clearQuantCache = clearQuantCache;
+
+    await registerSimpleSyrupSettings(app, api);
+    const control = renderSetting(getDefinition(app, 1));
+    const buttons = control.querySelectorAll("button");
+    const clearButton = buttons[1];
+    if (!(clearButton instanceof HTMLButtonElement)) {
+      throw new Error("Expected quant cache clear button.");
+    }
+    clearButton.click();
+    await flushPromises();
+
+    expect(clearQuantCache).toHaveBeenCalledOnce();
+    expect(control.textContent).toContain("0.00 GiB used");
+  });
+
+  it("restores the previous quant limit when backend saving fails", async () => {
+    const app = createFakeComfyApp();
+    const logger = { warn: vi.fn() };
+    const api = fakeSettingsApi(true);
+    api.saveSettings = vi.fn().mockRejectedValue(new Error("rejected"));
+
+    await registerSimpleSyrupSettings(app, api, logger);
+    const control = renderSetting(getDefinition(app, 1));
+    const input = requiredInput(control, "input[type=number]");
+    const saveButton = requiredButton(control, "button");
+    input.value = "30";
+    saveButton.click();
+    await flushPromises();
+
+    expect(input.value).toBe("20");
+    expect(control.textContent).toContain("was not saved");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("quant cache limit"),
+      expect.any(Error)
+    );
+  });
+
   it("saves external LLM endpoint changes to the backend", async () => {
     const app = createFakeComfyApp();
     const refreshComboInNodes = vi.fn().mockResolvedValue(undefined);
@@ -122,7 +232,7 @@ describe("Comfy settings registration", () => {
     api.saveExternalLLMSettings = saveExternalLLMSettings;
 
     await registerSimpleSyrupSettings(app, api);
-    const control = renderSetting(getDefinition(app, 1));
+    const control = renderSetting(getDefinition(app, 2));
     const input = requiredInput(control, "input");
     const button = requiredButton(control, "button");
 
@@ -146,7 +256,7 @@ describe("Comfy settings registration", () => {
     api.saveExternalLLMSettings = saveExternalLLMSettings;
 
     await registerSimpleSyrupSettings(app, api);
-    const control = renderSetting(getDefinition(app, 1));
+    const control = renderSetting(getDefinition(app, 2));
     const input = requiredInput(control, "input");
     const button = requiredButton(control, "button");
 
@@ -174,7 +284,7 @@ describe("Comfy settings registration", () => {
     api.saveExternalLLMApiKey = saveExternalLLMApiKey;
 
     await registerSimpleSyrupSettings(app, api);
-    const control = renderSetting(getDefinition(app, 2));
+    const control = renderSetting(getDefinition(app, 3));
     const addButton = requiredButton(control, "button");
     expect(addButton.textContent).toBe("Add API Key");
 
@@ -209,7 +319,7 @@ describe("Comfy settings registration", () => {
     api.saveExternalLLMSettings = saveExternalLLMSettings;
 
     await registerSimpleSyrupSettings(app, api, logger);
-    const control = renderSetting(getDefinition(app, 1));
+    const control = renderSetting(getDefinition(app, 2));
     const input = requiredInput(control, "input");
     const button = requiredButton(control, "button");
 
@@ -233,7 +343,7 @@ describe("Comfy settings registration", () => {
     api.saveExternalLLMApiKey = saveExternalLLMApiKey;
 
     await registerSimpleSyrupSettings(app, api);
-    const control = renderSetting(getDefinition(app, 2));
+    const control = renderSetting(getDefinition(app, 3));
     const addButton = requiredButton(control, "button");
 
     addButton.click();
@@ -254,7 +364,7 @@ describe("Comfy settings registration", () => {
       .mockRejectedValue(new Error("Configure an external LLM endpoint first."));
 
     await registerSimpleSyrupSettings(app, api);
-    const control = renderSetting(getDefinition(app, 2));
+    const control = renderSetting(getDefinition(app, 3));
     const addButton = requiredButton(control, "button");
 
     addButton.click();
@@ -281,7 +391,7 @@ describe("Comfy settings registration", () => {
       .mockResolvedValue({ ...defaultExternalLLMSettings(), has_api_key: true });
 
     await registerSimpleSyrupSettings(app, api);
-    const control = renderSetting(getDefinition(app, 2));
+    const control = renderSetting(getDefinition(app, 3));
     const button = control.querySelector("button");
 
     expect(button?.textContent).toBe("Replace API Key");
@@ -294,9 +404,13 @@ function fakeSettingsApi(
 ): SimpleSyrupSettingsApi {
   return {
     getSettings: vi.fn().mockResolvedValue({
-      show_downloadable_models: showDownloadableModels
+      show_downloadable_models: showDownloadableModels,
+      quant_cache_limit_gib: 20
     }),
     saveSettings: vi.fn().mockImplementation((settings) => Promise.resolve(settings)),
+    getQuantCacheStatus: vi.fn().mockResolvedValue(defaultQuantCacheStatus()),
+    enforceQuantCacheLimit: vi.fn().mockResolvedValue(defaultQuantCacheStatus()),
+    clearQuantCache: vi.fn().mockResolvedValue(defaultQuantCacheStatus()),
     getExternalLLMSettings: vi.fn().mockResolvedValue(defaultExternalLLMSettings()),
     saveExternalLLMSettings: vi
       .fn()
@@ -304,6 +418,16 @@ function fakeSettingsApi(
         Promise.resolve({ ...defaultExternalLLMSettings(), ...settings })
       ),
     saveExternalLLMApiKey: vi.fn().mockResolvedValue(defaultExternalLLMSettings())
+  };
+}
+
+function defaultQuantCacheStatus() {
+  return {
+    path: "models/SyrupQuants",
+    usage_bytes: 0,
+    limit_bytes: 20 * 1024 ** 3,
+    artifact_count: 0,
+    active_artifact_count: 0
   };
 }
 

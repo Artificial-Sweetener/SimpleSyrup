@@ -21,7 +21,8 @@ from .model_catalog import (
     wd14_tagger_choices,
 )
 from .model_folders import resolve_model_file
-from .settings import SimpleSyrupSettings, SimpleSyrupSettingsRepository
+from .settings import SimpleSyrupSettings
+from .settings_repository import SimpleSyrupSettingsRepository
 from .vitmatte_loader import ViTMatteLoaderService
 
 NO_LOCAL_SAM_MODELS = "No local SAM models found"

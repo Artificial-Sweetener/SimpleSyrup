@@ -5,7 +5,7 @@
 // @ts-expect-error ComfyUI serves this host module outside the extension package.
 import { app } from "../../../scripts/app.js";
 
-import { registerSimpleSyrupSettings } from "./settings";
+import { registerSimpleSyrupSettings } from "./settingsRegistration";
 import { registerExternalLLMRefreshHook } from "./refresh";
 import { registerMaskBatchUpload } from "./maskBatchUpload";
 import { registerImageListUpload } from "./imageListUpload";

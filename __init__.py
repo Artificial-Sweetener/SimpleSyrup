@@ -12,11 +12,17 @@ from . import simple_syrup as _simple_syrup_package
 
 sys.modules.setdefault("simple_syrup", _simple_syrup_package)
 
+from .simple_syrup.runtime.comfy_safetensors_dtypes import (  # noqa: E402
+    register_comfy_safetensors_dtypes,
+)
 from .simple_syrup.runtime.external_llm_routes import (  # noqa: E402
     register_external_llm_routes,
 )
 from .simple_syrup.runtime.mask_batch_preview_routes import (  # noqa: E402
     register_mask_batch_preview_routes,
+)
+from .simple_syrup.runtime.quant_cache_routes import (  # noqa: E402
+    register_quant_cache_routes,
 )
 from .simple_syrup.runtime.settings_routes import register_settings_routes  # noqa: E402
 
@@ -42,6 +48,8 @@ async def comfy_entrypoint() -> object:
 
 
 register_settings_routes()
+register_comfy_safetensors_dtypes()
+register_quant_cache_routes()
 register_external_llm_routes()
 register_mask_batch_preview_routes()
 

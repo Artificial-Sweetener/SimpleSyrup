@@ -10,14 +10,17 @@ import importlib
 from types import ModuleType
 from typing import Any
 
-from ..runtime.anima_loader import (
+from ..domain.anima_quantization import AnimaQuantizationRecipe
+from ..runtime.diffusion_model_loader import DIFFUSION_WEIGHT_DTYPES
+from ..runtime.model_downloads import ComfyProgressReporter
+from ..runtime.quantization_capabilities import QuantizationCapabilityCatalog
+from ..runtime.quantization_progress import ComfyQuantizationProgressReporter
+from ..runtime.vae_loader import vae_choices
+from ..services.anima_loader_service import (
     AUTO_CHOICE,
     CLIP_DEVICES,
-    DIFFUSION_WEIGHT_DTYPES,
     AnimaLoaderService,
 )
-from ..runtime.model_downloads import ComfyProgressReporter
-from ..runtime.vae_loader import vae_choices
 from . import tooltips
 
 
@@ -25,6 +28,8 @@ class SimpleLoadAnima:
     """Expose Anima diffusion, text encoder, and VAE loading as one node."""
 
     _service = AnimaLoaderService()
+    _quantization_recipe = AnimaQuantizationRecipe()
+    _quantization_capabilities = QuantizationCapabilityCatalog()
 
     RETURN_TYPES = ("MODEL", "CLIP", "VAE")
     RETURN_NAMES = ("model", "clip", "vae")
@@ -53,14 +58,28 @@ class SimpleLoadAnima:
                         )
                     },
                 ),
+                "quantization": (
+                    cls._quantization_capabilities.selection_labels(
+                        cls._quantization_recipe.profiles
+                    ),
+                    {
+                        "default": "Original",
+                        "advanced": True,
+                        "tooltip": (
+                            "Creates or reuses a GPU-supported quantized copy in the "
+                            "global models/SyrupQuants cache; Original loads the "
+                            "selected model unchanged."
+                        ),
+                    },
+                ),
                 "diffusion_weight_dtype": (
                     list(DIFFUSION_WEIGHT_DTYPES),
                     {
                         "default": "default",
                         "advanced": True,
                         "tooltip": (
-                            "Weight precision for Anima. Lower precision can reduce "
-                            "memory use but may slightly change results."
+                            "Load-time weight precision used with Original; cached "
+                            "quantized copies use their stored quantization format."
                         ),
                     },
                 ),
@@ -103,6 +122,7 @@ class SimpleLoadAnima:
     def load_models(
         self,
         diffusion_model: str,
+        quantization: str,
         diffusion_weight_dtype: str,
         text_encoder: str,
         text_encoder_device: str,
@@ -112,11 +132,13 @@ class SimpleLoadAnima:
 
         return self._service.load_models(
             diffusion_model=diffusion_model,
+            quantization=quantization,
             diffusion_weight_dtype=diffusion_weight_dtype,
             text_encoder=text_encoder,
             text_encoder_device=text_encoder_device,
             vae=vae,
             progress=ComfyProgressReporter(),
+            quantization_progress=ComfyQuantizationProgressReporter(),
         )
 
 

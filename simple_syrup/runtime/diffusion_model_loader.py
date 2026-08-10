@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 from types import ModuleType
 from typing import Any
 
@@ -31,14 +32,24 @@ class DiffusionModelLoader:
     def load(self, diffusion_model: str, weight_dtype: str) -> object:
         """Load one diffusion model using a validated weight dtype."""
 
-        model_options = diffusion_model_options(weight_dtype)
+        return self.load_path(self.resolve_path(diffusion_model), weight_dtype)
+
+    def resolve_path(self, diffusion_model: str) -> Path:
+        """Resolve a workflow diffusion model name through ComfyUI folders."""
+
         model_path = self._folder_paths().get_full_path_or_raise(
             "diffusion_models",
             diffusion_model,
         )
+        return Path(str(model_path))
+
+    def load_path(self, model_path: Path, weight_dtype: str) -> object:
+        """Load an already resolved diffusion checkpoint path."""
+
+        model_options = diffusion_model_options(weight_dtype)
         comfy_sd: Any = importlib.import_module("comfy.sd")
         return comfy_sd.load_diffusion_model(
-            model_path,
+            str(model_path),
             model_options=model_options,
         )
 

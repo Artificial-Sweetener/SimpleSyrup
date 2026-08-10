@@ -24,8 +24,8 @@ from ..runtime.external_llm_keyring import ExternalLLMKeyringStore
 from ..runtime.settings import (
     ExternalLLMSettings,
     SimpleSyrupSettings,
-    SimpleSyrupSettingsRepository,
 )
+from ..runtime.settings_repository import SimpleSyrupSettingsRepository
 
 CONFIGURE_EXTERNAL_LLM = "Configure external LLM endpoint"
 

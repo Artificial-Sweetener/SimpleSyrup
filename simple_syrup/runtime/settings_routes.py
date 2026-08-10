@@ -16,8 +16,8 @@ from ..shared.logging import get_logger
 from .settings import (
     SimpleSyrupSettings,
     SimpleSyrupSettingsError,
-    SimpleSyrupSettingsRepository,
 )
+from .settings_repository import SimpleSyrupSettingsRepository
 
 LOGGER = get_logger(__name__)
 SETTINGS_ROUTE = "/simple-syrup/settings"
@@ -80,13 +80,22 @@ class SettingsHandlers:
         """Return validated settings while preserving omitted nested config."""
 
         settings = SimpleSyrupSettings.from_payload(payload)
-        if isinstance(payload, dict) and "external_llm" not in payload:
-            current = self._repository.load()
-            return SimpleSyrupSettings(
-                show_downloadable_models=settings.show_downloadable_models,
-                external_llm=current.external_llm,
-            )
-        return settings
+        if not isinstance(payload, dict):
+            return settings
+        current = self._repository.load()
+        return SimpleSyrupSettings(
+            show_downloadable_models=settings.show_downloadable_models,
+            quant_cache_limit_gib=(
+                settings.quant_cache_limit_gib
+                if "quant_cache_limit_gib" in payload
+                else current.quant_cache_limit_gib
+            ),
+            external_llm=(
+                settings.external_llm
+                if "external_llm" in payload
+                else current.external_llm
+            ),
+        )
 
 
 def register_settings_routes(

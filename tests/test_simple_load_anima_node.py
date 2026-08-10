@@ -15,6 +15,9 @@ import pytest
 from simple_syrup.nodes.simple_load_anima import SimpleLoadAnima
 from simple_syrup.nodes_v3.legacy_node_wrappers import SimpleLoadAnimaV3
 from simple_syrup.runtime.model_downloads import ComfyProgressReporter
+from simple_syrup.runtime.quantization_progress import (
+    ComfyQuantizationProgressReporter,
+)
 
 
 class FakeFolderPaths(ModuleType):
@@ -37,6 +40,16 @@ class FakeFolderPaths(ModuleType):
         return self.files[folder_name]
 
 
+class FakeQuantizationCapabilities:
+    """Return deterministic quantization labels for node schema tests."""
+
+    def selection_labels(self, profiles: object) -> list[str]:
+        """Return representative original and GPU-backed choices."""
+
+        del profiles
+        return ["Original", "NVFP4 (Mixed)"]
+
+
 def test_simple_load_anima_contract() -> None:
     """Simple Load Anima exposes MODEL, CLIP, and VAE sockets."""
 
@@ -52,12 +65,18 @@ def test_simple_load_anima_declares_expected_inputs(
     """Input declarations mirror the combined ComfyUI loader controls."""
 
     monkeypatch.setitem(sys.modules, "folder_paths", FakeFolderPaths())
+    monkeypatch.setattr(
+        SimpleLoadAnima,
+        "_quantization_capabilities",
+        FakeQuantizationCapabilities(),
+    )
 
     input_types: dict[str, dict[str, tuple[Any, ...]]] = SimpleLoadAnima.INPUT_TYPES()
     required = input_types["required"]
 
     assert list(required) == [
         "diffusion_model",
+        "quantization",
         "diffusion_weight_dtype",
         "text_encoder",
         "text_encoder_device",
@@ -65,6 +84,9 @@ def test_simple_load_anima_declares_expected_inputs(
     ]
     assert required["diffusion_model"][0] == ["anima.safetensors"]
     assert "advanced" not in required["diffusion_model"][1]
+    assert required["quantization"][0] == ["Original", "NVFP4 (Mixed)"]
+    assert required["quantization"][1]["default"] == "Original"
+    assert required["quantization"][1]["advanced"] is True
     assert required["diffusion_weight_dtype"][0] == [
         "default",
         "fp8_e4m3fn",
@@ -88,11 +110,17 @@ def test_simple_load_anima_v3_keeps_only_diffusion_model_primary(
     """The v3 schema marks every control after diffusion selection as advanced."""
 
     monkeypatch.setitem(sys.modules, "folder_paths", FakeFolderPaths())
+    monkeypatch.setattr(
+        SimpleLoadAnima,
+        "_quantization_capabilities",
+        FakeQuantizationCapabilities(),
+    )
 
     schema = SimpleLoadAnimaV3.define_schema()
 
     assert [input_item.id for input_item in schema.inputs] == [
         "diffusion_model",
+        "quantization",
         "diffusion_weight_dtype",
         "text_encoder",
         "text_encoder_device",
@@ -125,6 +153,7 @@ def test_simple_load_anima_delegates_to_service() -> None:
     try:
         result = SimpleLoadAnima().load_models(
             diffusion_model="anima.safetensors",
+            quantization="Original",
             diffusion_weight_dtype="default",
             text_encoder="auto",
             text_encoder_device="default",
@@ -137,4 +166,9 @@ def test_simple_load_anima_delegates_to_service() -> None:
     assert fake_service.kwargs is not None
     assert fake_service.kwargs["text_encoder"] == "auto"
     assert fake_service.kwargs["vae"] == "auto"
+    assert fake_service.kwargs["quantization"] == "Original"
     assert isinstance(fake_service.kwargs["progress"], ComfyProgressReporter)
+    assert isinstance(
+        fake_service.kwargs["quantization_progress"],
+        ComfyQuantizationProgressReporter,
+    )
