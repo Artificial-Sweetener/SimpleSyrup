@@ -6,13 +6,7 @@
 
 from __future__ import annotations
 
-import importlib
-import json
 from dataclasses import dataclass, field
-from json import JSONDecodeError
-from pathlib import Path
-from types import ModuleType
-from typing import Any, Final
 
 from ..domain.external_llm import (
     ExternalLLMConfigError,
@@ -22,7 +16,9 @@ from ..domain.external_llm import (
 from ..shared.logging import get_logger
 
 LOGGER = get_logger(__name__)
-SETTINGS_FILENAME: Final = "settings.json"
+DEFAULT_QUANT_CACHE_LIMIT_GIB = 20
+MIN_QUANT_CACHE_LIMIT_GIB = 1
+MAX_QUANT_CACHE_LIMIT_GIB = 2048
 
 
 class SimpleSyrupSettingsError(ValueError):
@@ -97,6 +93,7 @@ class SimpleSyrupSettings:
     """User-configurable SimpleSyrup runtime settings."""
 
     show_downloadable_models: bool = True
+    quant_cache_limit_gib: int = DEFAULT_QUANT_CACHE_LIMIT_GIB
     external_llm: ExternalLLMSettings = field(default_factory=ExternalLLMSettings)
 
     def to_payload(self) -> dict[str, object]:
@@ -104,6 +101,7 @@ class SimpleSyrupSettings:
 
         return {
             "show_downloadable_models": self.show_downloadable_models,
+            "quant_cache_limit_gib": self.quant_cache_limit_gib,
             "external_llm": self.external_llm.to_payload(),
         }
 
@@ -123,6 +121,22 @@ class SimpleSyrupSettings:
                 "show_downloadable_models to be a boolean."
             )
 
+        quant_cache_limit = payload.get(
+            "quant_cache_limit_gib", DEFAULT_QUANT_CACHE_LIMIT_GIB
+        )
+        if (
+            not isinstance(quant_cache_limit, int)
+            or isinstance(quant_cache_limit, bool)
+            or not MIN_QUANT_CACHE_LIMIT_GIB
+            <= quant_cache_limit
+            <= MAX_QUANT_CACHE_LIMIT_GIB
+        ):
+            raise SimpleSyrupSettingsError(
+                "SimpleSyrup settings payload is invalid. Expected "
+                f"quant_cache_limit_gib to be an integer from "
+                f"{MIN_QUANT_CACHE_LIMIT_GIB} to {MAX_QUANT_CACHE_LIMIT_GIB}."
+            )
+
         try:
             external_llm = ExternalLLMSettings.from_payload(payload.get("external_llm"))
         except SimpleSyrupSettingsError as error:
@@ -132,87 +146,8 @@ class SimpleSyrupSettings:
             )
             external_llm = ExternalLLMSettings()
 
-        return cls(show_downloadable_models=value, external_llm=external_llm)
-
-
-class SimpleSyrupSettingsRepository:
-    """Load and save SimpleSyrup settings from Comfy's user directory."""
-
-    def __init__(
-        self,
-        settings_path: Path | None = None,
-        folder_paths_module: ModuleType | None = None,
-    ) -> None:
-        """Create a repository with injectable filesystem and Comfy boundaries."""
-
-        self._settings_path = settings_path
-        self._folder_paths_module = folder_paths_module
-
-    def load(self) -> SimpleSyrupSettings:
-        """Load settings or return defaults for missing/malformed files."""
-
-        path = self.settings_path()
-        if not path.is_file():
-            return SimpleSyrupSettings()
-
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            return SimpleSyrupSettings.from_payload(payload)
-        except (JSONDecodeError, OSError, SimpleSyrupSettingsError) as error:
-            LOGGER.warning(
-                "using default settings after failed load",
-                extra={"settings_path": str(path), "reason": str(error)},
-            )
-            return SimpleSyrupSettings()
-
-    def save(self, settings: SimpleSyrupSettings) -> SimpleSyrupSettings:
-        """Persist validated settings and return the saved value."""
-
-        path = self.settings_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = path.with_name(f"{path.name}.tmp")
-        temporary_path.write_text(
-            json.dumps(settings.to_payload(), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        return cls(
+            show_downloadable_models=value,
+            quant_cache_limit_gib=quant_cache_limit,
+            external_llm=external_llm,
         )
-        temporary_path.replace(path)
-        return settings
-
-    def settings_path(self) -> Path:
-        """Return the resolved settings path."""
-
-        if self._settings_path is not None:
-            return self._settings_path
-
-        folder_paths = self._folder_paths_module or _folder_paths()
-        return (
-            _user_directory(folder_paths)
-            / "default"
-            / "SimpleSyrup"
-            / SETTINGS_FILENAME
-        )
-
-
-def _user_directory(folder_paths: ModuleType) -> Path:
-    """Return Comfy's user directory from stable APIs or conservative fallback."""
-
-    get_user_directory = getattr(folder_paths, "get_user_directory", None)
-    if callable(get_user_directory):
-        user_directory = get_user_directory()
-        return Path(str(user_directory))
-
-    user_directory_attribute = getattr(folder_paths, "user_directory", None)
-    if user_directory_attribute is not None:
-        return Path(str(user_directory_attribute))
-
-    models_dir: Any = folder_paths.models_dir
-    return Path(str(models_dir)).parent / "user"
-
-
-def _folder_paths() -> ModuleType:
-    """Import ComfyUI folder paths lazily."""
-
-    module: Any = importlib.import_module("folder_paths")
-    if not isinstance(module, ModuleType):
-        raise TypeError("folder_paths import did not return a module.")
-    return module

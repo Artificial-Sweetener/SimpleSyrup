@@ -3,6 +3,7 @@ import { app } from "../../../scripts/app.js";
 
 // web/src/api.ts
 var SETTINGS_ROUTE = "/simple-syrup/settings";
+var QUANT_CACHE_ROUTE = "/simple-syrup/quant-cache";
 var EXTERNAL_LLM_SETTINGS_ROUTE = "/simple-syrup/external-llm/settings";
 var EXTERNAL_LLM_API_KEY_ROUTE = "/simple-syrup/external-llm/api-key";
 var EXTERNAL_LLM_MODELS_REFRESH_ROUTE = "/simple-syrup/external-llm/models/refresh";
@@ -69,8 +70,53 @@ function parseSettings(payload) {
     );
   }
   return {
-    show_downloadable_models: payload.show_downloadable_models
+    show_downloadable_models: payload.show_downloadable_models,
+    quant_cache_limit_gib: payload.quant_cache_limit_gib
   };
+}
+async function getQuantCacheStatus(fetchImpl = fetch) {
+  const response = await fetchImpl(QUANT_CACHE_ROUTE);
+  if (!response.ok) {
+    throw new Error(
+      await backendErrorMessage(
+        response,
+        `Could not load quant cache status. Backend returned ${String(response.status)}.`
+      )
+    );
+  }
+  return parseQuantCacheStatus(await response.json());
+}
+async function clearQuantCache(fetchImpl = fetch) {
+  const response = await fetchImpl(QUANT_CACHE_ROUTE, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(
+      await backendErrorMessage(
+        response,
+        `Could not clear quant cache. Backend returned ${String(response.status)}.`
+      )
+    );
+  }
+  return parseQuantCacheStatus(await response.json());
+}
+async function enforceQuantCacheLimit(fetchImpl = fetch) {
+  const response = await fetchImpl(QUANT_CACHE_ROUTE, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(
+      await backendErrorMessage(
+        response,
+        `Could not enforce quant cache limit. Backend returned ${String(response.status)}.`
+      )
+    );
+  }
+  return parseQuantCacheStatus(await response.json());
+}
+function parseQuantCacheStatus(payload) {
+  if (!isQuantCacheStatusPayload(payload)) {
+    throw new Error(
+      "SimpleSyrup quant cache status is invalid. Expected path, byte usage, limit, and artifact counts."
+    );
+  }
+  return { ...payload };
 }
 async function getExternalLLMSettings(fetchImpl = fetch) {
   const response = await fetchImpl(EXTERNAL_LLM_SETTINGS_ROUTE);
@@ -144,7 +190,17 @@ function parseExternalLLMSettings(payload) {
   };
 }
 function isSettingsPayload(payload) {
-  return typeof payload === "object" && payload !== null && typeof payload.show_downloadable_models === "boolean";
+  return typeof payload === "object" && payload !== null && typeof payload.show_downloadable_models === "boolean" && Number.isInteger(
+    payload.quant_cache_limit_gib
+  ) && Number(payload.quant_cache_limit_gib) > 0;
+}
+function isQuantCacheStatusPayload(payload) {
+  if (typeof payload !== "object" || payload === null) return false;
+  const candidate = payload;
+  return typeof candidate.path === "string" && isNonNegativeInteger(candidate.usage_bytes) && isNonNegativeInteger(candidate.limit_bytes) && isNonNegativeInteger(candidate.artifact_count) && isNonNegativeInteger(candidate.active_artifact_count) && (candidate.removed_artifacts === void 0 || isNonNegativeInteger(candidate.removed_artifacts)) && (candidate.removed_bytes === void 0 || isNonNegativeInteger(candidate.removed_bytes));
+}
+function isNonNegativeInteger(value) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 function isExternalLLMSettingsPayload(payload) {
   return typeof payload === "object" && payload !== null && typeof payload.base_url === "string" && Array.isArray(payload.cached_models) && payload.cached_models?.every(
@@ -173,124 +229,41 @@ async function backendErrorMessage(response, fallback) {
   return fallback;
 }
 
-// web/src/settings.ts
+// web/src/downloadableModelsSetting.ts
 var SIMPLE_SYRUP_SETTING_ID = "SimpleSyrup.ShowDownloadableModels";
 var SIMPLE_SYRUP_SETTING_LABEL = "SimpleSyrup: Show downloadable models in loader dropdowns";
 var SIMPLE_SYRUP_SETTING_DESCRIPTION = "Show known downloadable SAM, GroundingDINO, and ViTMatte models even when they are not installed locally.";
-var EXTERNAL_LLM_ENDPOINT_SETTING_ID = "SimpleSyrup.ExternalLLM.Endpoint";
-var EXTERNAL_LLM_ENDPOINT_SETTING_LABEL = "SimpleSyrup: External LLM endpoint";
-var EXTERNAL_LLM_ENDPOINT_SETTING_DESCRIPTION = "OpenAI-compatible endpoint base URL used by SimpleSyrup prompt nodes.";
-var EXTERNAL_LLM_API_KEY_SETTING_ID = "SimpleSyrup.ExternalLLM.ApiKey";
-var EXTERNAL_LLM_API_KEY_SETTING_LABEL = "SimpleSyrup: External LLM API key";
-var EXTERNAL_LLM_API_KEY_SETTING_DESCRIPTION = "Stores the API key for the configured external LLM endpoint in OS credential storage.";
-var DEFAULT_SETTINGS = {
-  show_downloadable_models: true
-};
-async function registerSimpleSyrupSettings(app2, api = {
-  getSettings,
-  saveSettings,
-  getExternalLLMSettings,
-  saveExternalLLMSettings,
-  saveExternalLLMApiKey
-}, logger = console) {
-  let initialSettings = DEFAULT_SETTINGS;
-  let externalLLMSettings = {
-    base_url: "",
-    cached_models: [],
-    default_model: "",
-    has_api_key: false
-  };
-  try {
-    initialSettings = await api.getSettings();
-  } catch (error) {
-    logger.warn(
-      "Could not load SimpleSyrup settings. Using the default setting until the backend is available.",
-      error
-    );
-  }
-  try {
-    externalLLMSettings = await api.getExternalLLMSettings();
-  } catch (error) {
-    logger.warn(
-      "Could not load SimpleSyrup external LLM settings. Using empty endpoint settings until the backend is available.",
-      error
-    );
-  }
-  let savedSettings = initialSettings;
-  let savedExternalLLMSettings = externalLLMSettings;
-  installSimpleSyrupSettingsStyle();
+function registerDownloadableModelsSetting(app2, context, logger) {
   const setting = app2.ui.settings.addSetting({
     id: SIMPLE_SYRUP_SETTING_ID,
     name: SIMPLE_SYRUP_SETTING_LABEL,
     type: "boolean",
-    defaultValue: initialSettings.show_downloadable_models,
+    defaultValue: context.getSettings().show_downloadable_models,
     tooltip: SIMPLE_SYRUP_SETTING_DESCRIPTION,
     onChange: async (value) => {
+      const previous = context.getSettings();
       try {
-        const saved = await api.saveSettings({
+        const saved = await context.saveSettings({
+          ...previous,
           show_downloadable_models: value
         });
-        savedSettings = saved;
+        context.setSettings(saved);
         setting.value = saved.show_downloadable_models;
       } catch (error) {
         logger.warn(
           "Could not save SimpleSyrup settings. The backend rejected the setting update.",
           error
         );
-        setting.value = savedSettings.show_downloadable_models;
+        setting.value = previous.show_downloadable_models;
       }
     }
   });
-  setting.value = initialSettings.show_downloadable_models;
-  app2.ui.settings.addSetting({
-    id: EXTERNAL_LLM_ENDPOINT_SETTING_ID,
-    name: EXTERNAL_LLM_ENDPOINT_SETTING_LABEL,
-    sortOrder: 320,
-    type: () => createExternalLLMEndpointControl({
-      api,
-      logger,
-      refreshModelChoices: () => refreshExternalLLMModelChoices(app2, logger),
-      getSettings: () => savedExternalLLMSettings,
-      setSettings: (settings) => {
-        savedExternalLLMSettings = settings;
-      }
-    }),
-    defaultValue: externalLLMSettings.base_url,
-    tooltip: EXTERNAL_LLM_ENDPOINT_SETTING_DESCRIPTION
-  });
-  app2.ui.settings.addSetting({
-    id: EXTERNAL_LLM_API_KEY_SETTING_ID,
-    name: EXTERNAL_LLM_API_KEY_SETTING_LABEL,
-    sortOrder: 319,
-    type: () => createExternalLLMApiKeyControl({
-      api,
-      logger,
-      refreshModelChoices: () => refreshExternalLLMModelChoices(app2, logger),
-      getSettings: () => savedExternalLLMSettings,
-      setSettings: (settings) => {
-        savedExternalLLMSettings = settings;
-      }
-    }),
-    defaultValue: "",
-    tooltip: EXTERNAL_LLM_API_KEY_SETTING_DESCRIPTION
-  });
+  setting.value = context.getSettings().show_downloadable_models;
 }
-function endpointShouldBeSaved(value) {
-  const endpoint = value.trim();
-  if (!endpoint) {
-    return true;
-  }
-  try {
-    const parsed = new URL(endpoint);
-    return (parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.hostname.length > 0;
-  } catch {
-    return false;
-  }
-}
+
+// web/src/settingsUi.ts
 function installSimpleSyrupSettingsStyle() {
-  if (document.getElementById("simple-syrup-settings-style")) {
-    return;
-  }
+  if (document.getElementById("simple-syrup-settings-style")) return;
   const style = document.createElement("style");
   style.id = "simple-syrup-settings-style";
   style.textContent = `
@@ -345,6 +318,93 @@ function installSimpleSyrupSettingsStyle() {
     }
   `;
   document.head.appendChild(style);
+}
+function createElement(tagName, className) {
+  const element = document.createElement(tagName);
+  element.className = className;
+  return element;
+}
+function setPending(element, pending) {
+  element.dataset.pending = pending ? "true" : "false";
+  for (const control of Array.from(element.querySelectorAll("input, button"))) {
+    if (control instanceof HTMLInputElement || control instanceof HTMLButtonElement) {
+      control.disabled = pending;
+    }
+  }
+}
+
+// web/src/externalLlmSettings.ts
+var EXTERNAL_LLM_ENDPOINT_SETTING_ID = "SimpleSyrup.ExternalLLM.Endpoint";
+var EXTERNAL_LLM_ENDPOINT_SETTING_LABEL = "SimpleSyrup: External LLM endpoint";
+var EXTERNAL_LLM_ENDPOINT_SETTING_DESCRIPTION = "OpenAI-compatible endpoint base URL used by SimpleSyrup prompt nodes.";
+var EXTERNAL_LLM_API_KEY_SETTING_ID = "SimpleSyrup.ExternalLLM.ApiKey";
+var EXTERNAL_LLM_API_KEY_SETTING_LABEL = "SimpleSyrup: External LLM API key";
+var EXTERNAL_LLM_API_KEY_SETTING_DESCRIPTION = "Stores the API key for the configured external LLM endpoint in OS credential storage.";
+async function registerExternalLLMSettings(app2, api = {
+  getExternalLLMSettings,
+  saveExternalLLMSettings,
+  saveExternalLLMApiKey
+}, logger = console) {
+  let externalLLMSettings = {
+    base_url: "",
+    cached_models: [],
+    default_model: "",
+    has_api_key: false
+  };
+  try {
+    externalLLMSettings = await api.getExternalLLMSettings();
+  } catch (error) {
+    logger.warn(
+      "Could not load SimpleSyrup external LLM settings. Using empty endpoint settings until the backend is available.",
+      error
+    );
+  }
+  let savedExternalLLMSettings = externalLLMSettings;
+  installSimpleSyrupSettingsStyle();
+  app2.ui.settings.addSetting({
+    id: EXTERNAL_LLM_ENDPOINT_SETTING_ID,
+    name: EXTERNAL_LLM_ENDPOINT_SETTING_LABEL,
+    sortOrder: 320,
+    type: () => createExternalLLMEndpointControl({
+      api,
+      logger,
+      refreshModelChoices: () => refreshExternalLLMModelChoices(app2, logger),
+      getSettings: () => savedExternalLLMSettings,
+      setSettings: (settings) => {
+        savedExternalLLMSettings = settings;
+      }
+    }),
+    defaultValue: externalLLMSettings.base_url,
+    tooltip: EXTERNAL_LLM_ENDPOINT_SETTING_DESCRIPTION
+  });
+  app2.ui.settings.addSetting({
+    id: EXTERNAL_LLM_API_KEY_SETTING_ID,
+    name: EXTERNAL_LLM_API_KEY_SETTING_LABEL,
+    sortOrder: 319,
+    type: () => createExternalLLMApiKeyControl({
+      api,
+      logger,
+      refreshModelChoices: () => refreshExternalLLMModelChoices(app2, logger),
+      getSettings: () => savedExternalLLMSettings,
+      setSettings: (settings) => {
+        savedExternalLLMSettings = settings;
+      }
+    }),
+    defaultValue: "",
+    tooltip: EXTERNAL_LLM_API_KEY_SETTING_DESCRIPTION
+  });
+}
+function endpointShouldBeSaved(value) {
+  const endpoint = value.trim();
+  if (!endpoint) {
+    return true;
+  }
+  try {
+    const parsed = new URL(endpoint);
+    return (parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.hostname.length > 0;
+  } catch {
+    return false;
+  }
 }
 function createExternalLLMEndpointControl(context) {
   const wrapper = createElement("div", "simple-syrup-settings-row");
@@ -489,19 +549,6 @@ function openExternalLLMApiKeyDialog(options) {
   document.body.appendChild(overlay);
   input.focus();
 }
-function createElement(tagName, className) {
-  const element = document.createElement(tagName);
-  element.className = className;
-  return element;
-}
-function setPending(element, pending) {
-  element.dataset.pending = pending ? "true" : "false";
-  for (const control of Array.from(element.querySelectorAll("input, button"))) {
-    if (control instanceof HTMLInputElement || control instanceof HTMLButtonElement) {
-      control.disabled = pending;
-    }
-  }
-}
 function errorMessage(error, fallback) {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -524,6 +571,144 @@ async function refreshExternalLLMModelChoices(app2, logger) {
       error
     );
   }
+}
+
+// web/src/quantCacheSetting.ts
+var QUANT_CACHE_SETTING_ID = "SimpleSyrup.QuantCache";
+var QUANT_CACHE_SETTING_LABEL = "SimpleSyrup: Quantized model cache";
+var QUANT_CACHE_SETTING_DESCRIPTION = "Sets the global models/SyrupQuants cache limit in GiB for every SimpleSyrup loader; least-recently-used inactive copies are removed automatically.";
+async function registerQuantCacheSetting(app2, settings, api, logger) {
+  installSimpleSyrupSettingsStyle();
+  let initialStatus = null;
+  try {
+    initialStatus = await api.getQuantCacheStatus();
+  } catch (error) {
+    logger.warn("Could not load SimpleSyrup quant cache status.", error);
+  }
+  app2.ui.settings.addSetting({
+    id: QUANT_CACHE_SETTING_ID,
+    name: QUANT_CACHE_SETTING_LABEL,
+    sortOrder: 321,
+    type: () => createQuantCacheControl({ settings, api, logger, initialStatus }),
+    defaultValue: settings.getSettings().quant_cache_limit_gib,
+    tooltip: QUANT_CACHE_SETTING_DESCRIPTION
+  });
+}
+function createQuantCacheControl(context) {
+  const wrapper = createElement("div", "simple-syrup-settings-row");
+  const limitInput = createElement("input", "simple-syrup-settings-input");
+  limitInput.type = "number";
+  limitInput.min = "1";
+  limitInput.max = "2048";
+  limitInput.step = "1";
+  limitInput.value = String(context.settings.getSettings().quant_cache_limit_gib);
+  limitInput.setAttribute("aria-label", "Quant cache limit in GiB");
+  const unitLabel = createElement("span", "simple-syrup-settings-status");
+  unitLabel.textContent = "GiB limit";
+  const saveButton = createElement("button", "simple-syrup-settings-button");
+  saveButton.type = "button";
+  saveButton.textContent = "Save Limit";
+  const clearButton = createElement("button", "simple-syrup-settings-button");
+  clearButton.type = "button";
+  clearButton.textContent = "Clear Inactive";
+  const status = createElement("span", "simple-syrup-settings-status");
+  const renderStatus = (cacheStatus) => {
+    status.textContent = cacheStatus ? `${formatGiB(cacheStatus.usage_bytes)} GiB used in ${cacheStatus.path} (${String(cacheStatus.artifact_count)} cached, ${String(cacheStatus.active_artifact_count)} active).` : "Cache status unavailable. Generated models are stored in models/SyrupQuants.";
+  };
+  renderStatus(context.initialStatus);
+  saveButton.addEventListener("click", () => {
+    void saveLimit();
+  });
+  limitInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void saveLimit();
+    }
+  });
+  clearButton.addEventListener("click", () => {
+    void clearInactive();
+  });
+  const saveLimit = async () => {
+    const limit = Number(limitInput.value);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 2048) {
+      status.textContent = "Enter a whole-number cache limit from 1 to 2048 GiB.";
+      return;
+    }
+    const previous = context.settings.getSettings();
+    setPending(wrapper, true);
+    try {
+      const saved = await context.settings.saveSettings({
+        ...previous,
+        quant_cache_limit_gib: limit
+      });
+      context.settings.setSettings(saved);
+      limitInput.value = String(saved.quant_cache_limit_gib);
+      const refreshed = await context.api.enforceQuantCacheLimit();
+      renderStatus(refreshed);
+    } catch (error) {
+      context.logger.warn("Could not save SimpleSyrup quant cache limit.", error);
+      limitInput.value = String(previous.quant_cache_limit_gib);
+      status.textContent = "Cache limit was not saved.";
+    } finally {
+      setPending(wrapper, false);
+    }
+  };
+  const clearInactive = async () => {
+    setPending(wrapper, true);
+    try {
+      const cleared = await context.api.clearQuantCache();
+      renderStatus(cleared);
+    } catch (error) {
+      context.logger.warn("Could not clear SimpleSyrup quant cache.", error);
+      status.textContent = "Inactive cached models were not cleared.";
+    } finally {
+      setPending(wrapper, false);
+    }
+  };
+  wrapper.append(limitInput, unitLabel, saveButton, clearButton, status);
+  return wrapper;
+}
+function formatGiB(bytes) {
+  return (bytes / 1024 ** 3).toFixed(2);
+}
+
+// web/src/settingsRegistration.ts
+var DEFAULT_SETTINGS = {
+  show_downloadable_models: true,
+  quant_cache_limit_gib: 20
+};
+async function registerSimpleSyrupSettings(app2, api = defaultApi(), logger = console) {
+  let savedSettings = DEFAULT_SETTINGS;
+  try {
+    savedSettings = await api.getSettings();
+  } catch (error) {
+    logger.warn(
+      "Could not load SimpleSyrup settings. Using defaults until the backend is available.",
+      error
+    );
+  }
+  const settingsContext = {
+    getSettings: () => savedSettings,
+    saveSettings: (settings) => api.saveSettings(settings),
+    setSettings: (settings) => {
+      savedSettings = settings;
+    }
+  };
+  registerDownloadableModelsSetting(app2, settingsContext, logger);
+  await registerQuantCacheSetting(app2, settingsContext, api, logger);
+  await registerExternalLLMSettings(app2, api, logger);
+}
+function defaultApi() {
+  return {
+    getSettings,
+    saveSettings,
+    getQuantCacheStatus,
+    enforceQuantCacheLimit,
+    clearQuantCache,
+    getExternalLLMSettings,
+    saveExternalLLMSettings,
+    saveExternalLLMApiKey
+  };
 }
 
 // web/src/refresh.ts

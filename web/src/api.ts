@@ -6,6 +6,17 @@ import type { ComfyImageResult, ComfyNodeExecutionOutput } from "./types";
 
 export interface SimpleSyrupSettings {
   show_downloadable_models: boolean;
+  quant_cache_limit_gib: number;
+}
+
+export interface QuantCacheStatus {
+  path: string;
+  usage_bytes: number;
+  limit_bytes: number;
+  artifact_count: number;
+  active_artifact_count: number;
+  removed_artifacts?: number;
+  removed_bytes?: number;
 }
 
 export interface ExternalLLMSettings {
@@ -30,6 +41,7 @@ export type FetchLike = (
 ) => Promise<Response>;
 
 const SETTINGS_ROUTE = "/simple-syrup/settings";
+const QUANT_CACHE_ROUTE = "/simple-syrup/quant-cache";
 const EXTERNAL_LLM_SETTINGS_ROUTE = "/simple-syrup/external-llm/settings";
 const EXTERNAL_LLM_API_KEY_ROUTE = "/simple-syrup/external-llm/api-key";
 const EXTERNAL_LLM_MODELS_REFRESH_ROUTE =
@@ -113,8 +125,63 @@ export function parseSettings(payload: unknown): SimpleSyrupSettings {
     );
   }
   return {
-    show_downloadable_models: payload.show_downloadable_models
+    show_downloadable_models: payload.show_downloadable_models,
+    quant_cache_limit_gib: payload.quant_cache_limit_gib
   };
+}
+
+export async function getQuantCacheStatus(
+  fetchImpl: FetchLike = fetch
+): Promise<QuantCacheStatus> {
+  const response = await fetchImpl(QUANT_CACHE_ROUTE);
+  if (!response.ok) {
+    throw new Error(
+      await backendErrorMessage(
+        response,
+        `Could not load quant cache status. Backend returned ${String(response.status)}.`
+      )
+    );
+  }
+  return parseQuantCacheStatus(await response.json());
+}
+
+export async function clearQuantCache(
+  fetchImpl: FetchLike = fetch
+): Promise<QuantCacheStatus> {
+  const response = await fetchImpl(QUANT_CACHE_ROUTE, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(
+      await backendErrorMessage(
+        response,
+        `Could not clear quant cache. Backend returned ${String(response.status)}.`
+      )
+    );
+  }
+  return parseQuantCacheStatus(await response.json());
+}
+
+export async function enforceQuantCacheLimit(
+  fetchImpl: FetchLike = fetch
+): Promise<QuantCacheStatus> {
+  const response = await fetchImpl(QUANT_CACHE_ROUTE, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(
+      await backendErrorMessage(
+        response,
+        `Could not enforce quant cache limit. Backend returned ${String(response.status)}.`
+      )
+    );
+  }
+  return parseQuantCacheStatus(await response.json());
+}
+
+export function parseQuantCacheStatus(payload: unknown): QuantCacheStatus {
+  if (!isQuantCacheStatusPayload(payload)) {
+    throw new Error(
+      "SimpleSyrup quant cache status is invalid. Expected path, byte usage, limit, and artifact counts."
+    );
+  }
+  return { ...payload };
 }
 
 export async function getExternalLLMSettings(
@@ -227,8 +294,34 @@ function isSettingsPayload(payload: unknown): payload is SimpleSyrupSettings {
     typeof payload === "object" &&
     payload !== null &&
     typeof (payload as Partial<SimpleSyrupSettings>).show_downloadable_models ===
-      "boolean"
+      "boolean" &&
+    Number.isInteger(
+      (payload as Partial<SimpleSyrupSettings>).quant_cache_limit_gib
+    ) &&
+    Number((payload as Partial<SimpleSyrupSettings>).quant_cache_limit_gib) > 0
   );
+}
+
+function isQuantCacheStatusPayload(
+  payload: unknown
+): payload is QuantCacheStatus {
+  if (typeof payload !== "object" || payload === null) return false;
+  const candidate = payload as Partial<QuantCacheStatus>;
+  return (
+    typeof candidate.path === "string" &&
+    isNonNegativeInteger(candidate.usage_bytes) &&
+    isNonNegativeInteger(candidate.limit_bytes) &&
+    isNonNegativeInteger(candidate.artifact_count) &&
+    isNonNegativeInteger(candidate.active_artifact_count) &&
+    (candidate.removed_artifacts === undefined ||
+      isNonNegativeInteger(candidate.removed_artifacts)) &&
+    (candidate.removed_bytes === undefined ||
+      isNonNegativeInteger(candidate.removed_bytes))
+  );
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function isExternalLLMSettingsPayload(

@@ -15,14 +15,28 @@ import pytest
 from simple_syrup.runtime.settings import (
     SimpleSyrupSettings,
     SimpleSyrupSettingsError,
-    SimpleSyrupSettingsRepository,
 )
+from simple_syrup.runtime.settings_repository import SimpleSyrupSettingsRepository
 
 
 def test_default_settings_show_downloadable_models() -> None:
     """Default settings favor low-friction model discovery."""
 
     assert SimpleSyrupSettings().show_downloadable_models is True
+    assert SimpleSyrupSettings().quant_cache_limit_gib == 20
+
+
+@pytest.mark.parametrize("value", [0, 2049, 1.5, True, "20"])
+def test_settings_reject_invalid_quant_cache_limits(value: object) -> None:
+    """The global cache limit is a bounded whole number of GiB."""
+
+    with pytest.raises(SimpleSyrupSettingsError, match="quant_cache_limit_gib"):
+        SimpleSyrupSettings.from_payload(
+            {
+                "show_downloadable_models": True,
+                "quant_cache_limit_gib": value,
+            }
+        )
 
 
 def test_missing_settings_file_returns_defaults(tmp_path: Path) -> None:
@@ -83,6 +97,7 @@ def test_saving_settings_writes_validated_schema(tmp_path: Path) -> None:
             "cached_models": [],
             "default_model": "",
         },
+        "quant_cache_limit_gib": 20,
         "show_downloadable_models": False,
     }
 

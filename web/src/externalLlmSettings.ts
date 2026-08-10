@@ -2,21 +2,21 @@
 // Copyright (C) 2026  Artificial Sweetener and contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+// Owns the external LLM endpoint and credential settings presentation.
+
 import {
   getExternalLLMSettings,
-  getSettings,
   saveExternalLLMApiKey,
-  saveExternalLLMSettings,
-  saveSettings
+  saveExternalLLMSettings
 } from "./api";
-import type { ExternalLLMSettings, SimpleSyrupSettings } from "./api";
+import type { ExternalLLMSettings } from "./api";
+import {
+  createElement,
+  installSimpleSyrupSettingsStyle,
+  setPending
+} from "./settingsUi";
 import type { ComfyApp, Logger } from "./types";
 
-export const SIMPLE_SYRUP_SETTING_ID = "SimpleSyrup.ShowDownloadableModels";
-export const SIMPLE_SYRUP_SETTING_LABEL =
-  "SimpleSyrup: Show downloadable models in loader dropdowns";
-export const SIMPLE_SYRUP_SETTING_DESCRIPTION =
-  "Show known downloadable SAM, GroundingDINO, and ViTMatte models even when they are not installed locally.";
 export const EXTERNAL_LLM_ENDPOINT_SETTING_ID =
   "SimpleSyrup.ExternalLLM.Endpoint";
 export const EXTERNAL_LLM_ENDPOINT_SETTING_LABEL =
@@ -30,13 +30,7 @@ export const EXTERNAL_LLM_API_KEY_SETTING_LABEL =
 export const EXTERNAL_LLM_API_KEY_SETTING_DESCRIPTION =
   "Stores the API key for the configured external LLM endpoint in OS credential storage.";
 
-const DEFAULT_SETTINGS: SimpleSyrupSettings = {
-  show_downloadable_models: true
-};
-
-export interface SimpleSyrupSettingsApi {
-  getSettings(): Promise<SimpleSyrupSettings>;
-  saveSettings(settings: SimpleSyrupSettings): Promise<SimpleSyrupSettings>;
+export interface ExternalLLMSettingsApi {
   getExternalLLMSettings(): Promise<ExternalLLMSettings>;
   saveExternalLLMSettings(
     settings: Pick<ExternalLLMSettings, "base_url" | "default_model">
@@ -44,18 +38,15 @@ export interface SimpleSyrupSettingsApi {
   saveExternalLLMApiKey(settings: { api_key: string }): Promise<ExternalLLMSettings>;
 }
 
-export async function registerSimpleSyrupSettings(
+export async function registerExternalLLMSettings(
   app: ComfyApp,
-  api: SimpleSyrupSettingsApi = {
-    getSettings,
-    saveSettings,
+  api: ExternalLLMSettingsApi = {
     getExternalLLMSettings,
     saveExternalLLMSettings,
     saveExternalLLMApiKey
   },
   logger: Logger = console
 ): Promise<void> {
-  let initialSettings = DEFAULT_SETTINGS;
   let externalLLMSettings: ExternalLLMSettings = {
     base_url: "",
     cached_models: [],
@@ -64,14 +55,6 @@ export async function registerSimpleSyrupSettings(
   };
 
   try {
-    initialSettings = await api.getSettings();
-  } catch (error) {
-    logger.warn(
-      "Could not load SimpleSyrup settings. Using the default setting until the backend is available.",
-      error
-    );
-  }
-  try {
     externalLLMSettings = await api.getExternalLLMSettings();
   } catch (error) {
     logger.warn(
@@ -79,34 +62,8 @@ export async function registerSimpleSyrupSettings(
       error
     );
   }
-  let savedSettings = initialSettings;
   let savedExternalLLMSettings = externalLLMSettings;
   installSimpleSyrupSettingsStyle();
-
-  const setting = app.ui.settings.addSetting({
-    id: SIMPLE_SYRUP_SETTING_ID,
-    name: SIMPLE_SYRUP_SETTING_LABEL,
-    type: "boolean",
-    defaultValue: initialSettings.show_downloadable_models,
-    tooltip: SIMPLE_SYRUP_SETTING_DESCRIPTION,
-    onChange: async (value: boolean) => {
-      try {
-        const saved = await api.saveSettings({
-          show_downloadable_models: value
-        });
-        savedSettings = saved;
-        setting.value = saved.show_downloadable_models;
-      } catch (error) {
-        logger.warn(
-          "Could not save SimpleSyrup settings. The backend rejected the setting update.",
-          error
-        );
-        setting.value = savedSettings.show_downloadable_models;
-      }
-    }
-  });
-
-  setting.value = initialSettings.show_downloadable_models;
 
   app.ui.settings.addSetting({
     id: EXTERNAL_LLM_ENDPOINT_SETTING_ID,
@@ -163,69 +120,8 @@ function endpointShouldBeSaved(value: string): boolean {
   }
 }
 
-function installSimpleSyrupSettingsStyle(): void {
-  if (document.getElementById("simple-syrup-settings-style")) {
-    return;
-  }
-
-  const style = document.createElement("style");
-  style.id = "simple-syrup-settings-style";
-  style.textContent = `
-    .simple-syrup-settings-row {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      min-width: min(38rem, 100%);
-    }
-    .simple-syrup-settings-row[data-pending="true"] {
-      opacity: 0.75;
-    }
-    .simple-syrup-settings-input {
-      min-width: 16rem;
-      flex: 1 1 auto;
-    }
-    .simple-syrup-settings-button {
-      flex: 0 0 auto;
-      white-space: nowrap;
-    }
-    .simple-syrup-settings-status {
-      color: var(--fg-color);
-      opacity: 0.8;
-      white-space: normal;
-      overflow-wrap: anywhere;
-    }
-    .simple-syrup-dialog-backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 2147483647;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgb(0 0 0 / 45%);
-    }
-    .simple-syrup-dialog {
-      display: grid;
-      gap: 0.75rem;
-      min-width: min(28rem, calc(100vw - 2rem));
-      padding: 1rem;
-      background: var(--comfy-menu-bg);
-      color: var(--fg-color);
-    }
-    .simple-syrup-dialog-title {
-      margin: 0;
-      font-size: 1rem;
-    }
-    .simple-syrup-dialog-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 0.5rem;
-    }
-  `;
-  document.head.appendChild(style);
-}
-
 interface ExternalLLMControlContext {
-  api: SimpleSyrupSettingsApi;
+  api: ExternalLLMSettingsApi;
   logger: Logger;
   refreshModelChoices(): Promise<void>;
   getSettings(): ExternalLLMSettings;
@@ -401,27 +297,6 @@ function openExternalLLMApiKeyDialog(options: {
   overlay.append(dialog);
   document.body.appendChild(overlay);
   input.focus();
-}
-
-function createElement<TTag extends keyof HTMLElementTagNameMap>(
-  tagName: TTag,
-  className: string
-): HTMLElementTagNameMap[TTag] {
-  const element = document.createElement(tagName);
-  element.className = className;
-  return element;
-}
-
-function setPending(element: HTMLElement, pending: boolean): void {
-  element.dataset.pending = pending ? "true" : "false";
-  for (const control of Array.from(element.querySelectorAll("input, button"))) {
-    if (
-      control instanceof HTMLInputElement ||
-      control instanceof HTMLButtonElement
-    ) {
-      control.disabled = pending;
-    }
-  }
 }
 
 function errorMessage(error: unknown, fallback: string): string {

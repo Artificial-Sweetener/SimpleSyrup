@@ -219,6 +219,7 @@ _PERSISTED_WIDGET_PREFIXES: tuple[tuple[type[_ClassicNode], tuple[str, ...]], ..
         SimpleLoadAnima,
         (
             "diffusion_model",
+            "quantization",
             "diffusion_weight_dtype",
             "text_encoder",
             "text_encoder_device",

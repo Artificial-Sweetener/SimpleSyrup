@@ -5,12 +5,16 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  clearQuantCache,
   deleteExternalLLMApiKey,
   getExternalLLMSettings,
   getMaskBatchPreview,
+  getQuantCacheStatus,
   getSettings,
+  enforceQuantCacheLimit,
   parseExternalLLMSettings,
   parseMaskBatchPreview,
+  parseQuantCacheStatus,
   parseSettings,
   refreshExternalLLMModels,
   saveExternalLLMApiKey,
@@ -23,29 +27,45 @@ import { createJsonResponse } from "./testUtils";
 describe("settings API", () => {
   it("loads SimpleSyrup settings from the backend route", async () => {
     const fetchImpl = vi.fn<FetchLike>().mockResolvedValue(
-      createJsonResponse({ show_downloadable_models: false })
+      createJsonResponse({
+        show_downloadable_models: false,
+        quant_cache_limit_gib: 20
+      })
     );
 
     await expect(getSettings(fetchImpl)).resolves.toEqual({
-      show_downloadable_models: false
+      show_downloadable_models: false,
+      quant_cache_limit_gib: 20
     });
     expect(fetchImpl).toHaveBeenCalledWith("/simple-syrup/settings");
   });
 
   it("saves SimpleSyrup settings to the backend route", async () => {
     const fetchImpl = vi.fn<FetchLike>().mockResolvedValue(
-      createJsonResponse({ show_downloadable_models: true })
+      createJsonResponse({
+        show_downloadable_models: true,
+        quant_cache_limit_gib: 30
+      })
     );
 
     await expect(
-      saveSettings({ show_downloadable_models: true }, fetchImpl)
-    ).resolves.toEqual({ show_downloadable_models: true });
+      saveSettings(
+        { show_downloadable_models: true, quant_cache_limit_gib: 30 },
+        fetchImpl
+      )
+    ).resolves.toEqual({
+      show_downloadable_models: true,
+      quant_cache_limit_gib: 30
+    });
     expect(fetchImpl).toHaveBeenCalledWith(
       "/simple-syrup/settings",
       expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ show_downloadable_models: true })
+        body: JSON.stringify({
+          show_downloadable_models: true,
+          quant_cache_limit_gib: 30
+        })
       })
     );
   });
@@ -64,7 +84,10 @@ describe("settings API", () => {
       .mockResolvedValue(createJsonResponse({ error: "nope" }, { status: 400 }));
 
     await expect(
-      saveSettings({ show_downloadable_models: false }, fetchImpl)
+      saveSettings(
+        { show_downloadable_models: false, quant_cache_limit_gib: 20 },
+        fetchImpl
+      )
     ).rejects.toThrow("nope");
   });
 
@@ -72,6 +95,36 @@ describe("settings API", () => {
     expect(() => parseSettings({ show_downloadable_models: "false" })).toThrow(
       "SimpleSyrup settings payload is invalid"
     );
+  });
+
+  it("loads and clears the global quant cache through its dedicated route", async () => {
+    const status = {
+      path: "models/SyrupQuants",
+      usage_bytes: 1024,
+      limit_bytes: 20 * 1024 ** 3,
+      artifact_count: 1,
+      active_artifact_count: 0
+    };
+    const fetchImpl = vi
+      .fn<FetchLike>()
+      .mockImplementation(() => Promise.resolve(createJsonResponse(status)));
+
+    await expect(getQuantCacheStatus(fetchImpl)).resolves.toEqual(status);
+    await expect(enforceQuantCacheLimit(fetchImpl)).resolves.toEqual(status);
+    await expect(clearQuantCache(fetchImpl)).resolves.toEqual(status);
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "/simple-syrup/quant-cache");
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "/simple-syrup/quant-cache", {
+      method: "POST"
+    });
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "/simple-syrup/quant-cache", {
+      method: "DELETE"
+    });
+  });
+
+  it("rejects malformed quant cache status payloads", () => {
+    expect(() =>
+      parseQuantCacheStatus({ path: "models/SyrupQuants" })
+    ).toThrow("quant cache status is invalid");
   });
 });
 

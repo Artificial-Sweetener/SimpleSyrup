@@ -17,11 +17,7 @@ from types import ModuleType, TracebackType
 import pytest
 import torch
 
-import simple_syrup.runtime.anima_loader as anima_loader_module
-from simple_syrup.runtime.anima_loader import (
-    AUTO_CHOICE,
-    AnimaLoaderService,
-)
+import simple_syrup.services.anima_loader_service as anima_loader_module
 from simple_syrup.runtime.auto_model_artifact import AutoModelArtifact
 from simple_syrup.runtime.auto_model_cache import AutoModelCache
 from simple_syrup.runtime.auto_model_resolver import (
@@ -34,6 +30,15 @@ from simple_syrup.runtime.model_downloads import (
     ProgressReporter,
 )
 from simple_syrup.runtime.vae_loader import vae_choices
+from simple_syrup.services.anima_loader_service import (
+    AUTO_CHOICE,
+    AnimaLoaderService,
+)
+
+
+@dataclass
+class FakeLoadedModel:
+    """Attribute-bearing stand-in for a ComfyUI ModelPatcher."""
 
 
 @dataclass
@@ -45,6 +50,7 @@ class FakeComfyState:
     vae_paths: list[str] = field(default_factory=list)
     progress_totals: list[int] = field(default_factory=list)
     progress_updates: list[list[tuple[int, int | None]]] = field(default_factory=list)
+    model: object = field(default_factory=FakeLoadedModel)
 
 
 class FakeStreamingResponse:
@@ -154,6 +160,7 @@ def test_loader_maps_diffusion_weight_dtype(
 
     service.load_models(
         "anima.safetensors",
+        "Original",
         "fp8_e4m3fn_fast",
         "manual_clip.safetensors",
         "default",
@@ -183,6 +190,7 @@ def test_loader_maps_clip_cpu_device(
 
     service.load_models(
         "anima.safetensors",
+        "Original",
         "default",
         "manual_clip.safetensors",
         "cpu",
@@ -216,6 +224,7 @@ def test_loader_uses_auto_resolver_for_auto_choices(
     progress = RecordingProgress()
     service.load_models(
         "anima.safetensors",
+        "Original",
         "default",
         AUTO_CHOICE,
         "default",
@@ -286,6 +295,7 @@ def test_anima_auto_downloads_emit_comfy_node_progress_end_to_end(
 
     service.load_models(
         "anima.safetensors",
+        "Original",
         "default",
         AUTO_CHOICE,
         "default",
@@ -339,13 +349,14 @@ def test_loader_returns_model_clip_and_vae(
 
     result = service.load_models(
         "anima.safetensors",
+        "Original",
         "default",
         "manual_clip.safetensors",
         "default",
         "manual_vae.safetensors",
     )
 
-    assert result[0] == "model"
+    assert result[0] is comfy_state.model
     assert result[1] == "clip"
     assert result[2] is not None
     assert comfy_state.vae_paths == [
@@ -403,11 +414,11 @@ def _install_fake_comfy(monkeypatch: pytest.MonkeyPatch) -> FakeComfyState:
     def load_diffusion_model(
         path: str,
         model_options: dict[str, object],
-    ) -> str:
+    ) -> object:
         """Record diffusion model calls."""
 
         state.diffusion_calls.append((path, model_options))
-        return "model"
+        return state.model
 
     def load_clip(
         ckpt_paths: list[str],
