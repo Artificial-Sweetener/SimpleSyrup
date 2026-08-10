@@ -42,15 +42,36 @@ class RegionalConditioningService:
 
         validate_regional_prompt_weight(regional_prompt_weight)
         mask_batch = prepare_regional_mask_batch(masks, region_mask_feather)
+        return self.assemble_prepared(
+            positive=positive,
+            negative=negative,
+            mask_batch=mask_batch,
+            regional_prompt_weight=regional_prompt_weight,
+            region_mask_feather=region_mask_feather,
+        )
+
+    def assemble_prepared(
+        self,
+        *,
+        positive: object,
+        negative: object,
+        mask_batch: torch.Tensor,
+        regional_prompt_weight: float,
+        region_mask_feather: int = 0,
+    ) -> tuple[Conditioning, Conditioning]:
+        """Assemble conditioning from a validated, already-feathered mask batch."""
+
+        validate_regional_prompt_weight(regional_prompt_weight)
+        prepared_mask_batch = prepare_regional_mask_batch(mask_batch, feather=0)
         assembled_positive = self._assemble_input(
             positive,
-            mask_batch,
+            prepared_mask_batch,
             regional_prompt_weight=regional_prompt_weight,
             input_name="positive",
         )
         assembled_negative = self._assemble_input(
             negative,
-            mask_batch,
+            prepared_mask_batch,
             regional_prompt_weight=regional_prompt_weight,
             input_name="negative",
         )
@@ -58,7 +79,7 @@ class RegionalConditioningService:
             "Regional conditioning assembled",
             extra={
                 "operation": "assemble_regional_conditioning",
-                "region_count": int(mask_batch.shape[0]),
+                "region_count": int(prepared_mask_batch.shape[0]),
                 "positive_entry_count": len(assembled_positive),
                 "negative_entry_count": len(assembled_negative),
                 "regional_prompt_weight": regional_prompt_weight,

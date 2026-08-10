@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from ..domain.regional_prompting import MAX_REGIONAL_PROMPT_WEIGHT
 from ..domain.tiled_diffusion import TILED_DIFFUSION_MODES
 from ..runtime import sampling_samplers, sampling_schedulers
 from ..services.tiled_diffusion_sampling_service import TiledDiffusionSamplingService
@@ -160,6 +161,31 @@ class KSamplerTiledDiffusion:
                         ),
                     },
                 ),
+                "region_masks": (
+                    "MASK",
+                    {"tooltip": tooltips.OPTIONAL_REGIONAL_MASKS},
+                ),
+                "regional_prompt_weight": (
+                    "FLOAT",
+                    {
+                        "default": 0.5,
+                        "min": 0.0,
+                        "max": MAX_REGIONAL_PROMPT_WEIGHT,
+                        "step": 0.01,
+                        "round": 0.01,
+                        "tooltip": tooltips.OPTIONAL_REGIONAL_PROMPT_WEIGHT,
+                    },
+                ),
+                "region_mask_feather": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 512,
+                        "step": 1,
+                        "tooltip": tooltips.OPTIONAL_REGION_MASK_FEATHER,
+                    },
+                ),
             },
         }
 
@@ -181,6 +207,9 @@ class KSamplerTiledDiffusion:
         latent_tile_overlap: int = 16,
         latent_tile_batch_size: int = 4,
         segs: object | None = None,
+        region_masks: object | None = None,
+        regional_prompt_weight: float = 0.5,
+        region_mask_feather: int = 0,
     ) -> tuple[Latent]:
         """Sample a latent with the selected tiled diffusion method."""
 
@@ -202,5 +231,8 @@ class KSamplerTiledDiffusion:
             latent_tile_batch_size=latent_tile_batch_size,
             preview_context=None,
             segs=segs,
+            region_masks=region_masks,
+            regional_prompt_weight=regional_prompt_weight,
+            region_mask_feather=region_mask_feather,
         )
         return (output,)

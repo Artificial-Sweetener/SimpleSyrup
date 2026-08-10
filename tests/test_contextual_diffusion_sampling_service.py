@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 import torch
 
+from simple_syrup.domain.conditioning_batch import ConditioningBatch
 from simple_syrup.domain.segs import BoundingBox, CropRegion, Segment
 from simple_syrup.services import (
     contextual_diffusion_sampling_service as service_module,
@@ -97,6 +98,104 @@ def test_service_rejects_segs_batch_mismatch_before_runtime(
     assert not called
 
 
+def test_service_selects_conditioning_batch_per_latent_with_shared_segs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Contextual SEGS sampling keeps its per-latent conditioning contract."""
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_sample_contextual_diffusion(**kwargs: Any) -> dict[str, Any]:
+        """Record one item and return its latent unchanged."""
+
+        calls.append(kwargs)
+        latent_image = kwargs["latent_image"]
+        if not isinstance(latent_image, dict):
+            raise TypeError("Test runtime expected a latent dictionary.")
+        return latent_image
+
+    monkeypatch.setattr(
+        service_module,
+        "sample_contextual_diffusion",
+        fake_sample_contextual_diffusion,
+    )
+    latent = {"samples": torch.zeros((2, 4, 64, 96))}
+
+    ContextualDiffusionSamplingService().sample(
+        **(
+            _sample_kwargs(latent=latent, segs=_segs(512, 768))
+            | {
+                "positive": ConditioningBatch(("positive-0", "positive-1")),
+                "negative": ConditioningBatch(("negative-0", "negative-1")),
+            }
+        )
+    )
+
+    assert [call["positive"] for call in calls] == ["positive-0", "positive-1"]
+    assert [call["negative"] for call in calls] == ["negative-0", "negative-1"]
+
+
+def test_service_applies_regional_conditioning_to_contextual_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Contextual local and global predictions share assembled regional inputs."""
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_sample_contextual_diffusion(**kwargs: Any) -> dict[str, Any]:
+        """Record one regional contextual request and return its latent."""
+
+        calls.append(kwargs)
+        latent_image = kwargs["latent_image"]
+        if not isinstance(latent_image, dict):
+            raise TypeError("Test runtime expected a latent dictionary.")
+        return latent_image
+
+    monkeypatch.setattr(
+        service_module,
+        "sample_contextual_diffusion",
+        fake_sample_contextual_diffusion,
+    )
+    masks = torch.zeros((2, 64, 96))
+    masks[0, :, :48] = 1.0
+    masks[1, :, 48:] = 1.0
+
+    ContextualDiffusionSamplingService().sample(
+        **(
+            _sample_kwargs(
+                latent={
+                    "samples": torch.zeros((1, 4, 64, 96)),
+                    "downscale_ratio_spacial": 8,
+                },
+                segs=None,
+            )
+            | {
+                "positive": ConditioningBatch(
+                    (
+                        _conditioning("global"),
+                        _conditioning("left"),
+                        _conditioning("right"),
+                    )
+                ),
+                "negative": _conditioning("negative"),
+                "region_masks": masks,
+            }
+        )
+    )
+
+    assert len(calls) == 1
+    assert [item[0] for item in calls[0]["positive"]] == [
+        "global",
+        "left",
+        "right",
+    ]
+    assert calls[0]["allow_full_context_masks"] is True
+    assert len(calls[0]["plan"].tile_plan.tiles) >= 2
+    assert all(
+        tile.weight_mask is not None for tile in calls[0]["plan"].tile_plan.tiles
+    )
+
+
 def test_service_rejects_invalid_controls_before_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -112,7 +211,10 @@ def test_service_rejects_invalid_controls_before_runtime(
         ContextualDiffusionSamplingService().sample(
             **(
                 _sample_kwargs(
-                    latent={"samples": torch.zeros((1, 4, 64, 96))},
+                    latent={
+                        "samples": torch.zeros((1, 4, 64, 96)),
+                        "downscale_ratio_spacial": 8,
+                    },
                     segs=None,
                 )
                 | {"latent_context_overlap": 64}
@@ -181,3 +283,9 @@ def _segs(height: int, width: int) -> object:
         label="subject",
     )
     return ((height, width), (segment,))
+
+
+def _conditioning(name: str) -> list[list[object]]:
+    """Return one structurally valid standard conditioning value."""
+
+    return [[name, {}]]

@@ -52,6 +52,7 @@ def sample_contextual_diffusion(
     diffusion_mode: str,
     controls: ContextualDiffusionControls,
     plan: ContextualDiffusionPlan,
+    allow_full_context_masks: bool = False,
 ) -> Latent:
     """Sample one latent through global context and one tiled prediction plan."""
 
@@ -65,8 +66,16 @@ def sample_contextual_diffusion(
     controls.validate()
     if sampler_name in UNIPC_SAMPLERS:
         raise ValueError("Contextual Diffusion is not compatible with UniPC samplers.")
-    reject_unsupported_conditioning(positive, sampler_label=SAMPLER_LABEL)
-    reject_unsupported_conditioning(negative, sampler_label=SAMPLER_LABEL)
+    reject_unsupported_conditioning(
+        positive,
+        sampler_label=SAMPLER_LABEL,
+        allow_full_context_masks=allow_full_context_masks,
+    )
+    reject_unsupported_conditioning(
+        negative,
+        sampler_label=SAMPLER_LABEL,
+        allow_full_context_masks=allow_full_context_masks,
+    )
 
     sampler = sampling_samplers.resolve_sampler(sampler_name)
     sigmas = sampling_schedulers.calculate_sigmas(

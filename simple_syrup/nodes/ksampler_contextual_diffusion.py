@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, TypeAlias
 
+from ..domain.regional_prompting import MAX_REGIONAL_PROMPT_WEIGHT
 from ..domain.tiled_diffusion import TILED_DIFFUSION_MODES
 from ..runtime import sampling_samplers, sampling_schedulers
 from ..services.contextual_diffusion_sampling_service import (
@@ -182,7 +183,32 @@ class KSamplerContextualDiffusion:
                 "segs": (
                     "SEGS",
                     {"tooltip": tooltips.CONTEXTUAL_DIFFUSION_SEGS},
-                )
+                ),
+                "region_masks": (
+                    "MASK",
+                    {"tooltip": tooltips.OPTIONAL_REGIONAL_MASKS},
+                ),
+                "regional_prompt_weight": (
+                    "FLOAT",
+                    {
+                        "default": 0.5,
+                        "min": 0.0,
+                        "max": MAX_REGIONAL_PROMPT_WEIGHT,
+                        "step": 0.01,
+                        "round": 0.01,
+                        "tooltip": tooltips.OPTIONAL_REGIONAL_PROMPT_WEIGHT,
+                    },
+                ),
+                "region_mask_feather": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 512,
+                        "step": 1,
+                        "tooltip": tooltips.OPTIONAL_REGION_MASK_FEATHER,
+                    },
+                ),
             },
         }
 
@@ -206,6 +232,9 @@ class KSamplerContextualDiffusion:
         global_steps: int = 1,
         global_decay: float = 0.5,
         segs: object | None = None,
+        region_masks: object | None = None,
+        regional_prompt_weight: float = 0.5,
+        region_mask_feather: int = 0,
     ) -> tuple[Latent, object]:
         """Delegate contextual diffusion sampling to its application service."""
 
@@ -228,5 +257,8 @@ class KSamplerContextualDiffusion:
             global_steps=global_steps,
             global_decay=global_decay,
             segs=segs,
+            region_masks=region_masks,
+            regional_prompt_weight=regional_prompt_weight,
+            region_mask_feather=region_mask_feather,
         )
         return result.latent, result.contexts

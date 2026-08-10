@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, TypeAlias
+from typing import Any, ClassVar, TypeAlias
 
 import torch
 
@@ -25,6 +25,9 @@ from ..domain.segs import NativeSegs, coerce_segs_group
 from ..domain.tiled_diffusion import validate_tiled_diffusion_mode
 from ..runtime.contextual_diffusion_sampling import sample_contextual_diffusion
 from ..runtime.latent_geometry import decoded_image_dimensions
+from .regional_sampling_preparation_service import (
+    RegionalSamplingPreparationService,
+)
 from .sampling_batch import (
     combine_latent_outputs,
     latent_batch_size,
@@ -44,6 +47,10 @@ class ContextualDiffusionSamplingResult:
 
 class ContextualDiffusionSamplingService:
     """Plan and execute composition-preserving contextual diffusion."""
+
+    regional_preparation_service_class: ClassVar[
+        type[RegionalSamplingPreparationService]
+    ] = RegionalSamplingPreparationService
 
     def sample(
         self,
@@ -66,6 +73,9 @@ class ContextualDiffusionSamplingService:
         global_steps: int,
         global_decay: float,
         segs: object | None = None,
+        region_masks: object | None = None,
+        regional_prompt_weight: float = 0.5,
+        region_mask_feather: int = 0,
     ) -> ContextualDiffusionSamplingResult:
         """Sample a latent with global and bounded detail contexts."""
 
@@ -79,6 +89,14 @@ class ContextualDiffusionSamplingService:
             global_decay=global_decay,
         )
         controls.validate()
+        regional = self.regional_preparation_service_class().prepare(
+            positive=positive,
+            negative=negative,
+            latent_image=latent_image,
+            region_masks=region_masks,
+            regional_prompt_weight=regional_prompt_weight,
+            region_mask_feather=region_mask_feather,
+        )
         batch_size = latent_batch_size(latent_image)
         segs_group = coerce_segs_group(segs) if segs is not None else ()
         if segs_group and len(segs_group) not in (1, batch_size):
@@ -98,8 +116,9 @@ class ContextualDiffusionSamplingService:
         )
         split_batch = (
             bool(segs_group)
-            or isinstance(positive, ConditioningBatch)
-            or isinstance(negative, ConditioningBatch)
+            or regional.active
+            or isinstance(regional.positive, ConditioningBatch)
+            or isinstance(regional.negative, ConditioningBatch)
         )
         if not split_batch:
             return self._sample_item(
@@ -109,8 +128,8 @@ class ContextualDiffusionSamplingService:
                 cfg=cfg,
                 sampler_name=sampler_name,
                 scheduler=scheduler,
-                positive=positive,
-                negative=negative,
+                positive=regional.positive,
+                negative=regional.negative,
                 latent_image=latent_image,
                 denoise=denoise,
                 diffusion_mode=diffusion_mode,
@@ -118,6 +137,8 @@ class ContextualDiffusionSamplingService:
                 segs=None,
                 image_height=image_height,
                 image_width=image_width,
+                region_masks=regional.planning_masks,
+                allow_full_context_masks=regional.active,
             )
 
         outputs: list[torch.Tensor] = []
@@ -131,14 +152,14 @@ class ContextualDiffusionSamplingService:
                 sampler_name=sampler_name,
                 scheduler=scheduler,
                 positive=(
-                    select_conditioning(positive, index)
-                    if isinstance(positive, ConditioningBatch)
-                    else positive
+                    select_conditioning(regional.positive, index)
+                    if isinstance(regional.positive, ConditioningBatch)
+                    else regional.positive
                 ),
                 negative=(
-                    select_conditioning(negative, index)
-                    if isinstance(negative, ConditioningBatch)
-                    else negative
+                    select_conditioning(regional.negative, index)
+                    if isinstance(regional.negative, ConditioningBatch)
+                    else regional.negative
                 ),
                 latent_image=single_item_latent(latent_image, index),
                 denoise=denoise,
@@ -151,6 +172,8 @@ class ContextualDiffusionSamplingService:
                 ),
                 image_height=image_height,
                 image_width=image_width,
+                region_masks=regional.planning_masks,
+                allow_full_context_masks=regional.active,
             )
             samples = item_result.latent.get("samples")
             if not isinstance(samples, torch.Tensor):
@@ -182,6 +205,8 @@ class ContextualDiffusionSamplingService:
         segs: NativeSegs | None,
         image_height: int,
         image_width: int,
+        region_masks: torch.Tensor | None,
+        allow_full_context_masks: bool,
     ) -> ContextualDiffusionSamplingResult:
         """Build one canvas plan and execute it through the runtime adapter."""
 
@@ -195,6 +220,7 @@ class ContextualDiffusionSamplingService:
             latent_height=int(samples.shape[-2]),
             controls=controls,
             segs=segs,
+            region_masks=region_masks,
         )
         latent = sample_contextual_diffusion(
             model=model,
@@ -210,6 +236,7 @@ class ContextualDiffusionSamplingService:
             diffusion_mode=diffusion_mode,
             controls=controls,
             plan=plan,
+            allow_full_context_masks=allow_full_context_masks,
         )
         return ContextualDiffusionSamplingResult(
             latent=latent,
