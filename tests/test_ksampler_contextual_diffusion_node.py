@@ -12,10 +12,7 @@ import pytest
 import torch
 
 from simple_syrup.domain.segs import NativeSegs
-from simple_syrup.nodes.ksampler_contextual_diffusion import (
-    KSamplerContextualDiffusion,
-)
-from simple_syrup.nodes_v3.legacy_node_wrappers import (
+from simple_syrup.nodes_v3.ksampler_contextual_diffusion import (
     KSamplerContextualDiffusionV3,
 )
 from simple_syrup.runtime import sampling_samplers, sampling_schedulers
@@ -33,8 +30,9 @@ def test_input_types_expose_concise_klein_oriented_controls(
         lambda: ("simple",),
     )
 
-    declared = KSamplerContextualDiffusion.INPUT_TYPES()
-    required = declared["required"]
+    schema = KSamplerContextualDiffusionV3.define_schema()
+    required = {value.id: value for value in schema.inputs if not value.optional}
+    optional = {value.id: value for value in schema.inputs if value.optional}
 
     assert tuple(required) == (
         "model",
@@ -55,34 +53,35 @@ def test_input_types_expose_concise_klein_oriented_controls(
         "global_steps",
         "global_decay",
     )
-    assert required["steps"][1]["default"] == 4
-    assert required["cfg"][1]["default"] == 1.0
-    assert required["diffusion_mode"][0] == [
+    assert required["steps"].default == 4
+    assert required["cfg"].default == 1.0
+    assert required["diffusion_mode"].options == [
         "multidiffusion",
         "mixture_of_diffusers",
     ]
-    assert required["diffusion_mode"][1]["default"] == "multidiffusion"
-    assert required["latent_context_size"][1]["default"] == 96
-    assert required["latent_context_overlap"][1]["default"] == 32
-    assert required["latent_context_batch_size"][1]["default"] == 4
-    assert required["global_weight"][1]["default"] == 1.0
-    assert required["global_steps"][1]["default"] == 1
-    assert required["global_decay"][1]["default"] == 0.5
-    assert declared["optional"]["segs"][0] == "SEGS"
-    assert declared["optional"]["region_masks"][0] == "MASK"
-    assert declared["optional"]["regional_prompt_weight"][1]["default"] == 0.5
-    assert declared["optional"]["region_mask_feather"][1]["default"] == 0
+    assert required["diffusion_mode"].default == "multidiffusion"
+    assert required["latent_context_size"].default == 96
+    assert required["latent_context_overlap"].default == 32
+    assert required["latent_context_batch_size"].default == 4
+    assert required["global_weight"].default == 1.0
+    assert required["global_steps"].default == 1
+    assert required["global_decay"].default == 0.5
+    assert optional["segs"].io_type == "SEGS"
+    assert optional["region_masks"].io_type == "MASK"
+    assert optional["regional_prompt_weight"].default == 0.5
+    assert optional["region_mask_feather"].default == 0
 
 
 def test_node_metadata_matches_separate_sampler_contract() -> None:
     """Contextual Diffusion exposes its latent and actual local contexts."""
 
-    assert KSamplerContextualDiffusion.RETURN_TYPES == ("LATENT", "SEGS")
-    assert KSamplerContextualDiffusion.RETURN_NAMES == ("latent", "contexts_segs")
-    assert len(KSamplerContextualDiffusion.OUTPUT_TOOLTIPS) == 2
-    assert KSamplerContextualDiffusion.FUNCTION == "sample"
-    assert KSamplerContextualDiffusion.CATEGORY == "SimpleSyrup/Sampling"
-    assert "composition" in KSamplerContextualDiffusion.DESCRIPTION
+    schema = KSamplerContextualDiffusionV3.define_schema()
+
+    assert schema.node_id == "SimpleSyrup.KSamplerContextualDiffusion"
+    assert schema.display_name == "KSampler (Contextual Diffusion)"
+    assert schema.category == "SimpleSyrup/Sampling"
+    assert len(schema.outputs) == 2
+    assert "composition" in schema.description
 
 
 def test_v3_schema_names_both_contextual_diffusion_outputs() -> None:
@@ -100,14 +99,14 @@ def test_sample_delegates_every_control_to_service(
 
     fake_service = _FakeContextualDiffusionService()
     monkeypatch.setattr(
-        KSamplerContextualDiffusion,
+        KSamplerContextualDiffusionV3,
         "service_class",
         staticmethod(lambda: fake_service),
     )
     latent = {"samples": torch.zeros((1, 4, 32, 48))}
     segs = object()
 
-    result, contexts = KSamplerContextualDiffusion().sample(
+    result, contexts = KSamplerContextualDiffusionV3.execute(
         model="model",
         seed=12,
         steps=8,

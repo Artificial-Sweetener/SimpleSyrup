@@ -10,7 +10,11 @@ import logging
 from importlib import import_module
 from typing import Any
 
-from .patcher_lifecycle import PATCHER_LIFECYCLE, ClipHookScheduleMutation
+from .clip_patcher_mutations import ClipHookScheduleMutation
+from .patcher_lifecycle import PATCHER_LIFECYCLE
+from .scheduled_clip_conditioning_metadata import (
+    ScheduledClipConditioningMetadataAdapter,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -47,7 +51,7 @@ def prepare_regional_lora_clip(clip: Any, hooks: object) -> tuple[Any, object]:
         operation="SimpleSyrup regional LoRA CLIP preparation",
         disable_dynamic=True,
     )
-    return prepared_clip, hooks
+    return ScheduledClipConditioningMetadataAdapter(prepared_clip), hooks
 
 
 def _count_clip_patch_hooks(clip: Any, hooks: Any, comfy_hooks: Any) -> int:

@@ -170,11 +170,15 @@ def test_schedule_encode_graph_keeps_loras_local_to_aligned_segments(
     parsed_hook_nodes = [
         node
         for node in output.expand.values()
-        if node["class_type"] == "PCLoraHooksFromText"
+        if node["class_type"] == "CreateHookLora"
     ]
-    assert [node["inputs"]["text"] for node in parsed_hook_nodes] == [
+    assert [node["inputs"]["lora_name"] for node in parsed_hook_nodes] == [
         "<lora:a:1>\n<lora:c:1>",
         "<lora:b:1>\n<lora:d:[0:1:0.5]>",
+    ]
+    assert calls["hook"] == [
+        {"clip": None, "text": "<lora:a:1>\n<lora:c:1>"},
+        {"clip": None, "text": "<lora:b:1>\n<lora:d:[0:1:0.5]>"},
     ]
     regional_hook_nodes = [
         node
@@ -182,6 +186,12 @@ def test_schedule_encode_graph_keeps_loras_local_to_aligned_segments(
         if node["class_type"] == "SimpleSyrup.PrepareRegionalLoraHooks"
     ]
     assert len(regional_hook_nodes) == 2
+    label_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "SimpleSyrup.LabelRegionalLoraHooks"
+    ]
+    assert len(label_nodes) == 2
     clip_nodes = [
         node for node in output.expand.values() if node["class_type"] == "SetClipHooks"
     ]
@@ -296,16 +306,18 @@ def _install_fake_prompt_control(
                     strength_model=1.0,
                     strength_clip=1.0,
                 )
-                hooked_clip = graph.node(
-                    "SetClipHooks",
-                    clip=clip,
-                    hooks=hooks.out(0),
-                    apply_to_conds=True,
-                    schedule_clip=True,
-                )
+                hooked_clip = None
+                if clip is not None:
+                    hooked_clip = graph.node(
+                        "SetClipHooks",
+                        clip=clip,
+                        hooks=hooks.out(0),
+                        apply_to_conds=True,
+                        schedule_clip=True,
+                    )
                 return io.NodeOutput(
                     None,
-                    hooked_clip.out(0),
+                    None if hooked_clip is None else hooked_clip.out(0),
                     hooks.out(0),
                     expand=graph.finalize(),
                 )

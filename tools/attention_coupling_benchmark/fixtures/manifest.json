@@ -1,0 +1,274 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "anima-regional-prompting-v1",
+  "source": {
+    "simple_syrup_commit": "a5e53bd0ef3b089cfcccf54655520d03602836a6",
+    "comfyui_commit": "a1c421994cdcc5044dbce2bb7628e89386311cc5"
+  },
+  "models": [
+    {
+      "id": "diffusion-model-fixture",
+      "role": "diffusion_model",
+      "filename": "diffusion-model.safetensors",
+      "size_bytes": 4182218328,
+      "sha256": "bd43b7cffe1ed1153d9c41e7beb2f18cb1273eafbaa3af3edd6a173dc90a006e"
+    },
+    {
+      "id": "qwen-3-06b-base",
+      "role": "text_encoder",
+      "filename": "qwen_3_06b_base.safetensors",
+      "size_bytes": 1192135096,
+      "sha256": "cd2a512003e2f9f3cd3c32a9c3573f820bb28c940f73c57b1ddaa983d9223eba"
+    },
+    {
+      "id": "qwen-image-vae",
+      "role": "vae",
+      "filename": "qwen_image_vae.safetensors",
+      "size_bytes": 253806246,
+      "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f"
+    }
+  ],
+  "sampling": {
+    "width": 1024,
+    "height": 1024,
+    "steps": 30,
+    "cfg": 4.0,
+    "sampler": "er_sde",
+    "scheduler": "simple",
+    "denoise": 1.0,
+    "seeds": [1029384756, 3141592653, 2718281828],
+    "negative_prompt": "worst quality, low quality, score_1, score_2, score_3, artist name, blurry, jpeg artifacts, chromatic aberration, bad anatomy, bad hands, extra digits, fewer digits, watermark"
+  },
+  "executions": [
+    {
+      "id": "regional-conditioning-full",
+      "strategy": "regional_conditioning",
+      "spatial_mode": "full",
+      "controls": {}
+    },
+    {
+      "id": "regional-conditioning-multidiffusion",
+      "strategy": "regional_conditioning",
+      "spatial_mode": "multidiffusion",
+      "controls": {
+        "tile_width": 64,
+        "tile_height": 64,
+        "overlap": 16,
+        "tile_batch_size": 4
+      }
+    },
+    {
+      "id": "regional-conditioning-mod",
+      "strategy": "regional_conditioning",
+      "spatial_mode": "mixture_of_diffusers",
+      "controls": {
+        "tile_width": 64,
+        "tile_height": 64,
+        "overlap": 16,
+        "tile_batch_size": 4
+      }
+    },
+    {
+      "id": "regional-conditioning-contextual-md",
+      "strategy": "regional_conditioning",
+      "spatial_mode": "contextual",
+      "controls": {
+        "diffusion_mode": "multidiffusion",
+        "latent_context_size": 64,
+        "latent_context_overlap": 16,
+        "latent_context_batch_size": 4,
+        "global_weight": 1.0,
+        "global_steps": 10,
+        "global_decay": 0.5
+      }
+    },
+    {
+      "id": "regional-conditioning-contextual-mod",
+      "strategy": "regional_conditioning",
+      "spatial_mode": "contextual",
+      "controls": {
+        "diffusion_mode": "mixture_of_diffusers",
+        "latent_context_size": 64,
+        "latent_context_overlap": 16,
+        "latent_context_batch_size": 4,
+        "global_weight": 1.0,
+        "global_steps": 10,
+        "global_decay": 0.5
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "vertical-hard-50-50",
+      "scenario_tags": ["hard_50_50"],
+      "global_prompt": "masterpiece, best quality, score_7, safe, two people standing side by side in a city street, full body, balanced composition",
+      "regional_prompts": [
+        "1girl on the left, short black hair, red jacket, black skirt",
+        "1boy on the right, short white hair, blue jacket, white trousers"
+      ],
+      "masks": [
+        {"x0": 0.0, "y0": 0.0, "x1": 0.5, "y1": 1.0},
+        {"x0": 0.5, "y0": 0.0, "x1": 1.0, "y1": 1.0}
+      ],
+      "regional_prompt_weight": 1.0,
+      "region_mask_feather": 0
+    },
+    {
+      "id": "horizontal-hard-split",
+      "scenario_tags": ["horizontal_split"],
+      "global_prompt": "masterpiece, best quality, score_7, safe, a two-level fantasy scene, clear foreground and sky",
+      "regional_prompts": [
+        "upper half, blue sky, white clouds, flying red dragon",
+        "lower half, green meadow, silver-armored knight, yellow flowers"
+      ],
+      "masks": [
+        {"x0": 0.0, "y0": 0.0, "x1": 1.0, "y1": 0.5},
+        {"x0": 0.0, "y0": 0.5, "x1": 1.0, "y1": 1.0}
+      ],
+      "regional_prompt_weight": 1.0,
+      "region_mask_feather": 0
+    },
+    {
+      "id": "asymmetric-35-65",
+      "scenario_tags": ["asymmetric_regions"],
+      "global_prompt": "masterpiece, best quality, score_7, safe, two musicians performing on stage, dramatic concert lighting",
+      "regional_prompts": [
+        "left musician, petite woman, green hair, violin, narrow spotlight",
+        "right musician, tall man, blond hair, grand piano, broad amber spotlight"
+      ],
+      "masks": [
+        {"x0": 0.0, "y0": 0.0, "x1": 0.35, "y1": 1.0},
+        {"x0": 0.35, "y0": 0.0, "x1": 1.0, "y1": 1.0}
+      ],
+      "regional_prompt_weight": 1.0,
+      "region_mask_feather": 0
+    },
+    {
+      "id": "boundary-crossing-interaction",
+      "scenario_tags": ["boundary_crossing"],
+      "global_prompt": "masterpiece, best quality, score_7, safe, two friends holding hands across the center of the image, continuous arms and hands, full body",
+      "regional_prompts": [
+        "person on the left, black hair, red coat, right arm reaching across center",
+        "person on the right, white hair, blue coat, left arm reaching across center"
+      ],
+      "masks": [
+        {"x0": 0.0, "y0": 0.0, "x1": 0.5, "y1": 1.0},
+        {"x0": 0.5, "y0": 0.0, "x1": 1.0, "y1": 1.0}
+      ],
+      "regional_prompt_weight": 1.0,
+      "region_mask_feather": 0
+    },
+    {
+      "id": "identical-regional-prompts",
+      "scenario_tags": ["identical_prompts"],
+      "global_prompt": "masterpiece, best quality, score_7, safe, two sisters standing in a flower garden, symmetrical composition",
+      "regional_prompts": [
+        "young woman, long purple hair, white summer dress, gentle smile",
+        "young woman, long purple hair, white summer dress, gentle smile"
+      ],
+      "masks": [
+        {"x0": 0.0, "y0": 0.0, "x1": 0.5, "y1": 1.0},
+        {"x0": 0.5, "y0": 0.0, "x1": 1.0, "y1": 1.0}
+      ],
+      "regional_prompt_weight": 1.0,
+      "region_mask_feather": 0
+    },
+    {
+      "id": "global-only-control",
+      "scenario_tags": ["no_region"],
+      "global_prompt": "masterpiece, best quality, score_7, safe, two people standing side by side in a city street, one with short black hair and a red jacket, one with short white hair and a blue jacket, full body",
+      "regional_prompts": [],
+      "masks": [],
+      "regional_prompt_weight": 1.0,
+      "region_mask_feather": 0
+    },
+    {
+      "id": "short-regional-prompts",
+      "scenario_tags": ["short_prompts"],
+      "global_prompt": "masterpiece, best quality, score_7, safe, two portraits",
+      "regional_prompts": ["red-haired girl", "blue-haired boy"],
+      "masks": [
+        {"x0": 0.0, "y0": 0.0, "x1": 0.5, "y1": 1.0},
+        {"x0": 0.5, "y0": 0.0, "x1": 1.0, "y1": 1.0}
+      ],
+      "regional_prompt_weight": 1.0,
+      "region_mask_feather": 0
+    },
+    {
+      "id": "long-regional-prompts",
+      "scenario_tags": ["long_prompts"],
+      "global_prompt": "masterpiece, best quality, score_7, safe, elaborate fantasy festival at twilight, two distinct characters, cinematic wide composition, intricate background",
+      "regional_prompts": [
+        "left character, adult woman, waist-length raven hair with silver hairpins, emerald eyes, layered crimson and black ceremonial kimono, gold embroidery, holding a lacquered fox mask, paper lanterns, drifting maple leaves, confident expression, detailed fabric folds, full body",
+        "right character, adult man, shoulder-length white hair tied low, blue eyes, layered navy and ivory ceremonial robes, silver embroidery, holding a folded fan, festival banners, floating fireflies, calm expression, detailed fabric folds, full body"
+      ],
+      "masks": [
+        {"x0": 0.0, "y0": 0.0, "x1": 0.5, "y1": 1.0},
+        {"x0": 0.5, "y0": 0.0, "x1": 1.0, "y1": 1.0}
+      ],
+      "regional_prompt_weight": 1.0,
+      "region_mask_feather": 0
+    },
+    {
+      "id": "high-anima-token-weights",
+      "scenario_tags": ["high_anima_weights"],
+      "global_prompt": "masterpiece, best quality, score_7, safe, two fashion models in a studio, full body",
+      "regional_prompts": [
+        "left model, (black hair:3.0), (black dress:2.5), red gloves",
+        "right model, (white hair:3.0), (white suit:2.5), blue gloves"
+      ],
+      "masks": [
+        {"x0": 0.0, "y0": 0.0, "x1": 0.5, "y1": 1.0},
+        {"x0": 0.5, "y0": 0.0, "x1": 1.0, "y1": 1.0}
+      ],
+      "regional_prompt_weight": 1.0,
+      "region_mask_feather": 0
+    },
+    {
+      "id": "overlapping-regions",
+      "scenario_tags": ["overlap"],
+      "global_prompt": "masterpiece, best quality, score_7, safe, two dancers crossing paths on a stage, dynamic composition",
+      "regional_prompts": [
+        "left dancer, orange hair, red costume, sweeping rightward motion",
+        "right dancer, teal hair, blue costume, sweeping leftward motion"
+      ],
+      "masks": [
+        {"x0": 0.0, "y0": 0.0, "x1": 0.58, "y1": 1.0},
+        {"x0": 0.42, "y0": 0.0, "x1": 1.0, "y1": 1.0}
+      ],
+      "regional_prompt_weight": 1.0,
+      "region_mask_feather": 0
+    },
+    {
+      "id": "uncovered-center-strip",
+      "scenario_tags": ["uncovered_pixels"],
+      "global_prompt": "masterpiece, best quality, score_7, safe, two travelers separated by an empty stone path, landscape composition",
+      "regional_prompts": [
+        "left traveler, brown hair, green cloak, forest edge",
+        "right traveler, silver hair, blue cloak, mountain edge"
+      ],
+      "masks": [
+        {"x0": 0.0, "y0": 0.0, "x1": 0.43, "y1": 1.0},
+        {"x0": 0.57, "y0": 0.0, "x1": 1.0, "y1": 1.0}
+      ],
+      "regional_prompt_weight": 1.0,
+      "region_mask_feather": 0
+    },
+    {
+      "id": "narrow-left-region",
+      "scenario_tags": ["narrow_region"],
+      "global_prompt": "masterpiece, best quality, score_7, safe, panoramic train platform with two people, strong depth",
+      "regional_prompts": [
+        "far-left person, pink hair, yellow raincoat, fully visible",
+        "center-right person, dark blue hair, gray uniform, fully visible"
+      ],
+      "masks": [
+        {"x0": 0.0, "y0": 0.0, "x1": 0.1, "y1": 1.0},
+        {"x0": 0.1, "y0": 0.0, "x1": 1.0, "y1": 1.0}
+      ],
+      "regional_prompt_weight": 1.0,
+      "region_mask_feather": 0
+    }
+  ],
+  "artifact_name_template": "{benchmark_id}__{case_id}__{execution_id}__seed-{seed}"
+}

@@ -16,6 +16,10 @@ from typing import Any, cast
 
 import torch
 
+from ..domain.regional_features import (
+    EMPTY_REGIONAL_CAPABILITY_ADMISSION,
+    RegionalCapabilityAdmission,
+)
 from ..domain.tiled_diffusion import (
     TiledDiffusionPlan,
     build_tiled_diffusion_plan,
@@ -27,16 +31,15 @@ from .differential_diffusion import (
     differential_diffusion_mutation,
     has_denoise_mask_function,
 )
-from .patcher_lifecycle import (
-    PATCHER_LIFECYCLE,
-    ModelMutation,
-    ModelUnetWrapperMutation,
-)
-from .tiled_sampling import (
+from .model_patcher_mutations import ModelUnetWrapperMutation
+from .patcher_lifecycle import PATCHER_LIFECYCLE, ModelMutation
+from .sampling_model_types import (
     ApplyModel,
-    Latent,
     ModelFunctionWrapper,
-    TilePredictionAccumulator,
+)
+from .tile_prediction_accumulation import TilePredictionAccumulator
+from .tiled_sampling_validation import (
+    Latent,
     reject_unsupported_conditioning,
     validate_latent_samples,
     validate_sampling_controls,
@@ -66,7 +69,9 @@ def sample_multidiffusion(
     latent_tile_batch_size: int,
     preview_context: DetailPreviewContext | None = None,
     differential_diffusion: bool = False,
-    allow_full_context_masks: bool = False,
+    capability_admission: RegionalCapabilityAdmission = (
+        EMPTY_REGIONAL_CAPABILITY_ADMISSION
+    ),
     tiled_plan: TiledDiffusionPlan | None = None,
 ) -> Latent:
     """Sample a latent with a cloned model patched for MultiDiffusion."""
@@ -82,12 +87,12 @@ def sample_multidiffusion(
     reject_unsupported_conditioning(
         positive,
         sampler_label=SAMPLER_LABEL,
-        allow_full_context_masks=allow_full_context_masks,
+        capability_admission=capability_admission,
     )
     reject_unsupported_conditioning(
         negative,
         sampler_label=SAMPLER_LABEL,
-        allow_full_context_masks=allow_full_context_masks,
+        capability_admission=capability_admission,
     )
 
     sampler = sampling_samplers.resolve_sampler(sampler_name)

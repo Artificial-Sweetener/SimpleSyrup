@@ -8,21 +8,31 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-import torch
-
-from ..domain.conditioning_batch import ConditioningBatch, select_conditioning
-from ..domain.segs import coerce_segs_group
-from ..domain.segs_tiled_diffusion import build_segs_guided_tiled_diffusion_plan
-from ..domain.tiled_diffusion import TiledDiffusionPlan, validate_tiled_diffusion_mode
-from ..runtime import mixture_of_diffusers_sampling, multidiffusion_sampling
+from ..domain.conditioning_batch import ConditioningBatch
+from ..domain.regional_features import (
+    EMPTY_REGIONAL_FEATURE_REQUEST,
+    TILED_DIFFUSION_REGIONAL_SAMPLER_CAPABILITIES,
+    RegionalFeature,
+    RegionalFeatureRequest,
+)
+from ..domain.tiled_diffusion import validate_tiled_diffusion_mode
 from ..runtime.detail_previews import DetailPreviewContext
+from .regional_capability_admission_service import (
+    RegionalCapabilityAdmissionService,
+)
 from .regional_sampling_preparation_service import (
     RegionalSamplingPreparationService,
 )
 from .regional_tiled_diffusion_sampling_service import (
     RegionalTiledDiffusionSamplingService,
 )
-from .sampling_batch import combine_latent_outputs, single_item_latent
+from .segs_guided_tiled_diffusion_sampling_service import (
+    SEGSGuidedTiledDiffusionSamplingService,
+)
+from .tiled_diffusion_conditioning_batch_service import (
+    TiledDiffusionConditioningBatchService,
+)
+from .tiled_diffusion_item_sampling_service import TiledDiffusionItemSamplingService
 
 Latent = dict[str, Any]
 
@@ -33,9 +43,21 @@ class TiledDiffusionSamplingService:
     regional_preparation_service_class: ClassVar[
         type[RegionalSamplingPreparationService]
     ] = RegionalSamplingPreparationService
+    capability_admission_service_class: ClassVar[
+        type[RegionalCapabilityAdmissionService]
+    ] = RegionalCapabilityAdmissionService
     regional_sampling_service_class: ClassVar[
         type[RegionalTiledDiffusionSamplingService]
     ] = RegionalTiledDiffusionSamplingService
+    item_sampling_service_class: ClassVar[type[TiledDiffusionItemSamplingService]] = (
+        TiledDiffusionItemSamplingService
+    )
+    segs_sampling_service_class: ClassVar[
+        type[SEGSGuidedTiledDiffusionSamplingService]
+    ] = SEGSGuidedTiledDiffusionSamplingService
+    conditioning_batch_service_class: ClassVar[
+        type[TiledDiffusionConditioningBatchService]
+    ] = TiledDiffusionConditioningBatchService
 
     def sample(
         self,
@@ -57,7 +79,7 @@ class TiledDiffusionSamplingService:
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
         differential_diffusion: bool = False,
-        allow_full_context_masks: bool = False,
+        feature_request: RegionalFeatureRequest = EMPTY_REGIONAL_FEATURE_REQUEST,
         segs: object | None = None,
         region_masks: object | None = None,
         regional_prompt_weight: float = 0.5,
@@ -74,12 +96,20 @@ class TiledDiffusionSamplingService:
             regional_prompt_weight=regional_prompt_weight,
             region_mask_feather=region_mask_feather,
         )
+        effective_request = feature_request
         if regional.active:
-            if regional.planning_masks is None:
-                raise RuntimeError("Active regional sampling requires planning masks.")
+            effective_request = effective_request.with_feature(
+                RegionalFeature.FULL_CONTEXT_MASKED_CONDITIONING
+            )
+        capability_admission = self.capability_admission_service_class().admit(
+            request=effective_request,
+            sampler_capabilities=TILED_DIFFUSION_REGIONAL_SAMPLER_CAPABILITIES,
+            model=model,
+        )
+        if regional.mask_bank is not None:
             return self.regional_sampling_service_class().sample(
-                item_sampler=self._sample_single,
-                region_masks=regional.planning_masks,
+                item_sampler=self.item_sampling_service_class().sample,
+                region_masks=regional.mask_bank.planning_masks,
                 segs=segs,
                 diffusion_mode=diffusion_mode,
                 model=model,
@@ -98,9 +128,11 @@ class TiledDiffusionSamplingService:
                 latent_tile_batch_size=latent_tile_batch_size,
                 preview_context=preview_context,
                 differential_diffusion=differential_diffusion,
+                capability_admission=capability_admission,
             )
         if segs is not None:
-            return self._sample_segs_guided(
+            return self.segs_sampling_service_class().sample(
+                item_sampler=self.item_sampling_service_class().sample,
                 diffusion_mode=diffusion_mode,
                 model=model,
                 seed=seed,
@@ -118,11 +150,15 @@ class TiledDiffusionSamplingService:
                 latent_tile_batch_size=latent_tile_batch_size,
                 preview_context=preview_context,
                 differential_diffusion=differential_diffusion,
-                allow_full_context_masks=allow_full_context_masks,
+                capability_admission=capability_admission,
                 segs=segs,
             )
-        if self._uses_conditioning_batch(positive, negative):
-            return self._sample_conditioning_batch(
+        if isinstance(positive, ConditioningBatch) or isinstance(
+            negative,
+            ConditioningBatch,
+        ):
+            return self.conditioning_batch_service_class().sample(
+                item_sampler=self.item_sampling_service_class().sample,
                 diffusion_mode=diffusion_mode,
                 model=model,
                 seed=seed,
@@ -140,9 +176,9 @@ class TiledDiffusionSamplingService:
                 latent_tile_batch_size=latent_tile_batch_size,
                 preview_context=preview_context,
                 differential_diffusion=differential_diffusion,
-                allow_full_context_masks=allow_full_context_masks,
+                capability_admission=capability_admission,
             )
-        return self._sample_single(
+        return self.item_sampling_service_class().sample(
             diffusion_mode=diffusion_mode,
             model=model,
             seed=seed,
@@ -160,228 +196,5 @@ class TiledDiffusionSamplingService:
             latent_tile_batch_size=latent_tile_batch_size,
             preview_context=preview_context,
             differential_diffusion=differential_diffusion,
-            allow_full_context_masks=allow_full_context_masks,
-        )
-
-    def _sample_single(
-        self,
-        *,
-        diffusion_mode: str,
-        model: Any,
-        seed: int,
-        steps: int,
-        cfg: float,
-        sampler_name: str,
-        scheduler: str,
-        positive: Any,
-        negative: Any,
-        latent_image: Latent,
-        denoise: float,
-        latent_tile_width: int,
-        latent_tile_height: int,
-        latent_tile_overlap: int,
-        latent_tile_batch_size: int,
-        preview_context: DetailPreviewContext | None,
-        differential_diffusion: bool,
-        allow_full_context_masks: bool,
-        tiled_plan: TiledDiffusionPlan | None = None,
-    ) -> Latent:
-        """Route one single-latent tiled sample to its selected runtime."""
-
-        if diffusion_mode == "multidiffusion":
-            return multidiffusion_sampling.sample_multidiffusion(
-                model=model,
-                seed=seed,
-                steps=steps,
-                cfg=cfg,
-                sampler_name=sampler_name,
-                scheduler=scheduler,
-                positive=positive,
-                negative=negative,
-                latent_image=latent_image,
-                denoise=denoise,
-                latent_tile_width=latent_tile_width,
-                latent_tile_height=latent_tile_height,
-                latent_tile_overlap=latent_tile_overlap,
-                latent_tile_batch_size=latent_tile_batch_size,
-                preview_context=preview_context,
-                differential_diffusion=differential_diffusion,
-                allow_full_context_masks=allow_full_context_masks,
-                tiled_plan=tiled_plan,
-            )
-        return mixture_of_diffusers_sampling.sample_mixture_of_diffusers(
-            model=model,
-            seed=seed,
-            steps=steps,
-            cfg=cfg,
-            sampler_name=sampler_name,
-            scheduler=scheduler,
-            positive=positive,
-            negative=negative,
-            latent_image=latent_image,
-            denoise=denoise,
-            latent_tile_width=latent_tile_width,
-            latent_tile_height=latent_tile_height,
-            latent_tile_overlap=latent_tile_overlap,
-            latent_tile_batch_size=latent_tile_batch_size,
-            preview_context=preview_context,
-            differential_diffusion=differential_diffusion,
-            allow_full_context_masks=allow_full_context_masks,
-            tiled_plan=tiled_plan,
-        )
-
-    def _sample_segs_guided(
-        self,
-        *,
-        diffusion_mode: str,
-        model: Any,
-        seed: int,
-        steps: int,
-        cfg: float,
-        sampler_name: str,
-        scheduler: str,
-        positive: Any,
-        negative: Any,
-        latent_image: Latent,
-        denoise: float,
-        latent_tile_width: int,
-        latent_tile_height: int,
-        latent_tile_overlap: int,
-        latent_tile_batch_size: int,
-        preview_context: DetailPreviewContext | None,
-        differential_diffusion: bool,
-        allow_full_context_masks: bool,
-        segs: object,
-    ) -> Latent:
-        """Sample every latent batch item using its connected SEGS guide."""
-
-        segs_group = coerce_segs_group(segs)
-        latent_samples = latent_image.get("samples")
-        if not isinstance(latent_samples, torch.Tensor):
-            raise TypeError("Tiled diffusion latent samples must be a torch.Tensor.")
-        batch_size = int(latent_samples.shape[0])
-        if len(segs_group) not in (1, batch_size):
-            raise ValueError(
-                "SEGS-guided tiled diffusion requires one SEGS payload or one per "
-                f"latent batch item; received {len(segs_group)} SEGS payloads for "
-                f"batch size {batch_size}."
-            )
-
-        outputs: list[torch.Tensor] = []
-        for index in range(batch_size):
-            item_latent = single_item_latent(latent_image, index)
-            samples = item_latent["samples"]
-            if not isinstance(samples, torch.Tensor):
-                raise TypeError(
-                    "Tiled diffusion latent samples must be a torch.Tensor."
-                )
-            segs_for_item = segs_group[0 if len(segs_group) == 1 else index]
-            plan = build_segs_guided_tiled_diffusion_plan(
-                segs=segs_for_item,
-                latent_width=int(samples.shape[-1]),
-                latent_height=int(samples.shape[-2]),
-                tile_width=latent_tile_width,
-                tile_height=latent_tile_height,
-                overlap=latent_tile_overlap,
-                tile_batch_size=latent_tile_batch_size,
-            )
-            output = self._sample_single(
-                diffusion_mode=diffusion_mode,
-                model=model,
-                seed=seed,
-                steps=steps,
-                cfg=cfg,
-                sampler_name=sampler_name,
-                scheduler=scheduler,
-                positive=select_conditioning(positive, index)
-                if isinstance(positive, ConditioningBatch)
-                else positive,
-                negative=select_conditioning(negative, index)
-                if isinstance(negative, ConditioningBatch)
-                else negative,
-                latent_image=item_latent,
-                denoise=denoise,
-                latent_tile_width=latent_tile_width,
-                latent_tile_height=latent_tile_height,
-                latent_tile_overlap=latent_tile_overlap,
-                latent_tile_batch_size=latent_tile_batch_size,
-                preview_context=preview_context,
-                differential_diffusion=differential_diffusion,
-                allow_full_context_masks=allow_full_context_masks,
-                tiled_plan=plan,
-            )
-            output_samples = output["samples"]
-            if not isinstance(output_samples, torch.Tensor):
-                raise TypeError(
-                    "Tiled diffusion output samples must be a torch.Tensor."
-                )
-            outputs.append(output_samples)
-        return combine_latent_outputs(latent_image, outputs)
-
-    def _sample_conditioning_batch(
-        self,
-        *,
-        diffusion_mode: str,
-        model: Any,
-        seed: int,
-        steps: int,
-        cfg: float,
-        sampler_name: str,
-        scheduler: str,
-        positive: Any,
-        negative: Any,
-        latent_image: Latent,
-        denoise: float,
-        latent_tile_width: int,
-        latent_tile_height: int,
-        latent_tile_overlap: int,
-        latent_tile_batch_size: int,
-        preview_context: DetailPreviewContext | None,
-        differential_diffusion: bool,
-        allow_full_context_masks: bool,
-    ) -> Latent:
-        """Sample latent batch items one at a time with selected conditioning."""
-
-        latent_samples = latent_image["samples"]
-        if not isinstance(latent_samples, torch.Tensor):
-            raise TypeError("Tiled diffusion latent samples must be a torch.Tensor.")
-
-        outputs: list[torch.Tensor] = []
-        for index in range(int(latent_samples.shape[0])):
-            item_latent = single_item_latent(latent_image, index)
-            output = self.sample(
-                diffusion_mode=diffusion_mode,
-                model=model,
-                seed=seed,
-                steps=steps,
-                cfg=cfg,
-                sampler_name=sampler_name,
-                scheduler=scheduler,
-                positive=select_conditioning(positive, index),
-                negative=select_conditioning(negative, index),
-                latent_image=item_latent,
-                denoise=denoise,
-                latent_tile_width=latent_tile_width,
-                latent_tile_height=latent_tile_height,
-                latent_tile_overlap=latent_tile_overlap,
-                latent_tile_batch_size=latent_tile_batch_size,
-                preview_context=preview_context,
-                differential_diffusion=differential_diffusion,
-                allow_full_context_masks=allow_full_context_masks,
-            )
-            output_samples = output["samples"]
-            if not isinstance(output_samples, torch.Tensor):
-                raise TypeError(
-                    "Tiled diffusion output samples must be a torch.Tensor."
-                )
-            outputs.append(output_samples)
-
-        return combine_latent_outputs(latent_image, outputs)
-
-    def _uses_conditioning_batch(self, positive: Any, negative: Any) -> bool:
-        """Return whether tiled sampling needs per-item conditioning selection."""
-
-        return isinstance(positive, ConditioningBatch) or isinstance(
-            negative,
-            ConditioningBatch,
+            capability_admission=capability_admission,
         )

@@ -31,6 +31,9 @@ BASE_NODE_IDS = [
     "SimpleSyrup.GroundedSAMModelInfo",
     "SimpleSyrup.GroundingDINOModelLoader",
     "SimpleSyrup.KSamplerExtras",
+    "SimpleSyrup.KSamplerAttentionCoupling",
+    "SimpleSyrup.KSamplerAttentionCouplingTiled",
+    "SimpleSyrup.KSamplerAttentionCouplingContextual",
     "SimpleSyrup.KSamplerPromptByRegion",
     "SimpleSyrup.KSamplerPromptByTiledRegion",
     "SimpleSyrup.KSamplerContextualDiffusion",
@@ -68,6 +71,7 @@ BASE_NODE_IDS = [
 PROMPT_CONTROL_NODE_IDS = [
     "SimpleSyrup.AttachRegionalGlobalConditioning",
     "SimpleSyrup.EncodePromptBatchWithPromptControl",
+    "SimpleSyrup.LabelRegionalLoraHooks",
     "SimpleSyrup.PrepareRegionalLoraHooks",
     "SimpleSyrup.ScheduleAndEncodePromptsWithPromptControl",
 ]

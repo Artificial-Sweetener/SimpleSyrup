@@ -17,7 +17,14 @@ import pytest
 import torch
 
 from simple_syrup.domain.conditioning_batch import ConditioningBatch
+from simple_syrup.domain.contextual_diffusion import (
+    ContextualDiffusionControls,
+    build_contextual_diffusion_plan,
+)
 from simple_syrup.domain.tiled_diffusion import build_tiled_diffusion_plan
+from simple_syrup.runtime.contextual_model_wrapper import (
+    ContextualDiffusionModelWrapper,
+)
 from simple_syrup.runtime.mixture_of_diffusers_sampling import (
     MixtureOfDiffusersModelWrapper,
 )
@@ -116,28 +123,29 @@ class FakeModel:
         None,
         lambda: MultiDiffusionModelWrapper(
             plan=build_tiled_diffusion_plan(
-                latent_width=8,
-                latent_height=8,
-                tile_width=4,
-                tile_height=4,
-                overlap=1,
+                latent_width=32,
+                latent_height=32,
+                tile_width=16,
+                tile_height=16,
+                overlap=2,
                 tile_batch_size=2,
             ),
             existing_wrapper=None,
         ),
         lambda: MixtureOfDiffusersModelWrapper(
             plan=build_tiled_diffusion_plan(
-                latent_width=8,
-                latent_height=8,
-                tile_width=4,
-                tile_height=4,
-                overlap=1,
+                latent_width=32,
+                latent_height=32,
+                tile_width=16,
+                tile_height=16,
+                overlap=2,
                 tile_batch_size=2,
             ),
             existing_wrapper=None,
         ),
+        lambda: _contextual_wrapper(),
     ],
-    ids=["native", "multidiffusion", "mixture-of-diffusers"],
+    ids=["native", "multidiffusion", "mixture-of-diffusers", "contextual"],
 )
 def test_native_sampler_activates_hooks_from_masked_regional_conditioning(
     wrapper_factory: ModelWrapperFactory | None,
@@ -154,7 +162,7 @@ def test_native_sampler_activates_hooks_from_masked_regional_conditioning(
             )
         ),
         negative=_conditioning(None),
-        masks=torch.ones((1, 8, 8)),
+        masks=torch.ones((1, 32, 32)),
         regional_prompt_weight=0.5,
         region_mask_feather=0,
     )
@@ -173,7 +181,7 @@ def test_native_sampler_activates_hooks_from_masked_regional_conditioning(
     outputs = comfy.samplers.calc_cond_batch(
         model,
         [converted],
-        torch.zeros((1, 1, 8, 8)),
+        torch.zeros((1, 1, 32, 32)),
         torch.ones((1,)),
         model_options,
     )
@@ -193,3 +201,21 @@ def _conditioning(
     if hooks is not None:
         metadata["hooks"] = hooks
     return [[torch.ones((1, 2, 3)), metadata]]
+
+
+def _contextual_wrapper() -> ContextualDiffusionModelWrapper:
+    """Return a multi-view Contextual wrapper with active global authority."""
+
+    controls = ContextualDiffusionControls(16, 2, 2, 1.0, 1, 0.5)
+    plan = build_contextual_diffusion_plan(
+        latent_width=32,
+        latent_height=32,
+        controls=controls,
+        segs=None,
+    )
+    return ContextualDiffusionModelWrapper(
+        plan=plan,
+        controls=controls,
+        sigmas=torch.tensor([1.0, 0.0]),
+        existing_wrapper=None,
+    )

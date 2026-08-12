@@ -41,7 +41,7 @@ def test_preparation_is_inactive_without_both_masks_and_a_batch() -> None:
     assert not without_masks.active
     assert isinstance(without_masks.positive, ConditioningBatch)
     assert not without_batch.active
-    assert without_batch.planning_masks is None
+    assert without_batch.mask_bank is None
 
 
 def test_preparation_assembles_global_first_batch_at_latent_size() -> None:
@@ -67,12 +67,19 @@ def test_preparation_assembles_global_first_batch_at_latent_size() -> None:
     )
 
     assert prepared.active
-    assert prepared.planning_masks is not None
-    assert prepared.planning_masks.shape == (2, 2, 4)
+    assert prepared.mask_bank is not None
+    assert prepared.mask_bank.canvas_width == 4
+    assert prepared.mask_bank.canvas_height == 2
+    assert prepared.mask_bank.planning_masks.shape == (2, 2, 4)
+    assert prepared.mask_bank.conditioning_masks.shape == (2, 2, 4)
     assert isinstance(prepared.positive, list)
     assert [item[0] for item in prepared.positive] == ["global", "left", "right"]
     assert prepared.positive[1][1]["mask"].shape == (1, 2, 4)
     assert prepared.positive[1][1]["mask_strength"] == 0.75
+    assert torch.equal(
+        prepared.positive[1][1]["mask"],
+        prepared.mask_bank.conditioning_masks[0:1],
+    )
 
 
 def test_preparation_reuses_prompt_by_region_mismatch_policy() -> None:
@@ -93,6 +100,31 @@ def test_preparation_reuses_prompt_by_region_mismatch_policy() -> None:
             regional_prompt_weight=0.5,
             region_mask_feather=0,
         )
+
+
+def test_preparation_preserves_authored_masks_beside_feathered_conditioning() -> None:
+    """Keep both canonical mask forms available from sampling start."""
+
+    masks = torch.zeros((1, 5, 5))
+    masks[:, 2, 2] = 1.0
+
+    prepared = RegionalSamplingPreparationService().prepare(
+        positive=ConditioningBatch((_conditioning("global"), _conditioning("center"))),
+        negative=_conditioning("negative"),
+        latent_image={"samples": torch.zeros((1, 4, 5, 5))},
+        region_masks=masks,
+        regional_prompt_weight=1.0,
+        region_mask_feather=1,
+    )
+
+    assert prepared.mask_bank is not None
+    assert torch.equal(prepared.mask_bank.planning_masks, masks)
+    assert not torch.equal(prepared.mask_bank.conditioning_masks, masks)
+    assert isinstance(prepared.positive, list)
+    assert torch.equal(
+        prepared.positive[1][1]["mask"],
+        prepared.mask_bank.conditioning_masks,
+    )
 
 
 def _conditioning(name: str) -> list[list[object]]:

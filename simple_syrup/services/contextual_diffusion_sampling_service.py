@@ -21,10 +21,20 @@ from ..domain.contextual_diffusion import (
     ContextualDiffusionControls,
     build_contextual_diffusion_plan,
 )
+from ..domain.regional_features import (
+    CONTEXTUAL_DIFFUSION_REGIONAL_SAMPLER_CAPABILITIES,
+    EMPTY_REGIONAL_FEATURE_REQUEST,
+    RegionalCapabilityAdmission,
+    RegionalFeature,
+    RegionalFeatureRequest,
+)
 from ..domain.segs import NativeSegs, coerce_segs_group
 from ..domain.tiled_diffusion import validate_tiled_diffusion_mode
 from ..runtime.contextual_diffusion_sampling import sample_contextual_diffusion
 from ..runtime.latent_geometry import decoded_image_dimensions
+from .regional_capability_admission_service import (
+    RegionalCapabilityAdmissionService,
+)
 from .regional_sampling_preparation_service import (
     RegionalSamplingPreparationService,
 )
@@ -51,6 +61,9 @@ class ContextualDiffusionSamplingService:
     regional_preparation_service_class: ClassVar[
         type[RegionalSamplingPreparationService]
     ] = RegionalSamplingPreparationService
+    capability_admission_service_class: ClassVar[
+        type[RegionalCapabilityAdmissionService]
+    ] = RegionalCapabilityAdmissionService
 
     def sample(
         self,
@@ -76,6 +89,8 @@ class ContextualDiffusionSamplingService:
         region_masks: object | None = None,
         regional_prompt_weight: float = 0.5,
         region_mask_feather: int = 0,
+        feature_request: RegionalFeatureRequest = EMPTY_REGIONAL_FEATURE_REQUEST,
+        planning_region_masks: torch.Tensor | None = None,
     ) -> ContextualDiffusionSamplingResult:
         """Sample a latent with global and bounded detail contexts."""
 
@@ -96,6 +111,24 @@ class ContextualDiffusionSamplingService:
             region_masks=region_masks,
             regional_prompt_weight=regional_prompt_weight,
             region_mask_feather=region_mask_feather,
+        )
+        if planning_region_masks is not None and regional.mask_bank is not None:
+            raise ValueError(
+                "Contextual Diffusion cannot combine explicit planning masks with "
+                "legacy Regional Conditioning masks."
+            )
+        planning_masks = planning_region_masks
+        if planning_masks is None and regional.mask_bank is not None:
+            planning_masks = regional.mask_bank.planning_masks
+        effective_request = feature_request
+        if regional.active:
+            effective_request = effective_request.with_feature(
+                RegionalFeature.FULL_CONTEXT_MASKED_CONDITIONING
+            )
+        capability_admission = self.capability_admission_service_class().admit(
+            request=effective_request,
+            sampler_capabilities=CONTEXTUAL_DIFFUSION_REGIONAL_SAMPLER_CAPABILITIES,
+            model=model,
         )
         batch_size = latent_batch_size(latent_image)
         segs_group = coerce_segs_group(segs) if segs is not None else ()
@@ -137,8 +170,8 @@ class ContextualDiffusionSamplingService:
                 segs=None,
                 image_height=image_height,
                 image_width=image_width,
-                region_masks=regional.planning_masks,
-                allow_full_context_masks=regional.active,
+                region_masks=planning_masks,
+                capability_admission=capability_admission,
             )
 
         outputs: list[torch.Tensor] = []
@@ -172,8 +205,8 @@ class ContextualDiffusionSamplingService:
                 ),
                 image_height=image_height,
                 image_width=image_width,
-                region_masks=regional.planning_masks,
-                allow_full_context_masks=regional.active,
+                region_masks=planning_masks,
+                capability_admission=capability_admission,
             )
             samples = item_result.latent.get("samples")
             if not isinstance(samples, torch.Tensor):
@@ -206,7 +239,7 @@ class ContextualDiffusionSamplingService:
         image_height: int,
         image_width: int,
         region_masks: torch.Tensor | None,
-        allow_full_context_masks: bool,
+        capability_admission: RegionalCapabilityAdmission,
     ) -> ContextualDiffusionSamplingResult:
         """Build one canvas plan and execute it through the runtime adapter."""
 
@@ -236,7 +269,7 @@ class ContextualDiffusionSamplingService:
             diffusion_mode=diffusion_mode,
             controls=controls,
             plan=plan,
-            allow_full_context_masks=allow_full_context_masks,
+            capability_admission=capability_admission,
         )
         return ContextualDiffusionSamplingResult(
             latent=latent,

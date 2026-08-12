@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Protocol
+from typing import Any, Protocol
 
 import pytest
 
@@ -19,11 +19,7 @@ from simple_syrup.nodes.detail_segs_by_scale_factor_tiled_diffusion import (
 from simple_syrup.nodes.detect_segs_with_ultralytics import DetectSEGSWithUltralytics
 from simple_syrup.nodes.grounding_dino_model_loader import GroundingDINOModelLoader
 from simple_syrup.nodes.image_resize_to_target import ResizeImageToTarget
-from simple_syrup.nodes.ksampler_contextual_diffusion import (
-    KSamplerContextualDiffusion,
-)
 from simple_syrup.nodes.ksampler_extras import KSamplerExtras
-from simple_syrup.nodes.ksampler_tiled_diffusion import KSamplerTiledDiffusion
 from simple_syrup.nodes.load_ultralytics_model import LoadUltralyticsModel
 from simple_syrup.nodes.prompt_encode_style import PromptEncodeStyle
 from simple_syrup.nodes.prompt_segs_with_sam import PromptSEGSWithSAM
@@ -36,6 +32,18 @@ from simple_syrup.nodes.simple_load_anima import SimpleLoadAnima
 from simple_syrup.nodes.simple_load_checkpoint import SimpleLoadCheckpoint
 from simple_syrup.nodes.vae_options import VAEDecodeOptions, VAEEncodeOptions
 from simple_syrup.nodes.vitmatte_model_loader import ViTMatteModelLoader
+from simple_syrup.nodes_v3.ksampler_contextual_attention_coupling import (
+    KSamplerContextualAttentionCouplingV3,
+)
+from simple_syrup.nodes_v3.ksampler_contextual_diffusion import (
+    KSamplerContextualDiffusionV3,
+)
+from simple_syrup.nodes_v3.ksampler_tiled_attention_coupling import (
+    KSamplerTiledAttentionCouplingV3,
+)
+from simple_syrup.nodes_v3.ksampler_tiled_diffusion import (
+    KSamplerTiledDiffusionV3,
+)
 
 _WIDGET_TYPES = frozenset(
     {"BOOLEAN", "COMBO", "FLOAT", "INT", "LIST", "NUMBER", "STRING", "TEXT"}
@@ -48,6 +56,14 @@ class _ClassicNode(Protocol):
     @classmethod
     def INPUT_TYPES(cls) -> Mapping[str, object]:
         """Return the node's ordered classic Comfy inputs."""
+
+
+class _V3Node(Protocol):
+    """Describe a native Comfy v3 schema declaration."""
+
+    @classmethod
+    def define_schema(cls) -> Any:
+        """Return the node's native v3 schema."""
 
 
 _PERSISTED_WIDGET_PREFIXES: tuple[tuple[type[_ClassicNode], tuple[str, ...]], ...] = (
@@ -133,40 +149,6 @@ _PERSISTED_WIDGET_PREFIXES: tuple[tuple[type[_ClassicNode], tuple[str, ...]], ..
         KSamplerExtras,
         ("seed", "steps", "cfg", "sampler_name", "scheduler", "denoise"),
     ),
-    (
-        KSamplerTiledDiffusion,
-        (
-            "seed",
-            "steps",
-            "cfg",
-            "sampler_name",
-            "scheduler",
-            "denoise",
-            "diffusion_mode",
-            "latent_tile_width",
-            "latent_tile_height",
-            "latent_tile_overlap",
-            "latent_tile_batch_size",
-        ),
-    ),
-    (
-        KSamplerContextualDiffusion,
-        (
-            "seed",
-            "steps",
-            "cfg",
-            "sampler_name",
-            "scheduler",
-            "denoise",
-            "diffusion_mode",
-            "latent_context_size",
-            "latent_context_overlap",
-            "latent_context_batch_size",
-            "global_weight",
-            "global_steps",
-            "global_decay",
-        ),
-    ),
     (LoadUltralyticsModel, ("model_name",)),
     (PromptEncodeStyle, ("encode_style",)),
     (
@@ -238,6 +220,85 @@ _PERSISTED_WIDGET_PREFIXES: tuple[tuple[type[_ClassicNode], tuple[str, ...]], ..
     (ViTMatteModelLoader, ("vitmatte_model",)),
 )
 
+_PERSISTED_V3_WIDGET_PREFIXES = (
+    (
+        KSamplerContextualAttentionCouplingV3,
+        (
+            "seed",
+            "steps",
+            "cfg",
+            "sampler_name",
+            "scheduler",
+            "regional_prompt_weight",
+            "region_mask_feather",
+            "denoise",
+            "diffusion_mode",
+            "latent_context_size",
+            "latent_context_overlap",
+            "latent_context_batch_size",
+            "global_weight",
+            "global_steps",
+            "global_decay",
+        ),
+    ),
+    (
+        KSamplerTiledAttentionCouplingV3,
+        (
+            "seed",
+            "steps",
+            "cfg",
+            "sampler_name",
+            "scheduler",
+            "regional_prompt_weight",
+            "region_mask_feather",
+            "denoise",
+            "diffusion_mode",
+            "latent_tile_width",
+            "latent_tile_height",
+            "latent_tile_overlap",
+            "latent_tile_batch_size",
+        ),
+    ),
+    (
+        KSamplerTiledDiffusionV3,
+        (
+            "seed",
+            "steps",
+            "cfg",
+            "sampler_name",
+            "scheduler",
+            "denoise",
+            "diffusion_mode",
+            "latent_tile_width",
+            "latent_tile_height",
+            "latent_tile_overlap",
+            "latent_tile_batch_size",
+            "regional_prompt_weight",
+            "region_mask_feather",
+        ),
+    ),
+    (
+        KSamplerContextualDiffusionV3,
+        (
+            "seed",
+            "steps",
+            "cfg",
+            "sampler_name",
+            "scheduler",
+            "denoise",
+            "diffusion_mode",
+            "latent_context_size",
+            "latent_context_overlap",
+            "latent_context_batch_size",
+            "global_weight",
+            "global_steps",
+            "global_decay",
+            "regional_prompt_weight",
+            "region_mask_feather",
+        ),
+    ),
+)
+
 
 @pytest.mark.parametrize(("node_class", "persisted_prefix"), _PERSISTED_WIDGET_PREFIXES)
 def test_established_widget_inputs_remain_an_append_only_prefix(
@@ -247,6 +308,25 @@ def test_established_widget_inputs_remain_an_append_only_prefix(
     """Fail when an established widget is inserted, removed, or reordered."""
 
     actual = _widget_input_names(node_class.INPUT_TYPES())
+
+    assert actual[: len(persisted_prefix)] == persisted_prefix
+
+
+@pytest.mark.parametrize(
+    ("node_class", "persisted_prefix"),
+    _PERSISTED_V3_WIDGET_PREFIXES,
+)
+def test_native_v3_widget_inputs_remain_an_append_only_prefix(
+    node_class: type[_V3Node],
+    persisted_prefix: tuple[str, ...],
+) -> None:
+    """Fail when a native v3 widget is inserted, removed, or reordered."""
+
+    actual = tuple(
+        value.id
+        for value in node_class.define_schema().inputs
+        if value.io_type in _WIDGET_TYPES
+    )
 
     assert actual[: len(persisted_prefix)] == persisted_prefix
 

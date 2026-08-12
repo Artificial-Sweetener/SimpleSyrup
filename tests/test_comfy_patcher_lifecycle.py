@@ -9,18 +9,13 @@ from __future__ import annotations
 import gc
 import logging
 import weakref
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import torch
 
-from simple_syrup.runtime.patcher_lifecycle import (
-    ClipLayerMutation,
-    ComfyPatcherLifecycle,
-    ModelCalcCondBatchMutation,
-    ModelDenoiseMaskMutation,
-    ModelUnetWrapperMutation,
-)
+from simple_syrup.runtime.patcher_lifecycle import ComfyPatcherLifecycle
+from simple_syrup.runtime.regional_lora.execution_cache import ModelCloneLineage
 
 
 class AnimaTEModel_(torch.nn.Module):
@@ -67,6 +62,59 @@ def test_real_comfy_anima_lifecycle_regression(
     _assert_comfy_returns_clone_to_live_source()
     _assert_lifecycle_owned_anima_clip_is_safe(caplog, monkeypatch)
     _assert_supported_model_mutations_share_one_clone()
+
+
+def test_clip_alignment_precedes_mutations_after_dynamic_to_static_clone() -> None:
+    """Mutate the same independently reloaded encoder the returned CLIP executes."""
+
+    source_encoder = AnimaTEModel_()
+    reloaded_encoder = AnimaTEModel_()
+
+    class ReloadingPatcher:
+        """Represent Comfy's dynamic patcher creating a static model delegate."""
+
+        def __init__(self) -> None:
+            """Expose the source model without a parent."""
+
+            self.model = source_encoder
+            self.parent: object | None = None
+
+        def clone(self, disable_dynamic: bool = False) -> ReloadingPatcher:
+            """Return an independent model only for the static clone request."""
+
+            assert disable_dynamic is True
+            derived = ReloadingPatcher()
+            derived.model = reloaded_encoder
+            derived.parent = self
+            return derived
+
+    observed: list[tuple[object, object]] = []
+
+    class ObserveAlignedClip:
+        """Record the encoder identities visible at mutation time."""
+
+        def apply(self, clip: object) -> None:
+            """Capture the returned CLIP and patcher model identities."""
+
+            clip_boundary = cast(Any, clip)
+            observed.append(
+                (
+                    clip_boundary.cond_stage_model,
+                    clip_boundary.patcher.model,
+                )
+            )
+
+    source_clip = _AnimaClip(ReloadingPatcher(), source_encoder)
+    derived = ComfyPatcherLifecycle().derive_clip(
+        source_clip,
+        (ObserveAlignedClip(),),
+        operation="dynamic-to-static CLIP regression",
+        disable_dynamic=True,
+    )
+
+    assert derived.cond_stage_model is reloaded_encoder
+    assert derived.patcher.model is reloaded_encoder
+    assert observed == [(reloaded_encoder, reloaded_encoder)]
 
 
 def _assert_comfy_marks_rootless_anima_patcher_dead() -> None:
@@ -118,11 +166,10 @@ def _assert_lifecycle_owned_anima_clip_is_safe(
     source_clip = _AnimaClip(_patcher(encoder), encoder)
     derived_clip = ComfyPatcherLifecycle().derive_clip(
         source_clip,
-        (ClipLayerMutation(-2),),
+        (),
         operation="Anima CLIP regression",
     )
     assert isinstance(derived_clip, _AnimaClip)
-    assert derived_clip.layer_index == -2
     loaded = LoadedModel(derived_clip.patcher)
     loaded.real_model = weakref.ref(encoder)
     monkeypatch.setattr(comfy.model_management, "current_loaded_models", [loaded])
@@ -142,7 +189,7 @@ def _assert_lifecycle_owned_anima_clip_is_safe(
     released_source = _AnimaClip(_patcher(released_encoder), released_encoder)
     released_clip = ComfyPatcherLifecycle().derive_clip(
         released_source,
-        (ClipLayerMutation(-2),),
+        (),
         operation="released Anima CLIP regression",
     )
     released = LoadedModel(released_clip.patcher)
@@ -162,40 +209,37 @@ def _assert_lifecycle_owned_anima_clip_is_safe(
 
 
 def _assert_supported_model_mutations_share_one_clone() -> None:
-    """All supported first-party MODEL changes share one verified derivation."""
+    """Ordered MODEL mutations receive the same verified derivation."""
 
     source = _patcher(torch.nn.Linear(1, 1))
+    applications: list[tuple[str, object]] = []
 
-    def denoise_mask(*args: object, **kwargs: object) -> object:
-        """Return a stable test sentinel."""
+    class RecordingMutation:
+        """Record ordered lifecycle mutation application."""
 
-        del args, kwargs
-        return object()
+        def __init__(self, name: str) -> None:
+            """Store the mutation name."""
 
-    def model_wrapper(args: object) -> object:
-        """Return the supplied model-wrapper arguments."""
+            self.name = name
 
-        return args
+        def apply(self, model: object) -> None:
+            """Record the derived model and mutation order."""
 
-    def calc_cond_batch(args: object) -> object:
-        """Return the supplied calc-cond-batch arguments."""
-
-        return args
+            applications.append((self.name, model))
 
     derived = ComfyPatcherLifecycle().derive_model(
         source,
         (
-            ModelDenoiseMaskMutation(denoise_mask),
-            ModelUnetWrapperMutation(model_wrapper),
-            ModelCalcCondBatchMutation(calc_cond_batch),
+            RecordingMutation("first"),
+            RecordingMutation("second"),
+            RecordingMutation("third"),
         ),
         operation="MODEL mutation regression",
     )
 
     assert derived.parent is source
-    assert derived.model_options["denoise_mask_function"] is denoise_mask
-    assert derived.model_options["model_function_wrapper"] is model_wrapper
-    assert derived.model_options["sampler_calc_cond_batch_function"] is calc_cond_batch
+    assert [name for name, _model in applications] == ["first", "second", "third"]
+    assert all(model is derived for _name, model in applications)
 
 
 def test_lifecycle_rejects_a_clone_without_comfy_parent_lineage() -> None:
@@ -228,6 +272,45 @@ def test_lifecycle_preserves_vae_identity() -> None:
     )
 
     assert result is vae
+
+
+def test_lifecycle_clones_hooks_without_returning_the_source() -> None:
+    """Keep HookGroup-like cloning inside the single lifecycle authority."""
+
+    class CloneableHooks:
+        """Return one distinct typed hook value."""
+
+        def clone(self) -> CloneableHooks:
+            """Return a distinct clone."""
+
+            return CloneableHooks()
+
+    source = CloneableHooks()
+
+    result = ComfyPatcherLifecycle().clone_hooks(
+        source,
+        operation="hook regression",
+    )
+
+    assert isinstance(result, CloneableHooks)
+    assert result is not source
+
+
+def test_regional_lora_lineage_does_not_retain_model_patcher() -> None:
+    """Cache identity must not keep a released Comfy model patcher alive."""
+
+    source = _patcher(torch.nn.Linear(1, 1))
+    derived = source.clone()
+    derived_reference = weakref.ref(derived)
+
+    lineage = ModelCloneLineage.from_model(derived)
+    expected = (derived.clone_base_uuid, derived.patches_uuid)
+
+    del derived
+    gc.collect()
+
+    assert derived_reference() is None
+    assert (lineage.clone_base_uuid, lineage.patches_uuid) == expected
 
 
 def _patcher(model: torch.nn.Module) -> Any:

@@ -12,6 +12,10 @@ import pytest
 import torch
 
 from simple_syrup.domain.conditioning_batch import ConditioningBatch
+from simple_syrup.domain.regional_features import (
+    RegionalFeature,
+    RegionalFeatureRequest,
+)
 from simple_syrup.domain.segs import BoundingBox, CropRegion, Segment
 from simple_syrup.services import (
     contextual_diffusion_sampling_service as service_module,
@@ -58,11 +62,116 @@ def test_service_builds_global_context_and_segs_guided_tile_plan(
     assert calls[0]["diffusion_mode"] == "mixture_of_diffusers"
     plan = calls[0]["plan"]
     assert (
-        plan.global_context.context_width,
-        plan.global_context.context_height,
+        plan.global_view.model_width,
+        plan.global_view.model_height,
     ) == (64, 44)
     assert len(plan.tile_plan.tiles) > 1
     assert all(tile.weight_mask is not None for tile in plan.tile_plan.tiles)
+
+
+def test_service_composes_explicit_regional_planning_masks_with_segs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep Attention Coupling masks in planning without conditioning re-entry."""
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_sample_contextual_diffusion(**kwargs: Any) -> dict[str, Any]:
+        """Record the region-and-SEGS plan and return its latent unchanged."""
+
+        calls.append(kwargs)
+        latent_image = kwargs["latent_image"]
+        if not isinstance(latent_image, dict):
+            raise TypeError("Test runtime expected a latent dictionary.")
+        return latent_image
+
+    class FakeCapabilityAdmissionService:
+        """Admit the requested feature without requiring a real Comfy model."""
+
+        class Admission:
+            """Expose the feature query used by this orchestration test."""
+
+            def __init__(self, request: RegionalFeatureRequest) -> None:
+                """Retain the admitted request."""
+
+                self.request = request
+
+            def supports(self, feature: RegionalFeature) -> bool:
+                """Return whether the fake admission contains one feature."""
+
+                return feature in self.request.features
+
+        def admit(
+            self,
+            *,
+            request: RegionalFeatureRequest,
+            sampler_capabilities: object,
+            model: object,
+        ) -> Admission:
+            """Return an admission containing every requested feature."""
+
+            del sampler_capabilities, model
+            return self.Admission(request)
+
+    monkeypatch.setattr(
+        service_module,
+        "sample_contextual_diffusion",
+        fake_sample_contextual_diffusion,
+    )
+    monkeypatch.setattr(
+        ContextualDiffusionSamplingService,
+        "capability_admission_service_class",
+        FakeCapabilityAdmissionService,
+    )
+    latent = {"samples": torch.zeros((1, 4, 64, 96))}
+    masks = torch.zeros((2, 64, 96))
+    masks[0, :, :56] = 1.0
+    masks[1, :, 40:] = 1.0
+
+    ContextualDiffusionSamplingService().sample(
+        **(
+            _sample_kwargs(latent=latent, segs=_segs(512, 768))
+            | {
+                "positive": "base-positive",
+                "negative": "base-negative",
+                "planning_region_masks": masks,
+                "feature_request": RegionalFeatureRequest(
+                    frozenset({RegionalFeature.ATTENTION_COUPLING})
+                ),
+            }
+        )
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["positive"] == "base-positive"
+    assert calls[0]["negative"] == "base-negative"
+    assert calls[0]["capability_admission"].supports(RegionalFeature.ATTENTION_COUPLING)
+    plan = calls[0]["plan"].tile_plan
+    assert len(plan.tiles) > 1
+    assert all(tile.weight_mask is not None for tile in plan.tiles)
+
+
+def test_service_rejects_explicit_and_legacy_regional_planning_masks() -> None:
+    """Reject two competing regional tile-planning authorities."""
+
+    masks = torch.ones((1, 64, 96))
+    with pytest.raises(ValueError, match="cannot combine explicit planning masks"):
+        ContextualDiffusionSamplingService().sample(
+            **(
+                _sample_kwargs(
+                    latent={"samples": torch.zeros((1, 4, 64, 96))},
+                    segs=None,
+                )
+                | {
+                    "positive": ConditioningBatch(
+                        (_conditioning("global"), _conditioning("region"))
+                    ),
+                    "negative": _conditioning("negative"),
+                    "region_masks": masks,
+                    "planning_region_masks": masks,
+                }
+            )
+        )
 
 
 def test_service_rejects_segs_batch_mismatch_before_runtime(
@@ -189,7 +298,9 @@ def test_service_applies_regional_conditioning_to_contextual_runtime(
         "left",
         "right",
     ]
-    assert calls[0]["allow_full_context_masks"] is True
+    assert calls[0]["capability_admission"].supports(
+        RegionalFeature.FULL_CONTEXT_MASKED_CONDITIONING
+    )
     assert len(calls[0]["plan"].tile_plan.tiles) >= 2
     assert all(
         tile.weight_mask is not None for tile in calls[0]["plan"].tile_plan.tiles

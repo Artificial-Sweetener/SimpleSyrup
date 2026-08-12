@@ -25,6 +25,7 @@ class _FakeClip:
         self.cond_stage_model = object()
         self.registrations: list[tuple[Any, Any]] = []
         self.patcher = SimpleNamespace(
+            model=self.cond_stage_model,
             forced_hooks=None,
             parent=parent_patcher,
             register_all_hook_patches=self._register_hooks,
@@ -37,6 +38,7 @@ class _FakeClip:
 
         self.clone_calls.append(disable_dynamic)
         clone = _FakeClip(parent_patcher=self.patcher)
+        clone.cond_stage_model = self.cond_stage_model
         clone.clone_calls = self.clone_calls
         clone.registrations = self.registrations
         clone.patcher.register_all_hook_patches = clone._register_hooks
@@ -102,6 +104,8 @@ def test_clip_hooks_prepare_a_scheduled_clip(
     assert prepared_clip is not clip
     assert prepared_hooks is hooks
     assert clip.clone_calls == [True]
+    assert prepared_clip.cond_stage_model is prepared_clip.patcher.model
+    assert prepared_clip.cond_stage_model is not clip.cond_stage_model
     assert prepared_clip.use_clip_schedule is True
     assert prepared_clip.patcher.forced_hooks is not hooks
     forced_hooks = cast(Any, prepared_clip.patcher.forced_hooks)

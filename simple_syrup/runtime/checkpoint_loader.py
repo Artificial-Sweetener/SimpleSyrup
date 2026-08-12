@@ -11,11 +11,8 @@ from collections.abc import Iterable
 from types import ModuleType
 from typing import Any, Protocol, cast
 
-from .patcher_lifecycle import (
-    PATCHER_LIFECYCLE,
-    ClipLayerMutation,
-    ComfyPatcherLifecycle,
-)
+from .clip_patcher_mutations import ClipLayerMutation
+from .patcher_lifecycle import PATCHER_LIFECYCLE, ComfyPatcherLifecycle
 from .vae_loader import VaeLoaderService
 
 USE_CHECKPOINT_VAE_CHOICE = "Use Checkpoint VAE"
