@@ -6,12 +6,16 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from dataclasses import dataclass
 from importlib import import_module
 from typing import Any, cast
 
 from .prompt_control_availability import find_prompt_control_install
+from .prompt_control_regional_hook_identities import (
+    prompt_control_regional_hook_identities,
+)
 
 
 @dataclass(frozen=True)
@@ -132,15 +136,32 @@ class PromptControlGraphAdapter:
 
         if not lora_tags:
             return RegionalSegmentEncoding(clip=clip)
-        graph = self._graph_utils.GraphBuilder()
-        parsed_hooks = graph.node(
-            "PCLoraHooksFromText",
+        scheduled = self._lazy_nodes.PCLazyLoraLoaderAdvanced.execute(
+            model=None,
+            clip=None,
             text=lora_tags,
+            apply_hooks=True,
+            tags="",
+            start=0.0,
+            end=1.0,
+            num_steps=0,
+        )
+        self.merge_expand(
+            expand,
+            scheduled.expand,
+            f"{label} Prompt Control hook scheduling",
+        )
+        identities = prompt_control_regional_hook_identities(scheduled.expand)
+        graph = self._graph_utils.GraphBuilder()
+        labeled_hooks = graph.node(
+            "SimpleSyrup.LabelRegionalLoraHooks",
+            hooks=scheduled.args[2],
+            adapter_identities_json=json.dumps(identities),
         )
         regional_hooks = graph.node(
             "SimpleSyrup.PrepareRegionalLoraHooks",
             clip=clip,
-            hooks=parsed_hooks.out(0),
+            hooks=labeled_hooks.out(0),
         )
         self.merge_expand(
             expand,

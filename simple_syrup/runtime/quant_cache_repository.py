@@ -10,6 +10,7 @@ import importlib
 import json
 import re
 import shutil
+import time
 import uuid
 from dataclasses import dataclass
 from json import JSONDecodeError
@@ -41,6 +42,8 @@ It is safe to delete this entire folder while ComfyUI is stopped. Missing
 quantized copies will be generated again when requested.
 """
 _SAFE_COMPONENT_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
+_MANIFEST_REPLACE_ATTEMPTS = 20
+_MANIFEST_REPLACE_RETRY_SECONDS = 0.01
 
 
 @dataclass(frozen=True)
@@ -288,9 +291,22 @@ class QuantCacheRepository:
                 json.dumps(manifest.to_payload(), indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
-            temporary_path.replace(path)
+            QuantCacheRepository._replace_manifest(temporary_path, path)
         finally:
             temporary_path.unlink(missing_ok=True)
+
+    @staticmethod
+    def _replace_manifest(temporary_path: Path, path: Path) -> None:
+        """Retry only transient Windows sharing violations during atomic replace."""
+
+        for attempt in range(_MANIFEST_REPLACE_ATTEMPTS):
+            try:
+                temporary_path.replace(path)
+                return
+            except PermissionError:
+                if attempt + 1 == _MANIFEST_REPLACE_ATTEMPTS:
+                    raise
+                time.sleep(_MANIFEST_REPLACE_RETRY_SECONDS)
 
     def _remove_empty_parents(self, directory: Path) -> None:
         """Remove empty readable grouping folders without removing the cache root."""

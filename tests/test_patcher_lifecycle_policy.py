@@ -13,6 +13,12 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = PROJECT_ROOT / "simple_syrup"
 LIFECYCLE_MODULE = "simple_syrup/runtime/patcher_lifecycle.py"
+MUTATION_MODULES = frozenset(
+    {
+        "simple_syrup/runtime/model_patcher_mutations.py",
+        "simple_syrup/runtime/clip_patcher_mutations.py",
+    }
+)
 FORBIDDEN_PATCHER_CALLS = frozenset(
     {
         "add_object_patch",
@@ -105,7 +111,11 @@ def test_first_party_patcher_lifecycle_has_one_authoritative_owner() -> None:
             continue
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(path))
-        file_violations, clones = _lifecycle_bypasses(tree, relative_path)
+        file_violations, clones = _lifecycle_bypasses(
+            tree,
+            relative_path,
+            allow_patcher_mutations=relative_path in MUTATION_MODULES,
+        )
         violations.extend(file_violations)
         observed_clones.update(clones)
 
@@ -139,6 +149,8 @@ def unsafe(model):
 def _lifecycle_bypasses(
     tree: ast.AST,
     relative_path: str,
+    *,
+    allow_patcher_mutations: bool = False,
 ) -> tuple[list[str], Counter[tuple[str, str]]]:
     """Return direct patcher mutations and all clone callsites in one tree."""
 
@@ -148,14 +160,19 @@ def _lifecycle_bypasses(
         if isinstance(node, ast.Attribute):
             if node.attr == "clone":
                 clones[(relative_path, ast.unparse(node.value))] += 1
-            elif _is_forbidden_patcher_call(node.attr):
+            elif not allow_patcher_mutations and _is_forbidden_patcher_call(node.attr):
                 violations.append(f"{relative_path}:{node.lineno}: {node.attr}")
-        elif isinstance(node, ast.Call) and _uses_forbidden_dynamic_attribute(node):
+        elif (
+            isinstance(node, ast.Call)
+            and not allow_patcher_mutations
+            and _uses_forbidden_dynamic_attribute(node)
+        ):
             violations.append(f"{relative_path}:{node.lineno}: dynamic patcher access")
         elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
             for target in _assignment_targets(node):
                 if (
-                    isinstance(target, ast.Attribute)
+                    not allow_patcher_mutations
+                    and isinstance(target, ast.Attribute)
                     and target.attr in FORBIDDEN_PATCHER_WRITES
                 ):
                     violations.append(

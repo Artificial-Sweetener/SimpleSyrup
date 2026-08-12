@@ -126,6 +126,9 @@ vendored_files = [
   "simple_syrup/runtime/mixture_of_diffusers_sampling.py",
   "simple_syrup/runtime/multidiffusion_sampling.py",
   "simple_syrup/runtime/regional_multidiffusion_sampling.py",
-  "simple_syrup/runtime/tiled_sampling.py",
+  "simple_syrup/runtime/spatial_model_arguments.py",
+  "simple_syrup/runtime/spatial_tensor_projection.py",
+  "simple_syrup/runtime/tile_prediction_accumulation.py",
+  "simple_syrup/runtime/tiled_sampling_validation.py",
   "simple_syrup/services/detail_segs_as_regions_service.py",
 ]

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from ..nodes import tooltips
 from ..services.ksampler_sampling_service import KSamplerSamplingService
 from ..services.regional_conditioning_service import RegionalConditioningService
-from .regional_ksampler_schema import regional_ksampler_inputs
+from .ksampler_schema import regional_ksampler_inputs
 
 if TYPE_CHECKING:
 

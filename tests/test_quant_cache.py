@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from simple_syrup.domain.anima_quantization import (
     MXFP8_PROFILE,
@@ -20,6 +23,7 @@ from simple_syrup.domain.quant_cache import (
     QuantCacheIdentity,
     SourceCheckpointIdentity,
 )
+from simple_syrup.runtime import quant_cache_repository as repository_module
 from simple_syrup.runtime.quant_cache_leases import QuantCacheLeaseRegistry
 from simple_syrup.runtime.quant_cache_repository import (
     MANIFEST_FILENAME,
@@ -198,6 +202,73 @@ def test_v1_artifact_is_never_reused_but_remains_clearable(tmp_path: Path) -> No
     assert len(repository.list_artifacts()) == 1
     assert QuantCacheService(repository).clear_inactive().removed_artifacts == 1
     assert not artifact_path.exists()
+
+
+def test_manifest_replace_retries_one_transient_windows_sharing_violation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preserve atomic publication when a reader briefly holds the destination."""
+
+    repository = QuantCacheRepository(tmp_path / "SyrupQuants")
+    artifact = _commit(
+        repository,
+        _identity(tmp_path, "anima.safetensors", b"source"),
+        b"quantized",
+    )
+    original_replace = Path.replace
+    attempts = 0
+    sleeps: list[float] = []
+
+    def replace(source: Path, target: Path) -> Path:
+        """Fail once like Windows, then execute the real atomic replacement."""
+
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PermissionError(13, "Access is denied", str(target))
+        return original_replace(source, target)
+
+    monkeypatch.setattr(Path, "replace", replace)
+    monkeypatch.setattr(time, "sleep", sleeps.append)
+
+    touched = repository.touch(artifact)
+
+    assert attempts == 2
+    assert sleeps == [repository_module._MANIFEST_REPLACE_RETRY_SECONDS]
+    assert touched.manifest_path.is_file()
+
+
+def test_manifest_replace_propagates_exhausted_permission_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fail closed when the destination never becomes atomically replaceable."""
+
+    repository = QuantCacheRepository(tmp_path / "SyrupQuants")
+    artifact = _commit(
+        repository,
+        _identity(tmp_path, "anima.safetensors", b"source"),
+        b"quantized",
+    )
+    attempts = 0
+
+    def deny(source: Path, target: Path) -> Path:
+        """Keep the destination unavailable through every bounded attempt."""
+
+        del source
+        nonlocal attempts
+        attempts += 1
+        raise PermissionError(13, "Access is denied", str(target))
+
+    monkeypatch.setattr(Path, "replace", deny)
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
+
+    with pytest.raises(PermissionError, match="Access is denied"):
+        repository.touch(artifact)
+
+    assert attempts == repository_module._MANIFEST_REPLACE_ATTEMPTS
+    assert list(artifact.manifest_path.parent.glob("*.tmp")) == []
 
 
 def _identity(

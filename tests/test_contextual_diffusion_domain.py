@@ -15,13 +15,34 @@ from simple_syrup.domain.contextual_diffusion import (
     fit_context_shape,
 )
 from simple_syrup.domain.segs import BoundingBox, CropRegion, Segment
+from simple_syrup.domain.spatial_views import SpatialViewKind
 
 
-def test_global_context_fits_maximum_dimension_without_boxing() -> None:
+def test_global_view_fits_maximum_dimension_without_boxing() -> None:
     """The whole canvas keeps its aspect ratio and uses no artificial padding."""
 
     assert fit_context_shape(384, 256, 128) == (128, 86)
     assert fit_context_shape(64, 96, 128) == (64, 96)
+
+
+def test_plan_exposes_one_full_source_reduced_model_view() -> None:
+    """Describe the Contextual global evaluation through canonical geometry."""
+
+    plan = build_contextual_diffusion_plan(
+        latent_width=96,
+        latent_height=64,
+        controls=_controls(),
+        segs=None,
+    )
+
+    assert plan.global_view.kind is SpatialViewKind.CONTEXTUAL_GLOBAL
+    assert (
+        plan.global_view.source_x,
+        plan.global_view.source_y,
+        plan.global_view.source_width,
+        plan.global_view.source_height,
+    ) == (0, 0, 96, 64)
+    assert (plan.global_view.model_width, plan.global_view.model_height) == (32, 22)
 
 
 def test_connected_segs_replace_regular_grid_with_guided_tile_plan() -> None:

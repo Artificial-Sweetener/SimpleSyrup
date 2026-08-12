@@ -125,9 +125,9 @@ def test_prompt_control_batch_graph_attaches_segment_local_lora_hooks(
     parsed_hook_nodes = [
         node
         for node in output.expand.values()
-        if node["class_type"] == "PCLoraHooksFromText"
+        if node["class_type"] == "CreateHookLora"
     ]
-    assert [node["inputs"]["text"] for node in parsed_hook_nodes] == [
+    assert [node["inputs"]["lora_name"] for node in parsed_hook_nodes] == [
         "<lora:a:1>\n<lora:c:1>",
         "<lora:b:1>",
     ]
@@ -137,6 +137,12 @@ def test_prompt_control_batch_graph_attaches_segment_local_lora_hooks(
         if node["class_type"] == "SimpleSyrup.PrepareRegionalLoraHooks"
     ]
     assert len(regional_hook_nodes) == 2
+    label_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "SimpleSyrup.LabelRegionalLoraHooks"
+    ]
+    assert len(label_nodes) == 2
     assert not any(
         node["class_type"] == "SetClipHooks" for node in output.expand.values()
     )
@@ -262,16 +268,18 @@ def _install_fake_prompt_control(
                 strength_model=1.0,
                 strength_clip=1.0,
             )
-            hooked_clip = graph.node(
-                "SetClipHooks",
-                clip=clip,
-                hooks=hooks.out(0),
-                apply_to_conds=True,
-                schedule_clip=True,
-            )
+            hooked_clip = None
+            if clip is not None:
+                hooked_clip = graph.node(
+                    "SetClipHooks",
+                    clip=clip,
+                    hooks=hooks.out(0),
+                    apply_to_conds=True,
+                    schedule_clip=True,
+                )
             return io.NodeOutput(
                 None,
-                hooked_clip.out(0),
+                None if hooked_clip is None else hooked_clip.out(0),
                 hooks.out(0),
                 expand=graph.finalize(),
             )

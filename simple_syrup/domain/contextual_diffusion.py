@@ -13,6 +13,7 @@ import torch
 from .regional_tiled_diffusion import build_region_constrained_tiled_diffusion_plan
 from .segs import NativeSegs
 from .segs_tiled_diffusion import build_segs_guided_tiled_diffusion_plan
+from .spatial_views import SpatialView, SpatialViewKind
 from .tiled_diffusion import TiledDiffusionPlan, build_tiled_diffusion_plan
 
 
@@ -48,24 +49,12 @@ class ContextualDiffusionControls:
 
 
 @dataclass(frozen=True)
-class SpatialContext:
-    """Describe one source rectangle evaluated at a bounded model context shape."""
-
-    x: int
-    y: int
-    width: int
-    height: int
-    context_width: int
-    context_height: int
-
-
-@dataclass(frozen=True)
 class ContextualDiffusionPlan:
     """Own the global context and sole tiled plan for one latent canvas."""
 
     latent_width: int
     latent_height: int
-    global_context: SpatialContext
+    global_view: SpatialView
     tile_plan: TiledDiffusionPlan
 
 
@@ -85,13 +74,14 @@ def build_contextual_diffusion_plan(
         latent_height,
         controls.latent_context_size,
     )
-    global_context = SpatialContext(
-        x=0,
-        y=0,
-        width=latent_width,
-        height=latent_height,
-        context_width=global_width,
-        context_height=global_height,
+    global_view = SpatialView(
+        kind=SpatialViewKind.CONTEXTUAL_GLOBAL,
+        source_x=0,
+        source_y=0,
+        source_width=latent_width,
+        source_height=latent_height,
+        model_width=global_width,
+        model_height=global_height,
     )
     if region_masks is not None:
         tile_plan = build_region_constrained_tiled_diffusion_plan(
@@ -126,7 +116,7 @@ def build_contextual_diffusion_plan(
     return ContextualDiffusionPlan(
         latent_width=latent_width,
         latent_height=latent_height,
-        global_context=global_context,
+        global_view=global_view,
         tile_plan=tile_plan,
     )
 

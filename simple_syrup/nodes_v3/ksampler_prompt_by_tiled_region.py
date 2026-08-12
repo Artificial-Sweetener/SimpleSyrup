@@ -9,10 +9,11 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from ..domain.regional_features import RegionalFeature, RegionalFeatureRequest
 from ..nodes import tooltips
 from ..services.regional_conditioning_service import RegionalConditioningService
 from ..services.tiled_diffusion_sampling_service import TiledDiffusionSamplingService
-from .regional_ksampler_schema import regional_ksampler_inputs, tiled_regional_inputs
+from .ksampler_schema import regional_ksampler_inputs, tiled_diffusion_inputs
 
 if TYPE_CHECKING:
 
@@ -58,7 +59,7 @@ class KSamplerPromptByTiledRegionV3(_ComfyNodeBase):
             ],
             inputs=[
                 *regional_ksampler_inputs(_comfy_io),
-                *tiled_regional_inputs(_comfy_io),
+                *tiled_diffusion_inputs(_comfy_io),
             ],
             outputs=[
                 _comfy_io.Latent.Output(
@@ -118,6 +119,8 @@ class KSamplerPromptByTiledRegionV3(_ComfyNodeBase):
             latent_tile_overlap=latent_tile_overlap,
             latent_tile_batch_size=latent_tile_batch_size,
             preview_context=None,
-            allow_full_context_masks=True,
+            feature_request=RegionalFeatureRequest(
+                frozenset({RegionalFeature.FULL_CONTEXT_MASKED_CONDITIONING})
+            ),
         )
         return (output,)

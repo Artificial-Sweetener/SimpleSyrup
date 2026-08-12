@@ -12,10 +12,8 @@ from typing import Any, ClassVar, TypeAlias
 import torch
 
 from ..domain.conditioning_batch import ConditioningBatch
-from ..masking.regional_prompt_masks import (
-    prepare_regional_masks,
-    resize_regional_mask_batch,
-)
+from ..domain.regional_mask_bank import RegionalMaskBank
+from ..masking.regional_prompt_masks import build_regional_mask_bank
 from ..shared.logging import get_logger
 from .regional_conditioning_service import RegionalConditioningService
 
@@ -29,13 +27,13 @@ class RegionalSamplingPreparation:
 
     positive: object
     negative: object
-    planning_masks: torch.Tensor | None
+    mask_bank: RegionalMaskBank | None
 
     @property
     def active(self) -> bool:
         """Return whether regional sampling owns conditioning interpretation."""
 
-        return self.planning_masks is not None
+        return self.mask_bank is not None
 
 
 class RegionalSamplingPreparationService:
@@ -65,7 +63,7 @@ class RegionalSamplingPreparationService:
             return RegionalSamplingPreparation(
                 positive=positive,
                 negative=negative,
-                planning_masks=None,
+                mask_bank=None,
             )
         samples = latent_image.get("samples")
         if not isinstance(samples, torch.Tensor):
@@ -76,22 +74,17 @@ class RegionalSamplingPreparationService:
             )
         latent_height = int(samples.shape[-2])
         latent_width = int(samples.shape[-1])
-        prepared_masks = prepare_regional_masks(region_masks, region_mask_feather)
-        planning_masks = resize_regional_mask_batch(
-            prepared_masks.authored,
-            height=latent_height,
-            width=latent_width,
-        )
-        conditioning_masks = resize_regional_mask_batch(
-            prepared_masks.conditioning,
-            height=latent_height,
-            width=latent_width,
+        mask_bank = build_regional_mask_bank(
+            region_masks,
+            feather=region_mask_feather,
+            canvas_height=latent_height,
+            canvas_width=latent_width,
         )
         assembled_positive, assembled_negative = (
             self.conditioning_service_class().assemble_prepared(
                 positive=positive,
                 negative=negative,
-                mask_batch=conditioning_masks,
+                mask_batch=mask_bank.conditioning_masks,
                 regional_prompt_weight=regional_prompt_weight,
                 region_mask_feather=region_mask_feather,
             )
@@ -100,7 +93,7 @@ class RegionalSamplingPreparationService:
             "Regional sampler inputs prepared",
             extra={
                 "operation": "prepare_regional_sampling",
-                "region_count": int(planning_masks.shape[0]),
+                "region_count": mask_bank.region_count,
                 "latent_height": latent_height,
                 "latent_width": latent_width,
             },
@@ -108,5 +101,5 @@ class RegionalSamplingPreparationService:
         return RegionalSamplingPreparation(
             positive=assembled_positive,
             negative=assembled_negative,
-            planning_masks=planning_masks,
+            mask_bank=mask_bank,
         )

@@ -6,9 +6,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
-from typing import Any, Protocol, TypeVar, cast
+from collections.abc import Iterable
+from typing import Protocol, TypeVar, cast
+
+from .clip_patcher_model_alignment import align_clip_text_encoder_with_patcher
 
 
 class ModelMutation(Protocol):
@@ -23,91 +24,6 @@ class ClipMutation(Protocol):
 
     def apply(self, clip: object) -> None:
         """Apply the mutation through ComfyUI's public CLIP API."""
-
-
-@dataclass(frozen=True)
-class ModelDenoiseMaskMutation:
-    """Install a denoise-mask function through the MODEL patcher API."""
-
-    function: Callable[..., object]
-
-    def apply(self, model: object) -> None:
-        """Install the configured denoise-mask function."""
-
-        setter = getattr(model, "set_model_denoise_mask_function", None)
-        if not callable(setter):
-            raise TypeError("MODEL does not support denoise-mask functions.")
-        setter(self.function)
-
-
-@dataclass(frozen=True)
-class ModelUnetWrapperMutation:
-    """Install a model-function wrapper through the MODEL patcher API."""
-
-    wrapper: Callable[..., object]
-
-    def apply(self, model: object) -> None:
-        """Install the configured model-function wrapper."""
-
-        setter = getattr(model, "set_model_unet_function_wrapper", None)
-        if not callable(setter):
-            raise TypeError("MODEL does not support model-function wrappers.")
-        setter(self.wrapper)
-
-
-@dataclass(frozen=True)
-class ModelCalcCondBatchMutation:
-    """Install a calc-cond-batch function through the MODEL patcher API."""
-
-    function: Callable[..., object]
-
-    def apply(self, model: object) -> None:
-        """Install the configured calc-cond-batch function."""
-
-        setter = getattr(model, "set_model_sampler_calc_cond_batch_function", None)
-        if not callable(setter):
-            raise TypeError("MODEL does not support calc-cond-batch functions.")
-        setter(self.function)
-
-
-@dataclass(frozen=True)
-class ClipLayerMutation:
-    """Select the text-encoder layer used by a derived CLIP value."""
-
-    layer_index: int
-
-    def apply(self, clip: object) -> None:
-        """Apply the configured CLIP layer index."""
-
-        select_layer = getattr(clip, "clip_layer", None)
-        if not callable(select_layer):
-            raise TypeError("CLIP does not support layer selection.")
-        select_layer(self.layer_index)
-
-
-@dataclass(frozen=True)
-class ClipHookScheduleMutation:
-    """Install a native ComfyUI hook schedule on a derived CLIP value."""
-
-    hooks: object
-    target: object
-
-    def apply(self, clip: object) -> None:
-        """Clone and register hooks through the derived CLIP patcher."""
-
-        patcher = _required_attribute(clip, "patcher", value_name="CLIP")
-        clone_hooks = getattr(self.hooks, "clone", None)
-        if not callable(clone_hooks):
-            raise TypeError("HOOKS does not support lifecycle-safe cloning.")
-        register_hooks = getattr(patcher, "register_all_hook_patches", None)
-        if not callable(register_hooks):
-            raise TypeError("CLIP patcher does not support hook registration.")
-
-        patcher_boundary = cast(Any, patcher)
-        clip_boundary = cast(Any, clip)
-        patcher_boundary.forced_hooks = clone_hooks()
-        clip_boundary.use_clip_schedule = True
-        register_hooks(self.hooks, self.target)
 
 
 PatcherValue = TypeVar("PatcherValue")
@@ -151,14 +67,9 @@ class ComfyPatcherLifecycle:
         if derived is source:
             raise RuntimeError(f"{operation} returned the source CLIP from clone().")
 
-        source_patcher = _required_attribute(
-            source,
-            "patcher",
-            value_name="source CLIP",
-        )
-        derived_patcher = _required_attribute(
+        source_patcher = self._required_clip_patcher(source, value_name="source CLIP")
+        derived_patcher = self._required_clip_patcher(
             derived,
-            "patcher",
             value_name="derived CLIP",
         )
         self._require_direct_parent(
@@ -166,6 +77,7 @@ class ComfyPatcherLifecycle:
             derived_patcher,
             operation=operation,
         )
+        align_clip_text_encoder_with_patcher(derived)
         for mutation in mutations:
             mutation.apply(derived)
         return derived
@@ -176,6 +88,24 @@ class ComfyPatcherLifecycle:
         if not operation.strip():
             raise ValueError("VAE lifecycle operations require a descriptive name.")
         return vae
+
+    def clone_hooks(
+        self,
+        source: PatcherValue,
+        *,
+        operation: str,
+    ) -> PatcherValue:
+        """Clone one HookGroup-like value through the lifecycle authority."""
+
+        if not isinstance(operation, str) or not operation.strip():
+            raise ValueError("Hook lifecycle operations require a description.")
+        clone = getattr(source, "clone", None)
+        if not callable(clone):
+            raise TypeError(f"{operation} requires cloneable hooks.")
+        derived = cast(PatcherValue, clone())
+        if derived is source:
+            raise RuntimeError(f"{operation} returned the source hooks from clone().")
+        return derived
 
     @staticmethod
     def _clone(source: PatcherValue, *, operation: str) -> PatcherValue:
@@ -203,14 +133,14 @@ class ComfyPatcherLifecycle:
                 f"{operation} produced a derived patcher without its source as parent."
             )
 
+    @staticmethod
+    def _required_clip_patcher(value: object, *, value_name: str) -> object:
+        """Return the CLIP patcher required for lineage validation."""
+
+        patcher = getattr(value, "patcher", None)
+        if patcher is None:
+            raise TypeError(f"{value_name} does not expose patcher.")
+        return patcher
+
 
 PATCHER_LIFECYCLE = ComfyPatcherLifecycle()
-
-
-def _required_attribute(value: object, name: str, *, value_name: str) -> object:
-    """Return a required dynamic ComfyUI boundary attribute."""
-
-    attribute = getattr(value, name, None)
-    if attribute is None:
-        raise TypeError(f"{value_name} does not expose {name}.")
-    return attribute

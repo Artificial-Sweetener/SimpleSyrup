@@ -11,7 +11,9 @@ from typing import Any
 import pytest
 import torch
 
-from simple_syrup.nodes.ksampler_tiled_diffusion import KSamplerTiledDiffusion
+from simple_syrup.nodes_v3.ksampler_tiled_diffusion import (
+    KSamplerTiledDiffusionV3,
+)
 from simple_syrup.runtime import sampling_samplers, sampling_schedulers
 
 
@@ -26,8 +28,9 @@ def test_input_types_match_tiled_diffusion_contract(
         "available_schedulers",
         lambda: ("normal",),
     )
-    required = KSamplerTiledDiffusion.INPUT_TYPES()["required"]
-    optional = KSamplerTiledDiffusion.INPUT_TYPES()["optional"]
+    schema = KSamplerTiledDiffusionV3.define_schema()
+    required = {value.id: value for value in schema.inputs if not value.optional}
+    optional = {value.id: value for value in schema.inputs if value.optional}
 
     assert tuple(required) == (
         "model",
@@ -46,32 +49,36 @@ def test_input_types_match_tiled_diffusion_contract(
         "latent_tile_overlap",
         "latent_tile_batch_size",
     )
-    assert required["diffusion_mode"][0] == [
+    assert required["diffusion_mode"].options == [
         "multidiffusion",
         "mixture_of_diffusers",
     ]
-    assert required["diffusion_mode"][1]["default"] == "multidiffusion"
-    assert required["positive"][0] == "CONDITIONING,CONDITIONING_BATCH"
-    assert required["negative"][0] == "CONDITIONING,CONDITIONING_BATCH"
-    assert required["latent_tile_width"][1]["default"] == 128
-    assert required["latent_tile_width"][1]["max"] == 512
-    assert required["latent_tile_height"][1]["default"] == 128
-    assert required["latent_tile_height"][1]["max"] == 512
-    assert required["latent_tile_overlap"][1]["default"] == 16
-    assert required["latent_tile_batch_size"][1]["default"] == 4
-    assert optional["segs"][0] == "SEGS"
-    assert optional["region_masks"][0] == "MASK"
-    assert optional["regional_prompt_weight"][1]["default"] == 0.5
-    assert optional["region_mask_feather"][1]["default"] == 0
+    assert required["diffusion_mode"].default == "multidiffusion"
+    assert required["positive"].io_type == "CONDITIONING,CONDITIONING_BATCH"
+    assert required["negative"].io_type == "CONDITIONING,CONDITIONING_BATCH"
+    assert required["latent_tile_width"].default == 128
+    assert required["latent_tile_width"].max == 512
+    assert required["latent_tile_height"].default == 128
+    assert required["latent_tile_height"].max == 512
+    assert required["latent_tile_overlap"].default == 16
+    assert required["latent_tile_batch_size"].default == 4
+    assert optional["segs"].io_type == "SEGS"
+    assert optional["region_masks"].io_type == "MASK"
+    assert optional["regional_prompt_weight"].default == 0.5
+    assert optional["region_mask_feather"].default == 0
 
 
 def test_node_metadata_matches_contract() -> None:
     """The node declares the expected ComfyUI output contract."""
 
-    assert KSamplerTiledDiffusion.RETURN_TYPES == ("LATENT",)
-    assert KSamplerTiledDiffusion.FUNCTION == "sample"
-    assert KSamplerTiledDiffusion.CATEGORY == "SimpleSyrup/Sampling"
-    assert not hasattr(KSamplerTiledDiffusion, "RETURN_NAMES")
+    schema = KSamplerTiledDiffusionV3.define_schema()
+
+    assert schema.node_id == "SimpleSyrup.KSamplerTiledDiffusion"
+    assert schema.display_name == "KSampler (Tiled Diffusion)"
+    assert schema.category == "SimpleSyrup/Sampling"
+    assert [(output.id, output.io_type) for output in schema.outputs] == [
+        (None, "LATENT")
+    ]
 
 
 def test_sample_delegates_to_shared_service(
@@ -81,13 +88,13 @@ def test_sample_delegates_to_shared_service(
 
     fake_service = _FakeTiledDiffusionSamplingService()
     monkeypatch.setattr(
-        KSamplerTiledDiffusion,
+        KSamplerTiledDiffusionV3,
         "service_class",
         staticmethod(lambda: fake_service),
     )
     latent_image = {"samples": torch.zeros((1, 4, 4, 4))}
 
-    (result,) = KSamplerTiledDiffusion().sample(
+    (result,) = KSamplerTiledDiffusionV3.execute(
         model="model",
         seed=123,
         steps=20,
@@ -133,7 +140,7 @@ def test_invalid_diffusion_mode_fails_before_runtime_sampling() -> None:
     """Unsupported modes are rejected before sampler side effects."""
 
     with pytest.raises(ValueError, match="diffusion_mode"):
-        KSamplerTiledDiffusion().sample(
+        KSamplerTiledDiffusionV3.execute(
             model=object(),
             seed=123,
             steps=20,

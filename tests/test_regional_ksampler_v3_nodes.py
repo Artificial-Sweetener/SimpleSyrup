@@ -10,6 +10,7 @@ from typing import Any, ClassVar
 
 import torch
 
+from simple_syrup.domain.regional_features import RegionalFeature
 from simple_syrup.nodes_v3.ksampler_prompt_by_region import (
     KSamplerPromptByRegionV3,
 )
@@ -82,6 +83,32 @@ def test_schemas_expose_exact_names_and_shared_regional_contract() -> None:
     assert regional_weight.default == 0.5
     assert regional_weight.min == 0.0
     assert regional_weight.max == 1.0
+    normal_defaults = {
+        value.id: value.default for value in normal.inputs if hasattr(value, "default")
+    }
+    assert normal_defaults == {
+        "seed": 0,
+        "steps": 20,
+        "cfg": 8.0,
+        "sampler_name": None,
+        "scheduler": None,
+        "regional_prompt_weight": 0.5,
+        "region_mask_feather": 0,
+        "denoise": 1.0,
+    }
+    tiled_defaults = {
+        value.id: value.default for value in tiled.inputs if hasattr(value, "default")
+    }
+    assert tiled_defaults == {
+        **normal_defaults,
+        "diffusion_mode": "multidiffusion",
+        "latent_tile_width": 128,
+        "latent_tile_height": 128,
+        "latent_tile_overlap": 16,
+        "latent_tile_batch_size": 4,
+    }
+    assert [output.id for output in normal.outputs] == ["latent"]
+    assert [output.id for output in tiled.outputs] == ["latent"]
     assert [output.io_type for output in normal.outputs] == ["LATENT"]
     assert [output.io_type for output in tiled.outputs] == ["LATENT"]
 
@@ -180,7 +207,10 @@ def test_tiled_node_enables_only_full_context_regional_masks() -> None:
     ]
     call = FakeSamplingService.calls[0]
     assert call["diffusion_mode"] == "mixture_of_diffusers"
-    assert call["allow_full_context_masks"] is True
+    assert (
+        RegionalFeature.FULL_CONTEXT_MASKED_CONDITIONING
+        in call["feature_request"].features
+    )
     assert call["latent_tile_width"] == 8
     assert call["latent_tile_height"] == 8
     assert call["latent_tile_overlap"] == 2

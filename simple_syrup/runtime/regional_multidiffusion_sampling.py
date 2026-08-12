@@ -19,6 +19,7 @@ from typing import Any, TypeAlias, cast
 import torch
 
 from ..domain.regional_detailing import LatentRegion
+from ..domain.regional_features import EMPTY_REGIONAL_CAPABILITY_ADMISSION
 from ..shared.logging import get_logger
 from . import sampling_samplers, sampling_schedulers
 from .detail_previews import DetailPreviewContext, prepare_detail_preview_callback
@@ -26,12 +27,9 @@ from .differential_diffusion import (
     differential_diffusion_mutation,
     has_denoise_mask_function,
 )
-from .patcher_lifecycle import (
-    PATCHER_LIFECYCLE,
-    ModelCalcCondBatchMutation,
-    ModelMutation,
-)
-from .tiled_sampling import (
+from .model_patcher_mutations import ModelCalcCondBatchMutation
+from .patcher_lifecycle import PATCHER_LIFECYCLE, ModelMutation
+from .tiled_sampling_validation import (
     Latent,
     reject_unsupported_conditioning,
     validate_latent_samples,
@@ -83,10 +81,22 @@ def sample_regional_multidiffusion(
     _reject_unipc_sampler(sampler_name)
     if not regions:
         raise ValueError("Regional MultiDiffusion requires at least one region.")
-    reject_unsupported_conditioning(positive, sampler_label=SAMPLER_LABEL)
-    reject_unsupported_conditioning(negative, sampler_label=SAMPLER_LABEL)
+    reject_unsupported_conditioning(
+        positive,
+        sampler_label=SAMPLER_LABEL,
+        capability_admission=EMPTY_REGIONAL_CAPABILITY_ADMISSION,
+    )
+    reject_unsupported_conditioning(
+        negative,
+        sampler_label=SAMPLER_LABEL,
+        capability_admission=EMPTY_REGIONAL_CAPABILITY_ADMISSION,
+    )
     for region in regions:
-        reject_unsupported_conditioning(region.positive, sampler_label=SAMPLER_LABEL)
+        reject_unsupported_conditioning(
+            region.positive,
+            sampler_label=SAMPLER_LABEL,
+            capability_admission=EMPTY_REGIONAL_CAPABILITY_ADMISSION,
+        )
 
     sampler = sampling_samplers.resolve_sampler(sampler_name)
     latent_samples = validate_latent_samples(

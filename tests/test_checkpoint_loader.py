@@ -28,19 +28,28 @@ class FakeClip:
         self,
         name: str = "checkpoint_clip",
         parent_patcher: object | None = None,
+        text_encoder: object | None = None,
     ) -> None:
         """Create a CLIP double with no selected layer."""
 
         self.name = name
         self.layer: int | None = None
         self.clone_count = 0
-        self.patcher = SimpleNamespace(parent=parent_patcher)
+        self.cond_stage_model = object() if text_encoder is None else text_encoder
+        self.patcher = SimpleNamespace(
+            model=self.cond_stage_model,
+            parent=parent_patcher,
+        )
 
     def clone(self) -> FakeClip:
         """Return an independent CLIP double and record the clone call."""
 
         self.clone_count += 1
-        return FakeClip(f"{self.name}_clone", parent_patcher=self.patcher)
+        return FakeClip(
+            f"{self.name}_clone",
+            parent_patcher=self.patcher,
+            text_encoder=self.cond_stage_model,
+        )
 
     def clip_layer(self, layer: int) -> None:
         """Record the selected CLIP layer."""
@@ -150,6 +159,7 @@ def test_checkpoint_loader_applies_clip_skip_to_checkpoint_vae_path(
     assert isinstance(result[1], FakeClip)
     assert result[1].name == "checkpoint_clip_clone"
     assert result[1].layer == CLIP_SKIP_LAYER
+    assert result[1].cond_stage_model is result[1].patcher.model
     assert result[2] == "checkpoint_vae"
     assert state.checkpoint_clip.clone_count == 1
     assert state.checkpoint_clip.layer is None

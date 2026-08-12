@@ -6,48 +6,20 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol, TypeAlias
+from typing import Any, TypeAlias
 
 import torch
 
+from ..domain.regional_features import RegionalCapabilityAdmission
 from ..domain.regional_tiled_diffusion import (
     build_region_constrained_tiled_diffusion_plan,
 )
 from ..domain.segs import coerce_segs_group
-from ..domain.tiled_diffusion import TiledDiffusionPlan
 from ..runtime.detail_previews import DetailPreviewContext
 from .sampling_batch import combine_latent_outputs, single_item_latent
+from .tiled_diffusion_item_sampling_service import TiledDiffusionItemSampler
 
 Latent: TypeAlias = dict[str, Any]
-
-
-class TiledDiffusionItemSampler(Protocol):
-    """Sample one latent item through a supplied tiled diffusion plan."""
-
-    def __call__(
-        self,
-        *,
-        diffusion_mode: str,
-        model: Any,
-        seed: int,
-        steps: int,
-        cfg: float,
-        sampler_name: str,
-        scheduler: str,
-        positive: Any,
-        negative: Any,
-        latent_image: Latent,
-        denoise: float,
-        latent_tile_width: int,
-        latent_tile_height: int,
-        latent_tile_overlap: int,
-        latent_tile_batch_size: int,
-        preview_context: DetailPreviewContext | None,
-        differential_diffusion: bool,
-        allow_full_context_masks: bool,
-        tiled_plan: TiledDiffusionPlan | None = None,
-    ) -> Latent:
-        """Return one sampled latent item."""
 
 
 class RegionalTiledDiffusionSamplingService:
@@ -76,6 +48,7 @@ class RegionalTiledDiffusionSamplingService:
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None,
         differential_diffusion: bool,
+        capability_admission: RegionalCapabilityAdmission,
     ) -> Latent:
         """Sample every latent item with one shared regional composition."""
 
@@ -131,7 +104,7 @@ class RegionalTiledDiffusionSamplingService:
                 latent_tile_batch_size=latent_tile_batch_size,
                 preview_context=preview_context,
                 differential_diffusion=differential_diffusion,
-                allow_full_context_masks=True,
+                capability_admission=capability_admission,
                 tiled_plan=plan,
             )
             output_samples = output.get("samples")

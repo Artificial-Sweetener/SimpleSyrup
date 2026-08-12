@@ -9,7 +9,8 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any
 
-from .patcher_lifecycle import PATCHER_LIFECYCLE, ModelDenoiseMaskMutation
+from .model_patcher_mutations import ModelDenoiseMaskMutation
+from .patcher_lifecycle import PATCHER_LIFECYCLE
 
 
 def has_denoise_mask_function(model: Any) -> bool:

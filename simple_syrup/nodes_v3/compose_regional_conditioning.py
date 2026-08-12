@@ -10,7 +10,7 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..services.regional_conditioning_service import RegionalConditioningService
-from .regional_ksampler_schema import regional_conditioning_inputs
+from .ksampler_schema import regional_conditioning_inputs
 
 if TYPE_CHECKING:
 

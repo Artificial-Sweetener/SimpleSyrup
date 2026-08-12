@@ -16,8 +16,17 @@ def get_nodes() -> list[type[object]]:
     from .batch_segs import BatchSEGSV3
     from .compose_regional_conditioning import ComposeRegionalConditioningV3
     from .external_llm_prompt import ExternalLLMPromptV3
+    from .ksampler_attention_coupling import KSamplerAttentionCouplingV3
+    from .ksampler_contextual_attention_coupling import (
+        KSamplerContextualAttentionCouplingV3,
+    )
+    from .ksampler_contextual_diffusion import KSamplerContextualDiffusionV3
     from .ksampler_prompt_by_region import KSamplerPromptByRegionV3
     from .ksampler_prompt_by_tiled_region import KSamplerPromptByTiledRegionV3
+    from .ksampler_tiled_attention_coupling import (
+        KSamplerTiledAttentionCouplingV3,
+    )
+    from .ksampler_tiled_diffusion import KSamplerTiledDiffusionV3
     from .legacy_node_wrappers import (
         ConditioningBatchAppendV3,
         ConditioningBatchStartV3,
@@ -28,9 +37,7 @@ def get_nodes() -> list[type[object]]:
         EncodePromptBatchV3,
         GroundedSAMModelInfoV3,
         GroundingDINOModelLoaderV3,
-        KSamplerContextualDiffusionV3,
         KSamplerExtrasV3,
-        KSamplerTiledDiffusionV3,
         LatentDiagnosticsV3,
         LayerStyleSAMModelsAdapterV3,
         LoadUltralyticsModelV3,
@@ -76,6 +83,9 @@ def get_nodes() -> list[type[object]]:
         GroundedSAMModelInfoV3,
         GroundingDINOModelLoaderV3,
         KSamplerExtrasV3,
+        KSamplerAttentionCouplingV3,
+        KSamplerTiledAttentionCouplingV3,
+        KSamplerContextualAttentionCouplingV3,
         KSamplerPromptByRegionV3,
         KSamplerPromptByTiledRegionV3,
         KSamplerContextualDiffusionV3,
@@ -119,6 +129,7 @@ def get_nodes() -> list[type[object]]:
     from .encode_prompt_batch_with_prompt_control import (
         EncodePromptBatchWithPromptControl,
     )
+    from .label_regional_lora_hooks import LabelRegionalLoraHooksV3
     from .prepare_regional_lora_hooks import PrepareRegionalLoraHooksV3
     from .schedule_and_encode_prompts_with_prompt_control import (
         ScheduleAndEncodePromptsWithPromptControl,
@@ -128,6 +139,7 @@ def get_nodes() -> list[type[object]]:
         *nodes,
         AttachRegionalGlobalConditioningV3,
         EncodePromptBatchWithPromptControl,
+        LabelRegionalLoraHooksV3,
         PrepareRegionalLoraHooksV3,
         ScheduleAndEncodePromptsWithPromptControl,
     ]
