@@ -37,7 +37,7 @@ def test_unet_attn2_execution_matches_explicit_multi_entry_reference() -> None:
             [[0.0, 0.25], [1.0, 0.0]],
         ]
     )
-    execution = UnetAttn2Execution(contexts, masks, (1.0, 1.0))
+    execution = UnetAttn2Execution(contexts, masks, (1.0, 1.0), 1, 2)
     query = torch.tensor([[[1.0], [2.0]], [[3.0], [4.0]]])
     base_context = contexts.base_context
     query_before = query.clone()
@@ -85,7 +85,7 @@ def test_unet_attn2_execution_prunes_zero_strength_and_zero_coverage_rows() -> N
             [[0.0, 0.0], [1.0, 1.0]],
         ]
     )
-    execution = UnetAttn2Execution(contexts, masks, (1.0, 0.0))
+    execution = UnetAttn2Execution(contexts, masks, (1.0, 0.0), 1, 2)
 
     assert tuple(
         (segment.key.region_index, segment.key.entry_index)
@@ -112,7 +112,7 @@ def test_unet_attn2_execution_matches_base_region_and_overlap_closed_forms(
     """Match all-base, all-region, uncovered, overlap, and zero-strength cases."""
 
     contexts = _single_entry_contexts()
-    execution = UnetAttn2Execution(contexts, masks, region_strengths)
+    execution = UnetAttn2Execution(contexts, masks, region_strengths, 1, 1)
     query = torch.zeros(1, 1, 1)
     expanded = execution.expand(query, contexts.base_context, contexts.base_context)
     packed_output = expanded.context.clone()
@@ -137,7 +137,13 @@ def test_unet_attn2_execution_rejects_misaligned_query_masks(
     """Fail before branch construction on malformed preprojected geometry."""
 
     with pytest.raises(ValueError, match=message):
-        UnetAttn2Execution(_contexts(), query_masks, (1.0,) * int(query_masks.shape[0]))
+        UnetAttn2Execution(
+            _contexts(),
+            query_masks,
+            (1.0,) * int(query_masks.shape[0]),
+            1,
+            int(query_masks.shape[2]),
+        )
 
 
 def _contexts() -> BatchedRegionalAttentionContexts:

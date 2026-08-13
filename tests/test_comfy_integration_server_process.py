@@ -107,6 +107,22 @@ def test_command_uses_exact_loopback_normal_install_arguments(tmp_path: Path) ->
     )
 
 
+def test_command_appends_validated_optional_launch_arguments(tmp_path: Path) -> None:
+    """Keep probe-only CPU mode inside the canonical shell-free command owner."""
+
+    root = tmp_path / "ComfyUI"
+    root.mkdir()
+    (root / "main.py").write_text("", encoding="utf-8")
+    python = root / "venv" / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.write_bytes(b"")
+    command = ComfyServerCommand(root, python, 8299, ("--cpu",))
+
+    command.validate()
+
+    assert command.arguments()[-1] == "--cpu"
+
+
 def test_stop_signals_only_the_created_group_and_closes_logs() -> None:
     """Use a bounded graceful process-group stop before closing owned logs."""
 

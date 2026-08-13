@@ -10,16 +10,15 @@ from dataclasses import dataclass
 
 from tools.comfy_api import JsonObject
 
+from .graph import SdxlWorkflowGraph
 from .matrix import (
-    CFG,
     MODES,
     NEGATIVE_PROMPTS,
+    NEGATIVE_PROMPTS_G,
     POSITIVE_PROMPTS,
+    POSITIVE_PROMPTS_G,
     REFINEMENT_DENOISE,
     REFINEMENT_STEPS,
-    SAMPLER,
-    SCHEDULER,
-    SEED,
     SOURCE_HEIGHT,
     SOURCE_STEPS,
     SOURCE_WIDTH,
@@ -29,23 +28,7 @@ from .matrix import (
     TILE_OVERLAP,
     TILE_SIZE,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class SdxlWorkflowOutputs:
-    """Retain output-node identities for one labeled sampler mode."""
-
-    save_node_id: str
-    metrics_node_id: str
-    diagnostics_node_id: str
-
-
-@dataclass(frozen=True, slots=True)
-class SdxlSamplerBranchResult:
-    """Retain one sampled latent and its already-created decoded image."""
-
-    latent: list[str | int]
-    decoded: list[str | int]
+from .sampler_branch import SdxlWorkflowOutputs, add_sampler_branch
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,17 +53,19 @@ def build_sdxl_attention_coupling_workflow(
 ) -> BuiltSdxlAttentionCouplingWorkflow:
     """Build one source generation and two 1.5x refinement branches."""
 
-    graph = _Graph()
+    graph = SdxlWorkflowGraph()
     loader = graph.add("CheckpointLoaderSimple", ckpt_name=checkpoint_name)
     positive = _conditioning_batch(
         graph,
         clip=[loader, 1],
         prompts=POSITIVE_PROMPTS,
+        global_prompts=POSITIVE_PROMPTS_G,
     )
     negative = _conditioning_batch(
         graph,
         clip=[loader, 1],
         prompts=NEGATIVE_PROMPTS,
+        global_prompts=NEGATIVE_PROMPTS_G,
     )
     masks = graph.add(
         "SimpleSyrup.LoadMaskBatch",
@@ -94,7 +79,7 @@ def build_sdxl_attention_coupling_workflow(
         batch_size=1,
     )
     outputs: dict[str, SdxlWorkflowOutputs] = {}
-    full_branch = _add_sampler_branch(
+    full_branch = add_sampler_branch(
         graph,
         mode_id=MODES[0].mode_id,
         node_id=MODES[0].node_id,
@@ -108,8 +93,8 @@ def build_sdxl_attention_coupling_workflow(
         steps=SOURCE_STEPS,
         denoise=1.0,
         sampler_inputs={},
-        outputs=outputs,
     )
+    outputs[MODES[0].mode_id] = full_branch.outputs
     upscaled_image = graph.add(
         "ImageScale",
         image=full_branch.decoded,
@@ -123,7 +108,7 @@ def build_sdxl_attention_coupling_workflow(
         pixels=[upscaled_image, 0],
         vae=[loader, 2],
     )
-    _add_sampler_branch(
+    tiled_branch = add_sampler_branch(
         graph,
         mode_id=MODES[1].mode_id,
         node_id=MODES[1].node_id,
@@ -143,9 +128,9 @@ def build_sdxl_attention_coupling_workflow(
             "latent_tile_overlap": TILE_OVERLAP,
             "latent_tile_batch_size": TILE_BATCH_SIZE,
         },
-        outputs=outputs,
     )
-    _add_sampler_branch(
+    outputs[MODES[1].mode_id] = tiled_branch.outputs
+    contextual_branch = add_sampler_branch(
         graph,
         mode_id=MODES[2].mode_id,
         node_id=MODES[2].node_id,
@@ -167,21 +152,40 @@ def build_sdxl_attention_coupling_workflow(
             "global_steps": 1,
             "global_decay": 0.5,
         },
-        outputs=outputs,
     )
+    outputs[MODES[2].mode_id] = contextual_branch.outputs
     return BuiltSdxlAttentionCouplingWorkflow(graph.prompt, outputs)
 
 
 def _conditioning_batch(
-    graph: _Graph,
+    graph: SdxlWorkflowGraph,
     *,
     clip: list[str | int],
     prompts: tuple[str, ...],
+    global_prompts: tuple[str, ...],
 ) -> list[str | int]:
-    """Encode and pack one global-first conditioning batch."""
+    """Encode independent SDXL G/L prompts and explicit microconditioning."""
 
+    if len(prompts) != len(global_prompts):
+        raise ValueError("SDXL G/L conditioning prompt counts must match.")
     encoded = tuple(
-        graph.add("CLIPTextEncode", clip=clip, text=prompt) for prompt in prompts
+        graph.add(
+            "CLIPTextEncodeSDXL",
+            clip=clip,
+            width=SOURCE_WIDTH,
+            height=SOURCE_HEIGHT,
+            crop_w=0,
+            crop_h=0,
+            target_width=TARGET_WIDTH,
+            target_height=TARGET_HEIGHT,
+            text_g=global_prompt,
+            text_l=local_prompt,
+        )
+        for global_prompt, local_prompt in zip(
+            global_prompts,
+            prompts,
+            strict=True,
+        )
     )
     batch = graph.add(
         "SimpleSyrup.ConditioningBatchStart",
@@ -194,87 +198,3 @@ def _conditioning_batch(
             conditioning=[node_id, 0],
         )
     return [batch, 0]
-
-
-def _add_sampler_branch(
-    graph: _Graph,
-    *,
-    mode_id: str,
-    node_id: str,
-    model: list[str | int],
-    positive: list[str | int],
-    negative: list[str | int],
-    masks: list[str | int],
-    latent: list[str | int],
-    vae: list[str | int],
-    run_id: str,
-    steps: int,
-    denoise: float,
-    sampler_inputs: dict[str, object],
-    outputs: dict[str, SdxlWorkflowOutputs],
-) -> SdxlSamplerBranchResult:
-    """Add one instrumented public sampler, diagnostics, decode, and save chain."""
-
-    metrics_run_id = f"{run_id}:{mode_id}:metrics"
-    diagnostics_run_id = f"{run_id}:{mode_id}:diagnostics"
-    instrumented = graph.add(
-        "SimpleSyrupBenchmark.InstrumentModel",
-        model=model,
-        run_id=metrics_run_id,
-    )
-    captured = graph.add(
-        "SimpleSyrupBenchmark.CaptureRegionalDiagnostics",
-        model=[instrumented, 0],
-        run_id=diagnostics_run_id,
-    )
-    sampled = graph.add(
-        node_id,
-        model=[captured, 0],
-        seed=SEED,
-        steps=steps,
-        cfg=CFG,
-        sampler_name=SAMPLER,
-        scheduler=SCHEDULER,
-        positive=positive,
-        negative=negative,
-        region_masks=masks,
-        regional_prompt_weight=1.0,
-        region_mask_feather=32,
-        latent_image=latent,
-        denoise=denoise,
-        **sampler_inputs,
-    )
-    metrics = graph.add(
-        "SimpleSyrupBenchmark.ReadMetrics",
-        latent=[sampled, 0],
-        run_id=metrics_run_id,
-    )
-    diagnostics = graph.add(
-        "SimpleSyrupBenchmark.ReadRegionalDiagnostics",
-        latent=[metrics, 0],
-        run_id=diagnostics_run_id,
-    )
-    decoded = graph.add("VAEDecode", samples=[diagnostics, 0], vae=vae)
-    saved = graph.add(
-        "SaveImage",
-        images=[decoded, 0],
-        filename_prefix=f"simple_syrup_p8_5_sdxl/{run_id}/{mode_id}",
-    )
-    outputs[mode_id] = SdxlWorkflowOutputs(saved, metrics, diagnostics)
-    return SdxlSamplerBranchResult([diagnostics, 0], [decoded, 0])
-
-
-class _Graph:
-    """Own deterministic numeric API node identities."""
-
-    def __init__(self) -> None:
-        """Initialize one empty prompt graph."""
-
-        self.prompt: dict[str, JsonObject] = {}
-
-    def add(self, class_type: str, **inputs: object) -> str:
-        """Append one node and return its stable numeric identity."""
-
-        node_id = str(len(self.prompt) + 1)
-        self.prompt[node_id] = {"class_type": class_type, "inputs": inputs}
-        return node_id

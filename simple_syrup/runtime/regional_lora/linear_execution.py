@@ -12,9 +12,9 @@ from collections.abc import Callable
 import torch
 
 from ...domain.regional_activation_geometry import RegionalActivationLayout
-from ...masking.regional_activation_mask_projection import RegionalActivationMaskBatch
 from .delta_execution import REGIONAL_LORA_DELTA_EXECUTOR, RegionalLoraDeltaExecutor
 from .linear_execution_plan import RegionalLinearExecutionPlan
+from .operation_mask_resolution import RegionalOperationMaskBatch
 
 
 class RegionalLinearExecutor:
@@ -36,7 +36,7 @@ class RegionalLinearExecutor:
         inputs: torch.Tensor,
         *args: object,
         plan: RegionalLinearExecutionPlan,
-        masks: RegionalActivationMaskBatch,
+        masks: RegionalOperationMaskBatch,
         schedule_strengths: tuple[float, ...],
         **kwargs: object,
     ) -> torch.Tensor:
@@ -126,7 +126,7 @@ class RegionalLinearExecutor:
     @staticmethod
     def _group_multipliers(
         plan: RegionalLinearExecutionPlan,
-        masks: RegionalActivationMaskBatch,
+        masks: RegionalOperationMaskBatch,
         *,
         schedule_strengths: tuple[float, ...],
     ) -> tuple[torch.Tensor | None, ...]:
@@ -143,8 +143,8 @@ class RegionalLinearExecutor:
                 scale = use.base_strength * strengths[use.composition_index]
                 if scale == 0.0:
                     continue
-                region = masks.multipliers[use.region_index].squeeze(-1)
-                contribution = region * scale
+                use_index = masks.composition_indices.index(use.composition_index)
+                contribution = masks.multipliers[use_index].squeeze(-1) * scale
                 multiplier = (
                     contribution if multiplier is None else multiplier + contribution
                 )
@@ -166,14 +166,15 @@ class RegionalLinearExecutor:
             raise TypeError("Regional Linear inputs must be a floating tensor.")
         if not isinstance(plan, RegionalLinearExecutionPlan):
             raise TypeError("Regional Linear execution requires a typed plan.")
-        if not isinstance(masks, RegionalActivationMaskBatch):
-            raise TypeError("Regional Linear execution requires activation masks.")
+        if not isinstance(masks, RegionalOperationMaskBatch):
+            raise TypeError("Regional Linear execution requires operation masks.")
         if masks.geometry.layout not in (
             RegionalActivationLayout.FLATTENED_SPATIAL_TOKENS,
             RegionalActivationLayout.CONSUMER_SPATIALIZED,
+            RegionalActivationLayout.BRANCH_TOKENS,
         ):
             raise ValueError(
-                "Regional Linear execution requires spatial-token geometry."
+                "Regional Linear execution requires spatial or branch-token geometry."
             )
         if tuple(inputs.shape) != masks.geometry.invocation_shape:
             raise ValueError("Regional Linear input must match activation geometry.")
@@ -195,11 +196,11 @@ class RegionalLinearExecutor:
             raise TypeError("Regional Linear schedule strengths must be finite.")
         if int(inputs.shape[-1]) != plan.groups[0].preparation.target.input_features:
             raise ValueError("Regional Linear input feature count is invalid.")
-        if any(
-            use.region_index >= int(masks.multipliers.shape[0]) for use in plan.uses
+        if masks.composition_indices != tuple(
+            use.composition_index for use in plan.uses
         ):
             raise ValueError(
-                "Regional Linear use references an unavailable region mask."
+                "Regional Linear operation masks must align to target uses."
             )
 
 

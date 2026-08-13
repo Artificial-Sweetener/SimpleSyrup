@@ -62,6 +62,8 @@ class UnetAttentionCouplingInvariantHarness(AttentionCouplingInvariantHarness):
             contexts,
             query_masks,
             scenario.region_strengths,
+            1,
+            int(query_masks.shape[-1]),
         )
         query = torch.zeros(
             len(scenario.base_values),
@@ -111,6 +113,8 @@ class UnetAttentionCouplingInvariantHarness(AttentionCouplingInvariantHarness):
             _contexts(scenario),
             _query_masks(masks, 1),
             scenario.region_strengths,
+            1,
+            int(masks.shape[-1]),
         )
 
     def expected_output(

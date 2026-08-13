@@ -13,6 +13,7 @@ import torch
 from comfy.weight_adapter.lora import LoRAAdapter
 from torch import nn
 
+from ...domain.regional_lora_plan import RegionalLoraBranch
 from .convolution_preparation import RegionalConvolutionPreparation
 from .target_binding import (
     BoundRegionalLoraModuleClass,
@@ -78,6 +79,7 @@ class RegionalConvolutionTargetUse:
 
     composition_index: int
     region_index: int
+    branch: RegionalLoraBranch
     operation_identity: tuple[int, int, int | None]
     preparation: RegionalConvolutionPreparation
     parameters: RegionalConvolutionParameters
@@ -96,6 +98,8 @@ class RegionalConvolutionTargetUse:
                 )
         if not isinstance(self.preparation, RegionalConvolutionPreparation):
             raise TypeError("Regional convolution use requires preparation.")
+        if not isinstance(self.branch, RegionalLoraBranch):
+            raise TypeError("Regional convolution use branch has an invalid type.")
         if not isinstance(self.parameters, RegionalConvolutionParameters):
             raise TypeError("Regional convolution use requires operation parameters.")
         if not isinstance(self.base_strength, float) or not math.isfinite(
@@ -213,6 +217,7 @@ class RegionalConvolutionExecutionPlanFactory:
         return RegionalConvolutionTargetUse(
             descriptor.adapter.composition_index,
             descriptor.adapter.region_index,
+            descriptor.adapter.branch,
             (id(down), id(up), None if middle_tensor is None else id(middle_tensor)),
             RegionalConvolutionPreparation(down, middle_tensor, up),
             parameters,

@@ -208,7 +208,7 @@ class RegionalLinearOperationPatch(RegionalHostBackedOperation):
     def forward(self, inputs: torch.Tensor, *args: object, **kwargs: object) -> object:
         """Delegate unchanged when inactive or execute the explicit regional call."""
 
-        invocation = self._context.current_for(self._module_path)
+        invocation = self._context.resolve(self._module_path, self._plan, inputs)
         if invocation is None:
             return self._host_backing.module(inputs, *args, **kwargs)
         return self._executor.execute(
@@ -252,7 +252,7 @@ class RegionalConvolutionOperationPatch(RegionalHostBackedOperation):
     def forward(self, inputs: torch.Tensor, *args: object, **kwargs: object) -> object:
         """Delegate unchanged when inactive or execute the regional convolution."""
 
-        invocation = self._context.current_for(self._module_path)
+        invocation = self._context.resolve(self._module_path, self._plan, inputs)
         if invocation is None:
             return self._host_backing.module(inputs, *args, **kwargs)
         return self._executor.execute(

@@ -16,6 +16,12 @@ from ..regional_attention_model_call import (
     REGIONAL_ATTENTION_MODEL_CALL_RESOLVER,
     RegionalAttentionModelCallResolver,
 )
+from ..regional_lora.operation_invocation import (
+    REGIONAL_OPERATION_INVOCATION_CONTEXT,
+)
+from ..regional_lora.standard_unet_operation_session import (
+    StandardUnetRegionalOperationSession,
+)
 from .unet_attention_state import StandardUnetAttentionState
 
 UNET_ATTENTION_CONTEXT_WRAPPER_KEY = "simple_syrup.unet_regional_attention_contexts"
@@ -32,6 +38,7 @@ class StandardUnetAttentionContextDiffusionWrapper:
         model_call_resolver: RegionalAttentionModelCallResolver = (
             REGIONAL_ATTENTION_MODEL_CALL_RESOLVER
         ),
+        operation_session: StandardUnetRegionalOperationSession | None = None,
     ) -> None:
         """Retain weak model identity and the shared plan/call authorities."""
 
@@ -49,6 +56,12 @@ class StandardUnetAttentionContextDiffusionWrapper:
             )
         self._state = state
         self._model_call_resolver = model_call_resolver
+        if operation_session is not None and not isinstance(
+            operation_session,
+            StandardUnetRegionalOperationSession,
+        ):
+            raise TypeError("Standard UNet operation session has an invalid type.")
+        self._operation_session = operation_session
 
     def __call__(
         self,
@@ -85,16 +98,30 @@ class StandardUnetAttentionContextDiffusionWrapper:
             self._state.execution_context.activate(contexts),
             self._state.resolution_cache.activate(),
         ):
+            if self._operation_session is not None:
+                with (
+                    self._operation_session.activate(contexts, args[5]),
+                    REGIONAL_OPERATION_INVOCATION_CONTEXT.activate(
+                        self._operation_session
+                    ),
+                ):
+                    return executor(*forwarded_args, **kwargs)
             return executor(*forwarded_args, **kwargs)
 
 
 def unet_attention_context_wrapper_mutation(
     diffusion_model: object,
     state: StandardUnetAttentionState,
+    *,
+    operation_session: StandardUnetRegionalOperationSession | None = None,
 ) -> ModelDiffusionWrapperMutation:
     """Return the clone-local standard-UNet context wrapper mutation."""
 
     return ModelDiffusionWrapperMutation(
         UNET_ATTENTION_CONTEXT_WRAPPER_KEY,
-        StandardUnetAttentionContextDiffusionWrapper(diffusion_model, state),
+        StandardUnetAttentionContextDiffusionWrapper(
+            diffusion_model,
+            state,
+            operation_session=operation_session,
+        ),
     )

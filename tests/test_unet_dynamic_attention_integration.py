@@ -155,6 +155,8 @@ class _ContextBoundResolver:
             contexts,
             torch.tensor([[[1.0, 0.0], [1.0, 0.0]]]),
             self.state.region_strengths,
+            1,
+            2,
         )
 
 

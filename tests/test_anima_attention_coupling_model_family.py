@@ -48,11 +48,11 @@ def test_anima_family_retains_single_frame_context_and_backend_policy() -> None:
     _Backend.calls = []
     try:
         family.validate_latent(torch.zeros(2, 16, 1, 8, 8))
-        family.validate_adaptation(adaptation)
+        admission = family.admit_adaptation("model", adaptation)
         derived = family.derive(
             model="model",
             processed_plan=processed,
-            adaptation=adaptation,
+            admission=admission,
             region_strengths=(0.75,),
             latent_batch_size=2,
         )

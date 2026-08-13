@@ -88,14 +88,14 @@ def test_binder_accepts_direct_clone_and_explicit_linear_capability() -> None:
         resolution=resolution,
         operations=ComfyResolvedOperationTranslator().translate(resolution),
         linear_spatial_capabilities={
-            path: BoundRegionalLoraSpatialCapability.CONSUMER_SPATIALIZED
+            path: BoundRegionalLoraSpatialCapability.SPATIAL_TOKENS
         },
     )
 
     assert result.admissible
     assert (
         result.entries[0].spatial_capability
-        is BoundRegionalLoraSpatialCapability.CONSUMER_SPATIALIZED
+        is BoundRegionalLoraSpatialCapability.SPATIAL_TOKENS
     )
 
 
@@ -294,7 +294,7 @@ def test_binder_rejects_invalid_linear_capability_declaration() -> None:
         ((_adapter(0), (_linear_target("diffusion_model.layer.weight"),)),)
     )
 
-    with pytest.raises(ValueError, match="consumer-spatialized or global-only"):
+    with pytest.raises(ValueError, match="supported token role or global-only"):
         RegionalLoraTargetBinder().bind(
             source=source,
             candidate=source,

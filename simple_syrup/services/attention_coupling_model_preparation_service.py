@@ -125,7 +125,7 @@ class AttentionCouplingModelPreparationService:
         )
         base_model = getattr(model, "model", None)
         adaptation = self.lora_adapter_class().adapt(raw, model=base_model)
-        model_family.validate_adaptation(adaptation)
+        family_admission = model_family.admit_adaptation(model, adaptation)
         raw_with_loras = RawRegionalAttentionPlan(
             raw.positive,
             raw.negative,
@@ -151,7 +151,7 @@ class AttentionCouplingModelPreparationService:
         derived_model = model_family.derive(
             model=model,
             processed_plan=processed,
-            adaptation=adaptation,
+            admission=family_admission,
             region_strengths=region_strengths,
             latent_batch_size=int(samples.shape[0]),
         )

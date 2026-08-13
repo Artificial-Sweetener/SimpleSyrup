@@ -13,7 +13,9 @@ from tools.sdxl_attention_coupling_integration.matrix import (
     CONTEXTUAL_EXPECTED_MODEL_CALLS,
     MODES,
     NEGATIVE_PROMPTS,
+    NEGATIVE_PROMPTS_G,
     POSITIVE_PROMPTS,
+    POSITIVE_PROMPTS_G,
     REFINEMENT_DENOISE,
     REFINEMENT_STEPS,
     SOURCE_STEPS,
@@ -77,8 +79,25 @@ def test_workflow_uses_three_public_nodes_and_exact_upscale_product_flow() -> No
     assert MODES[2].expected_model_calls == CONTEXTUAL_EXPECTED_MODEL_CALLS == 61
     full_inputs = _inputs(by_class["SimpleSyrup.KSamplerAttentionCoupling"][0])
     assert full_inputs["steps"] == SOURCE_STEPS
-    clip_inputs = [_inputs(node)["text"] for node in by_class["CLIPTextEncode"]]
-    assert clip_inputs == [*POSITIVE_PROMPTS, *NEGATIVE_PROMPTS]
+    assert "CLIPTextEncode" not in by_class
+    clip_inputs = [_inputs(node) for node in by_class["CLIPTextEncodeSDXL"]]
+    assert [inputs["text_l"] for inputs in clip_inputs] == [
+        *POSITIVE_PROMPTS,
+        *NEGATIVE_PROMPTS,
+    ]
+    assert [inputs["text_g"] for inputs in clip_inputs] == [
+        *POSITIVE_PROMPTS_G,
+        *NEGATIVE_PROMPTS_G,
+    ]
+    assert all(
+        inputs["width"] == 1024
+        and inputs["height"] == 1024
+        and inputs["crop_w"] == 0
+        and inputs["crop_h"] == 0
+        and inputs["target_width"] == 1536
+        and inputs["target_height"] == 1536
+        for inputs in clip_inputs
+    )
     assert len(by_class["SimpleSyrupBenchmark.InstrumentModel"]) == 3
     assert len(by_class["SimpleSyrupBenchmark.CaptureRegionalDiagnostics"]) == 3
 

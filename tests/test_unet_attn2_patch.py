@@ -102,7 +102,7 @@ def test_unet_patch_runs_one_attention_and_restores_before_residual() -> None:
 
     contexts = _contexts()
     masks = torch.tensor([[[1.0, 0.0]], [[0.0, 1.0]]])
-    execution = UnetAttn2Execution(contexts, masks, (1.0, 1.0))
+    execution = UnetAttn2Execution(contexts, masks, (1.0, 1.0), 1, 2)
     patches = UnetAttn2PatchPair(StaticUnetAttn2ExecutionResolver(execution))
     block = BasicTransformerBlock(
         dim=1,
@@ -148,6 +148,8 @@ def test_unet_patch_clears_callback_state_after_output_failure() -> None:
         _contexts(),
         torch.ones(2, 1, 2),
         (1.0, 1.0),
+        1,
+        2,
     )
     patches = UnetAttn2PatchPair(StaticUnetAttn2ExecutionResolver(execution))
     options: dict[str, Any] = {}

@@ -340,7 +340,7 @@ def _binding(
         operations=operations,
         linear_spatial_capabilities={
             "diffusion_model.linear.weight": (
-                BoundRegionalLoraSpatialCapability.CONSUMER_SPATIALIZED
+                BoundRegionalLoraSpatialCapability.SPATIAL_TOKENS
             )
         },
     )

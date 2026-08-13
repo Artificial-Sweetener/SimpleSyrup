@@ -15,6 +15,9 @@ from ..runtime.attention_coupling.anima_context import (
     ANIMA_REGIONAL_CONTEXT_VALIDATOR,
 )
 from ..runtime.attention_coupling.context_validation import RegionalContextValidator
+from ..runtime.attention_coupling.family_admission import (
+    AttentionCouplingFamilyAdmission,
+)
 from ..runtime.regional_lora.anima_full_context_backend import (
     FullContextAnimaAttentionBackend,
 )
@@ -44,18 +47,24 @@ class AnimaAttentionCouplingModelFamily:
                 "Anima Attention Coupling requires a BxCx1xHxW image latent."
             )
 
-    def validate_adaptation(self, adaptation: RegionalLoraPlanAdaptation) -> None:
-        """Admit typed regional LoRAs for full Anima backend validation."""
+    def admit_adaptation(
+        self,
+        model: object,
+        adaptation: RegionalLoraPlanAdaptation,
+    ) -> AttentionCouplingFamilyAdmission:
+        """Admit typed regional LoRAs without changing the Anima runtime route."""
 
+        del model
         if not isinstance(adaptation, RegionalLoraPlanAdaptation):
             raise TypeError("Anima Attention Coupling requires regional adaptation.")
+        return AttentionCouplingFamilyAdmission(adaptation)
 
     def derive(
         self,
         *,
         model: object,
         processed_plan: ProcessedRegionalAttentionPlan,
-        adaptation: RegionalLoraPlanAdaptation,
+        admission: AttentionCouplingFamilyAdmission,
         region_strengths: tuple[float, ...],
         latent_batch_size: int,
     ) -> object:
@@ -64,7 +73,7 @@ class AnimaAttentionCouplingModelFamily:
         built = self.backend_class().derive(
             model=model,
             processed_plan=processed_plan,
-            adaptation=adaptation,
+            adaptation=admission.adaptation,
             region_strengths=region_strengths,
             latent_batch_size=latent_batch_size,
         )

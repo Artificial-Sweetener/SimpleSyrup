@@ -10,48 +10,59 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
-from ...masking.regional_activation_mask_projection import RegionalActivationMaskBatch
+import torch
+
+from .convolution_execution_plan import RegionalConvolutionExecutionPlan
+from .linear_execution_plan import RegionalLinearExecutionPlan
+from .operation_mask_resolution import RegionalOperationMaskBatch
 
 
 @dataclass(frozen=True, slots=True)
 class RegionalOperationInvocation:
     """Retain masks and ordered schedule strengths for one target module call."""
 
-    masks: RegionalActivationMaskBatch
+    masks: RegionalOperationMaskBatch
     schedule_strengths: tuple[float, ...]
 
     def __post_init__(self) -> None:
         """Require typed masks and an explicit immutable strength sequence."""
 
-        if not isinstance(self.masks, RegionalActivationMaskBatch):
-            raise TypeError("Regional operation invocation requires activation masks.")
+        if not isinstance(self.masks, RegionalOperationMaskBatch):
+            raise TypeError("Regional operation invocation requires use masks.")
         if not isinstance(self.schedule_strengths, tuple):
             raise TypeError("Regional operation schedule strengths must be a tuple.")
 
 
-class RegionalOperationInvocationContext:
-    """Own target-addressed regional operation values for one nested model call."""
+RegionalOperationExecutionPlan = (
+    RegionalLinearExecutionPlan | RegionalConvolutionExecutionPlan
+)
 
-    def __init__(self) -> None:
-        """Create one empty task-local invocation map."""
 
-        self._current: ContextVar[Mapping[str, RegionalOperationInvocation] | None] = (
-            ContextVar("simple_syrup_regional_operation_invocations", default=None)
-        )
+@runtime_checkable
+class RegionalOperationInvocationResolver(Protocol):
+    """Resolve one installed operation from exact live call evidence."""
 
-    def current_for(self, module_path: str) -> RegionalOperationInvocation | None:
-        """Return the active target invocation or no value outside its scope."""
+    def resolve(
+        self,
+        module_path: str,
+        plan: RegionalOperationExecutionPlan,
+        inputs: torch.Tensor,
+    ) -> RegionalOperationInvocation | None:
+        """Return one active invocation or no regional work for this call."""
 
-        current = self._current.get()
-        return None if current is None else current.get(module_path)
+        ...
 
-    @contextmanager
-    def activate(
+
+class StaticRegionalOperationInvocationResolver:
+    """Serve immutable target values for deterministic executor characterization."""
+
+    def __init__(
         self,
         invocations: Mapping[str, RegionalOperationInvocation],
-    ) -> Iterator[None]:
-        """Publish one immutable-by-contract target map for a nested execution."""
+    ) -> None:
+        """Validate and copy one target-addressed characterization map."""
 
         if not isinstance(invocations, Mapping):
             raise TypeError("Regional operation invocations must be a mapping.")
@@ -63,7 +74,59 @@ class RegionalOperationInvocationContext:
             for value in copied.values()
         ):
             raise TypeError("Regional operation invocation values are invalid.")
-        token = self._current.set(copied)
+        self._invocations = copied
+
+    def resolve(
+        self,
+        module_path: str,
+        plan: RegionalOperationExecutionPlan,
+        inputs: torch.Tensor,
+    ) -> RegionalOperationInvocation | None:
+        """Return the characterized value after validating live boundary types."""
+
+        if not isinstance(module_path, str) or not module_path:
+            raise ValueError("Regional operation module path must be nonempty.")
+        if not isinstance(
+            plan,
+            RegionalLinearExecutionPlan | RegionalConvolutionExecutionPlan,
+        ):
+            raise TypeError("Regional operation plan has an invalid type.")
+        if not isinstance(inputs, torch.Tensor):
+            raise TypeError("Regional operation inputs must be a tensor.")
+        return self._invocations.get(module_path)
+
+
+class RegionalOperationInvocationContext:
+    """Own one invocation resolver for a nested model call."""
+
+    def __init__(self) -> None:
+        """Create one empty task-local resolver slot."""
+
+        self._current: ContextVar[RegionalOperationInvocationResolver | None] = (
+            ContextVar("simple_syrup_regional_operation_resolver", default=None)
+        )
+
+    def resolve(
+        self,
+        module_path: str,
+        plan: RegionalOperationExecutionPlan,
+        inputs: torch.Tensor,
+    ) -> RegionalOperationInvocation | None:
+        """Delegate exact call evidence or return no value outside active scope."""
+
+        current = self._current.get()
+        return None if current is None else current.resolve(module_path, plan, inputs)
+
+    @contextmanager
+    def activate(
+        self,
+        resolver: RegionalOperationInvocationResolver,
+    ) -> Iterator[None]:
+        """Publish one typed invocation owner for a nested execution."""
+
+        if not isinstance(resolver, RegionalOperationInvocationResolver):
+            raise TypeError("Regional operation resolver has an invalid type.")
+        token = self._current.set(resolver)
         try:
             yield
         finally:

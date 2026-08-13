@@ -54,7 +54,7 @@ def test_factory_preserves_exact_tensors_scale_and_model_lineage() -> None:
         resolution=resolution,
         operations=operations,
         linear_spatial_capabilities={
-            path: BoundRegionalLoraSpatialCapability.CONSUMER_SPATIALIZED
+            path: BoundRegionalLoraSpatialCapability.SPATIAL_TOKENS
         },
     )
 
@@ -90,7 +90,7 @@ def test_factory_rejects_global_only_linear_binding() -> None:
         operations=operations,
     )
 
-    with pytest.raises(ValueError, match="consumer spatialization"):
+    with pytest.raises(ValueError, match="token-consumer role"):
         RegionalLinearExecutionPlanFactory().build(
             binding.entries,
             model=model,

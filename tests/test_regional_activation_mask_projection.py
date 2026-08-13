@@ -129,6 +129,34 @@ def test_contextual_projection_resizes_complete_source_to_model_grid() -> None:
     assert projected.multipliers.max() <= 1.0
 
 
+def test_view_projection_resamples_to_internal_unet_grid() -> None:
+    """Project one published full view into a lower-resolution internal stage."""
+
+    bank = _bank(torch.ones((1, 6, 12), dtype=torch.float32))
+    layout = SpatialBatchLayout(
+        12,
+        6,
+        (SpatialView(SpatialViewKind.FULL, 0, 0, 12, 6, 12, 6),),
+        input_batch_size=2,
+    )
+    geometry = RegionalActivationGeometry(
+        RegionalActivationLayout.DIRECT_CONVOLUTION_2D,
+        (2, 4, 3, 6),
+        1,
+        3,
+        6,
+        RegionalActivationBatchAlignment(2, 1, layout),
+    )
+
+    projected = _project(bank, geometry, RegionalMaskProjectionMode.SOFT)
+
+    assert projected.multipliers.shape == (1, 2, 1, 3, 6)
+    torch.testing.assert_close(
+        projected.multipliers,
+        torch.ones_like(projected.multipliers),
+    )
+
+
 def test_conv3d_projection_repeats_spatial_ownership_over_declared_time() -> None:
     """Repeat one authored image mask only under explicit temporal ownership."""
 
