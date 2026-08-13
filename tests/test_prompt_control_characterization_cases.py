@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Verify the immutable P0.8 Prompt Control case matrix."""
 
 from tools.prompt_control_characterization.cases import cases

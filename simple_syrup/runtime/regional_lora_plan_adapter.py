@@ -24,6 +24,7 @@ from ..domain.regional_lora_plan import (
     RegionalLoraPlan,
     RegionalLoraScheduleBoundary,
 )
+from .regional_lora_host_payload import RegionalLoraHostPayload
 from .regional_model_hook_selection import (
     REGIONAL_MODEL_HOOK_SELECTOR,
     RegionalModelHookSelector,
@@ -66,18 +67,23 @@ class RegionalLoraPlanAdaptation:
     """Retain one immutable plan with its exact ordered hook weight payloads."""
 
     plan: RegionalLoraPlan
-    adapter_weights: tuple[object, ...]
+    adapter_payloads: tuple[RegionalLoraHostPayload, ...]
 
     def __post_init__(self) -> None:
         """Require exact plan types and one payload per canonical adapter."""
 
         if not isinstance(self.plan, RegionalLoraPlan):
             raise TypeError("Regional LoRA adaptation requires a plan.")
-        if not isinstance(self.adapter_weights, tuple):
-            raise TypeError("Regional LoRA adaptation weights must be a tuple.")
-        if len(self.adapter_weights) != len(self.plan.adapters):
+        if not isinstance(self.adapter_payloads, tuple):
+            raise TypeError("Regional LoRA adaptation payloads must be a tuple.")
+        if any(
+            not isinstance(payload, RegionalLoraHostPayload)
+            for payload in self.adapter_payloads
+        ):
+            raise TypeError("Regional LoRA adaptation contains an invalid payload.")
+        if len(self.adapter_payloads) != len(self.plan.adapters):
             raise ValueError(
-                "Regional LoRA adaptation requires one weight payload per adapter."
+                "Regional LoRA adaptation requires one host payload per adapter."
             )
 
 
@@ -105,23 +111,23 @@ class RegionalLoraPlanAdapter:
             return RegionalLoraPlanAdaptation(EMPTY_REGIONAL_LORA_PLAN, ())
 
         adapters: list[RegionalLoraAdapterPlan] = []
-        adapter_weights: list[object] = []
+        adapter_payloads: list[RegionalLoraHostPayload] = []
         for source_index, source in enumerate(source_values):
             if not isinstance(source, RegionalLoraHookSource):
                 raise TypeError(
                     f"Regional LoRA source {source_index} has an invalid type."
                 )
-            source_adapters, source_weights = self._adapt_source(
+            source_adapters, source_payloads = self._adapt_source(
                 source,
                 model=model,
                 first_composition_index=len(adapters),
                 source_index=source_index,
             )
             adapters.extend(source_adapters)
-            adapter_weights.extend(source_weights)
+            adapter_payloads.extend(source_payloads)
         return RegionalLoraPlanAdaptation(
             RegionalLoraPlan(adapters=tuple(adapters)),
-            tuple(adapter_weights),
+            tuple(adapter_payloads),
         )
 
     def _adapt_source(
@@ -131,7 +137,10 @@ class RegionalLoraPlanAdapter:
         model: object,
         first_composition_index: int,
         source_index: int,
-    ) -> tuple[tuple[RegionalLoraAdapterPlan, ...], tuple[object, ...]]:
+    ) -> tuple[
+        tuple[RegionalLoraAdapterPlan, ...],
+        tuple[RegionalLoraHostPayload, ...],
+    ]:
         """Adapt one exact HookGroup while retaining hook order and payloads."""
 
         selection = self._hook_selector.select(
@@ -162,7 +171,8 @@ class RegionalLoraPlanAdapter:
             for participant_index, participant in enumerate(selection.model_hooks)
         )
         return adapters, tuple(
-            participant.hook.weights for participant in selection.model_hooks
+            RegionalLoraHostPayload.from_hook(participant.hook)
+            for participant in selection.model_hooks
         )
 
     def _schedule(

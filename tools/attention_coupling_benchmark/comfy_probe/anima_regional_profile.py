@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Derive fixed benchmark-only Anima regional LoRA model profiles."""
 
 from __future__ import annotations
@@ -53,6 +57,7 @@ from simple_syrup.runtime.regional_lora.anima_plan_admission import (
 from simple_syrup.runtime.regional_lora.execution_cache import (
     RegionalLoraExecutionCache,
 )
+from simple_syrup.runtime.regional_lora_host_payload import RegionalLoraHostPayload
 from simple_syrup.runtime.regional_lora_plan_adapter import (
     RegionalLoraPlanAdaptation,
 )
@@ -109,7 +114,7 @@ class StaticAnimaRegionalProfileBuilder:
         plan = self._plan(paths, adapters, model=model)
         adaptation = RegionalLoraPlanAdaptation(
             plan,
-            weights,
+            tuple(RegionalLoraHostPayload.unresolved(value) for value in weights),
         )
         admitted = ANIMA_REGIONAL_LORA_PLAN_ADMISSION_SERVICE.admit(adaptation)
         raw = build_raw_regional_attention_plan(

@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Verify the immutable P9.1 matrix and validated P0.8 dependency."""
 
 from tools.prompt_control_attention_coupling_integration.baseline import load_baseline
