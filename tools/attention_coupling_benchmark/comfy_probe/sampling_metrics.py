@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Measure model-call count, sampling runtime, and peak CUDA memory."""
 
 from __future__ import annotations

@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Own deterministic temporary split masks for the SDXL integration run."""
 
 from __future__ import annotations

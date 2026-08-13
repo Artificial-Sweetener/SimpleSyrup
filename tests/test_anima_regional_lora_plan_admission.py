@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Prove all-or-nothing regional Anima adapter-plan admission."""
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ from simple_syrup.runtime.regional_lora.anima_plan_admission import (
     ANIMA_REGIONAL_LORA_PLAN_ADMISSION_SERVICE,
     AnimaRegionalLoraPlanAdmissionError,
 )
+from simple_syrup.runtime.regional_lora_host_payload import RegionalLoraHostPayload
 from simple_syrup.runtime.regional_lora_plan_adapter import (
     REGIONAL_LORA_PLAN_ADAPTER,
     RegionalLoraHookSource,
@@ -95,7 +100,10 @@ def test_plan_admission_aggregates_every_adapter_format_and_target_failure() -> 
         ANIMA_REGIONAL_LORA_PLAN_ADMISSION_SERVICE.admit(
             RegionalLoraPlanAdaptation(
                 plan,
-                ({}, converted_model_patch, unsupported_target),
+                tuple(
+                    RegionalLoraHostPayload.unresolved(weights)
+                    for weights in ({}, converted_model_patch, unsupported_target)
+                ),
             )
         )
 
@@ -117,7 +125,7 @@ def test_plan_admission_requires_one_weight_mapping_per_ordered_adapter() -> Non
 
     plan = _plan((RegionalLoraScheduleBoundary(0.0, 100.0, 1.0, 0),))
 
-    with pytest.raises(ValueError, match="one weight payload"):
+    with pytest.raises(ValueError, match="one host payload"):
         RegionalLoraPlanAdaptation(plan, ())
     with pytest.raises(TypeError, match="requires an adaptation"):
         ANIMA_REGIONAL_LORA_PLAN_ADMISSION_SERVICE.admit(cast(Any, plan))

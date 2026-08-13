@@ -123,7 +123,7 @@ class AnimaRegionalLoraPlanAdmissionService:
         issues: list[AnimaRegionalLoraPlanAdmissionIssue] = []
         for adapter_plan, weights in zip(
             plan.adapters,
-            adaptation.adapter_weights,
+            (payload.model_side_weights for payload in adaptation.adapter_payloads),
             strict=True,
         ):
             try:

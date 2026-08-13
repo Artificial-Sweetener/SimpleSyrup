@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Verify focused standard-UNet Attention Coupling family policy."""
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ from simple_syrup.runtime.attention_coupling.unet_attention_state import (
 from simple_syrup.runtime.attention_coupling.unet_context import (
     STANDARD_UNET_REGIONAL_CONTEXT_VALIDATOR,
 )
+from simple_syrup.runtime.regional_lora_host_payload import RegionalLoraHostPayload
 from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 from simple_syrup.services.unet_attention_coupling_model_family import (
     StandardUnetAttentionCouplingModelFamily,
@@ -125,7 +130,10 @@ def _regional_lora_adaptation() -> RegionalLoraPlanAdaptation:
         1.0,
         (RegionalLoraScheduleBoundary(0.0, 1.0, 1.0, 0),),
     )
-    return RegionalLoraPlanAdaptation(RegionalLoraPlan((adapter,)), (object(),))
+    return RegionalLoraPlanAdaptation(
+        RegionalLoraPlan((adapter,)),
+        (RegionalLoraHostPayload.unresolved(object()),),
+    )
 
 
 def _plan() -> ProcessedRegionalAttentionPlan:

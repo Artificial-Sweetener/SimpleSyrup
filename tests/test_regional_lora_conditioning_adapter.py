@@ -78,11 +78,16 @@ def test_adapter_extracts_ordered_positive_and_negative_regional_stacks() -> Non
         RegionalLoraBranch.POSITIVE,
         RegionalLoraBranch.NEGATIVE,
     ]
-    assert adaptation.adapter_weights == tuple(
+    expected_weights = tuple(
         hook.weights
         for group in (positive_hooks, negative_hooks)
         for hook in group.get_type(comfy.hooks.EnumHookType.Weight)
     )
+    assert (
+        tuple(payload.raw_weights for payload in adaptation.adapter_payloads)
+        == expected_weights
+    )
+    assert all(payload.needs_resolution for payload in adaptation.adapter_payloads)
 
 
 def test_adapter_accepts_cloned_schedule_entries_and_rejects_mixed_groups() -> None:
@@ -152,7 +157,9 @@ def test_adapter_retains_encoded_text_loras_without_model_admission() -> None:
         "pc-ADAPTER_A-0.8-0.0"
     ]
     model_hook = regional_model_hooks.get_type(comfy.hooks.EnumHookType.Weight)[0]
-    assert adaptation.adapter_weights == (model_hook.weights,)
+    assert len(adaptation.adapter_payloads) == 1
+    assert adaptation.adapter_payloads[0].needs_resolution is True
+    assert adaptation.adapter_payloads[0].raw_weights is model_hook.weights
     assert (
         global_text_hooks.get_type(comfy.hooks.EnumHookType.Weight)[0]._strength_model
         == 0.0
@@ -191,7 +198,7 @@ def test_adapter_accepts_different_text_only_hooks_across_schedule_entries() -> 
     adaptation = RegionalLoraConditioningAdapter().adapt(plan, model=_Model())
 
     assert adaptation.plan.adapters == ()
-    assert adaptation.adapter_weights == ()
+    assert adaptation.adapter_payloads == ()
 
 
 def test_adapter_rejects_global_hooks_and_opaque_regional_identity() -> None:

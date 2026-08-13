@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Verify public graph construction for P10.2 comparison cases."""
 
 from tools.regional_strategy_comparison.matrix import cases

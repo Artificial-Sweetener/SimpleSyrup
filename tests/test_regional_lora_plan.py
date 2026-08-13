@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Prove immutable regional LoRA planning from ordered Comfy HookGroups."""
 
 from __future__ import annotations
@@ -126,8 +130,12 @@ def test_hook_adapter_preserves_identity_order_ownership_strength_and_schedules(
     )
     assert _hook_snapshot(positive_hooks) == positive_snapshot
     assert _hook_snapshot(negative_hooks) == negative_snapshot
-    assert adaptation.adapter_weights[0] is positive_weight_hooks[0].weights
-    assert adaptation.adapter_weights[1] is negative_weight_hook.weights
+    assert adaptation.adapter_payloads[0].needs_resolution is True
+    assert (
+        adaptation.adapter_payloads[0].raw_weights is positive_weight_hooks[0].weights
+    )
+    assert adaptation.adapter_payloads[1].needs_resolution is True
+    assert adaptation.adapter_payloads[1].raw_weights is negative_weight_hook.weights
 
 
 def test_hook_adapter_accepts_empty_source_sequence() -> None:
