@@ -43,6 +43,8 @@ class UnetAttn2Execution:
     contexts: BatchedRegionalAttentionContexts
     query_masks: torch.Tensor
     region_strengths: tuple[float, ...]
+    query_height: int
+    query_width: int
     weights: RegionalAttentionWeights = field(init=False)
     branches: UnetAttentionBranchBatch = field(init=False)
 
@@ -69,6 +71,17 @@ class UnetAttn2Execution:
             )
         if int(self.query_masks.shape[1]) != int(self.contexts.base_context.shape[0]):
             raise ValueError("UNet attn2 query-mask batch must match aligned contexts.")
+        if (
+            isinstance(self.query_height, bool)
+            or not isinstance(self.query_height, int)
+            or self.query_height < 1
+            or isinstance(self.query_width, bool)
+            or not isinstance(self.query_width, int)
+            or self.query_width < 1
+        ):
+            raise ValueError("UNet attn2 query H/W must be positive integers.")
+        if self.query_height * self.query_width != int(self.query_masks.shape[2]):
+            raise ValueError("UNet attn2 query H/W must match the query-mask tokens.")
         if self.query_masks.device != self.contexts.base_context.device:
             raise ValueError("UNet attn2 masks and contexts must share one device.")
         weighting = RegionalAttentionWeightingPolicy()

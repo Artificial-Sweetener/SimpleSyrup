@@ -20,7 +20,10 @@ from simple_syrup.domain.regional_activation_geometry import (
     RegionalActivationGeometry,
     RegionalActivationLayout,
 )
-from simple_syrup.domain.regional_lora_plan import RegionalLoraAdapterIdentity
+from simple_syrup.domain.regional_lora_plan import (
+    RegionalLoraAdapterIdentity,
+    RegionalLoraBranch,
+)
 from simple_syrup.masking.regional_activation_mask_projection import (
     RegionalActivationMaskBatch,
 )
@@ -34,6 +37,9 @@ from simple_syrup.runtime.regional_lora.linear_execution_plan import (
     RegionalLinearOperationKey,
     RegionalLinearTargetUse,
 )
+from simple_syrup.runtime.regional_lora.operation_mask_resolution import (
+    RegionalOperationMaskBatch,
+)
 from simple_syrup.runtime.regional_lora.preparation import (
     RegionalLoraTargetPreparation,
 )
@@ -46,7 +52,10 @@ def test_zero_mask_returns_exact_original_and_performs_no_projection() -> None:
     fixture = _fixture()
     plan = _plan((_use(fixture, composition=0, region=0),))
     original = _Original(fixture.base)
-    masks = _masks(torch.zeros((1, 2, 6)), features=4)
+    masks = _operation_masks(
+        _masks(torch.zeros((1, 2, 6)), features=4),
+        plan,
+    )
 
     result = RegionalLinearExecutor().execute(
         original,
@@ -216,12 +225,68 @@ def test_repeated_adapter_combination_matches_separate_ordered_uses() -> None:
     assert fixture.cache.size == 1
 
 
+def test_global_and_different_regional_adapters_add_without_strength_blending() -> None:
+    """Retain Comfy's global patch while adding a different masked adapter."""
+
+    fixture = _fixture()
+    global_target = _target(
+        "global",
+        torch.tensor([[0.1, 0.3, -0.2, 0.4], [0.5, -0.1, 0.2, -0.3]]),
+        torch.tensor([[0.2, -0.4], [0.3, 0.1], [-0.2, 0.5]]),
+    )
+    original_weight = fixture.base.weight.detach().clone()
+    _install_global_delta(fixture.base, global_target, strength=0.6)
+    plan = _plan((_use(fixture, composition=0, region=0, strength=0.75),))
+    mask = torch.linspace(0.0, 1.0, 12).reshape(1, 2, 6)
+
+    result = _execute(fixture, plan, mask, (0.5,))
+
+    global_weight = original_weight + 0.6 * global_target.intrinsic_scale * (
+        global_target.up @ global_target.down
+    )
+    global_base = functional.linear(fixture.inputs, global_weight, fixture.base.bias)
+    regional_rank = functional.linear(fixture.inputs, fixture.target.down)
+    regional = functional.linear(
+        regional_rank
+        * (mask[0] * 0.75 * 0.5 * fixture.target.intrinsic_scale).unsqueeze(-1),
+        fixture.target.up,
+    )
+    torch.testing.assert_close(result, global_base + regional, rtol=0, atol=0)
+
+
+def test_same_adapter_global_and_regional_preserves_both_strengths() -> None:
+    """Apply one identity globally and regionally without deduplication or dilution."""
+
+    fixture = _fixture()
+    original_weight = fixture.base.weight.detach().clone()
+    _install_global_delta(fixture.base, fixture.target, strength=0.4)
+    plan = _plan((_use(fixture, composition=0, region=0, strength=0.8),))
+    mask = torch.linspace(1.0, 0.0, 12).reshape(1, 2, 6)
+
+    result = _execute(fixture, plan, mask, (0.25,))
+
+    rank = functional.linear(fixture.inputs, fixture.target.down)
+    global_weight = original_weight + 0.4 * fixture.target.intrinsic_scale * (
+        fixture.target.up @ fixture.target.down
+    )
+    expected = functional.linear(fixture.inputs, global_weight, fixture.base.bias)
+    expected = expected + functional.linear(
+        rank * (mask[0] * 0.8 * 0.25 * fixture.target.intrinsic_scale).unsqueeze(-1),
+        fixture.target.up,
+    )
+    torch.testing.assert_close(result, expected, rtol=0, atol=0)
+    assert fixture.cache.size == 1
+
+
 def test_failure_and_clear_release_local_preparation_state() -> None:
     """Validate before preparation and release successful preparation explicitly."""
 
     fixture = _fixture()
     plan = _plan((_use(fixture, composition=0, region=0),))
-    wrong = _masks(torch.ones((1, 1, 6)), features=4)
+    wrong = _operation_masks(
+        _masks(torch.ones((1, 1, 6)), features=4),
+        plan,
+    )
     with pytest.raises(ValueError, match="input must match"):
         RegionalLinearExecutor().execute(
             fixture.base,
@@ -354,6 +419,7 @@ def _use(
     return RegionalLinearTargetUse(
         composition,
         region,
+        RegionalLoraBranch.POSITIVE,
         RegionalLinearOperationKey(
             identity,
             "diffusion_model.layer.weight",
@@ -403,8 +469,24 @@ def _execute(
         fixture.base,
         fixture.inputs,
         plan=plan,
-        masks=_masks(masks.to(fixture.inputs), features=4),
+        masks=_operation_masks(
+            _masks(masks.to(fixture.inputs), features=4),
+            plan,
+        ),
         schedule_strengths=schedules,
+    )
+
+
+def _operation_masks(
+    spatial: RegionalActivationMaskBatch,
+    plan: RegionalLinearExecutionPlan,
+) -> RegionalOperationMaskBatch:
+    """Select region masks into exact target-use order for executor tests."""
+
+    return RegionalOperationMaskBatch(
+        torch.stack(tuple(spatial.multipliers[use.region_index] for use in plan.uses)),
+        spatial.geometry,
+        tuple(use.composition_index for use in plan.uses),
     )
 
 
@@ -414,6 +496,22 @@ def _delta(fixture: _Fixture, inputs: torch.Tensor) -> torch.Tensor:
     down = fixture.target.down.to(inputs)
     up = fixture.target.up.to(inputs)
     return functional.linear(functional.linear(inputs, down), up)
+
+
+def _install_global_delta(
+    module: nn.Linear,
+    target: StandardLoraTarget,
+    *,
+    strength: float,
+) -> None:
+    """Install the exact ordinary global LoRA delta into one base weight."""
+
+    with torch.no_grad():
+        module.weight.add_(
+            strength
+            * target.intrinsic_scale
+            * (target.up.to(module.weight) @ target.down.to(module.weight))
+        )
 
 
 def _preparations(

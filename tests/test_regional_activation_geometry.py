@@ -75,6 +75,13 @@ def test_batch_alignment_composes_cfg_latent_and_view_major_counts() -> None:
             12,
             (3, 4, 72, 1),
         ),
+        (
+            RegionalActivationLayout.BRANCH_TOKENS,
+            (4, 77, 8),
+            1,
+            77,
+            (3, 4, 77, 1),
+        ),
     ],
 )
 def test_geometry_admits_explicit_image_layouts(
@@ -118,6 +125,27 @@ def test_geometry_admits_conv3d_only_with_explicit_temporal_ownership() -> None:
     assert geometry.broadcast_mask_shape(4) == (4, 2, 1, 3, 6, 12)
 
 
+def test_geometry_admits_internal_grid_below_published_view_resolution() -> None:
+    """Keep the view as crop evidence while accepting observed UNet downsampling."""
+
+    geometry = RegionalActivationGeometry(
+        RegionalActivationLayout.DIRECT_CONVOLUTION_2D,
+        (2, 8, 3, 6),
+        1,
+        3,
+        6,
+        RegionalActivationBatchAlignment(
+            2,
+            1,
+            _full_layout(input_batch_size=2),
+        ),
+    )
+
+    assert geometry.invocation_shape == (2, 8, 3, 6)
+    assert geometry.batch_alignment.spatial_layout is not None
+    assert geometry.batch_alignment.spatial_layout.views[0].model_width == 12
+
+
 @pytest.mark.parametrize(
     ("case", "message"),
     [
@@ -127,7 +155,6 @@ def test_geometry_admits_conv3d_only_with_explicit_temporal_ownership() -> None:
         ("conv-height", "height one"),
         ("conv3d-ownership", "explicit repeated"),
         ("temporal-on-image", "cannot declare a temporal axis"),
-        ("view-shape", "mismatched view indices"),
     ],
 )
 def test_geometry_rejects_ambiguous_or_divergent_layouts(
@@ -195,19 +222,6 @@ def _invalid_case(case: str) -> object:
             12,
             RegionalActivationBatchAlignment(2, 2),
             temporal_axis=2,
-        )
-    if case == "view-shape":
-        return RegionalActivationGeometry(
-            RegionalActivationLayout.DIRECT_CONVOLUTION_2D,
-            (2, 8, 3, 8),
-            1,
-            3,
-            8,
-            RegionalActivationBatchAlignment(
-                2,
-                1,
-                _full_layout(input_batch_size=2),
-            ),
         )
     raise AssertionError(f"Unknown regional activation invalid case: {case}")
 

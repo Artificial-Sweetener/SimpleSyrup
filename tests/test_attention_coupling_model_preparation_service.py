@@ -25,6 +25,9 @@ from simple_syrup.domain.regional_attention_execution import (
     RegionalAttentionExecutionMode,
 )
 from simple_syrup.domain.regional_lora_plan import EMPTY_REGIONAL_LORA_PLAN
+from simple_syrup.runtime.attention_coupling.family_admission import (
+    AttentionCouplingFamilyAdmission,
+)
 from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 from simple_syrup.services.attention_coupling_model_preparation_service import (
     AttentionCouplingModelPreparationService,
@@ -148,12 +151,18 @@ class _ModelFamily:
         if self.latent_error is not None:
             raise self.latent_error
 
-    def validate_adaptation(self, adaptation: RegionalLoraPlanAdaptation) -> None:
+    def admit_adaptation(
+        self,
+        model: object,
+        adaptation: RegionalLoraPlanAdaptation,
+    ) -> AttentionCouplingFamilyAdmission:
         """Record regional model-adapter admission."""
 
+        del model
         type(self).adaptation_calls.append(adaptation)
         if self.adaptation_error is not None:
             raise self.adaptation_error
+        return AttentionCouplingFamilyAdmission(adaptation)
 
     def derive(self, **kwargs: object) -> object:
         """Record derivation and return a recognizable model."""

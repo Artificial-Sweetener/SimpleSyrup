@@ -20,6 +20,7 @@ class RegionalActivationLayout(StrEnum):
     DIRECT_CONVOLUTION_3D = "direct_convolution_3d"
     FLATTENED_SPATIAL_TOKENS = "flattened_spatial_tokens"
     CONSUMER_SPATIALIZED = "consumer_spatialized"
+    BRANCH_TOKENS = "branch_tokens"
 
 
 class RegionalTemporalOwnership(StrEnum):
@@ -98,19 +99,6 @@ class RegionalActivationGeometry:
             raise ValueError(
                 "Regional activation leading batch must match its alignment."
             )
-        spatial_layout = self.batch_alignment.spatial_layout
-        if spatial_layout is not None:
-            mismatched_views = tuple(
-                index
-                for index, view in enumerate(spatial_layout.views)
-                if (view.model_height, view.model_width)
-                != (self.spatial_height, self.spatial_width)
-            )
-            if mismatched_views:
-                raise ValueError(
-                    "Regional activation H/W must match every published spatial "
-                    f"view; mismatched view indices {mismatched_views}."
-                )
         rank = len(self.invocation_shape)
         _axis(self.feature_axis, rank=rank, name="feature_axis")
         if self.feature_axis == 0:
@@ -174,6 +162,15 @@ class RegionalActivationGeometry:
                 ),
                 feature_axis=2,
             )
+            self._require_no_temporal_axis()
+            return
+        if self.layout is RegionalActivationLayout.BRANCH_TOKENS:
+            self._require_shape(
+                (batch, self.spatial_width, features),
+                feature_axis=2,
+            )
+            if self.spatial_height != 1:
+                raise ValueError("Branch-token regional geometry requires height one.")
             self._require_no_temporal_axis()
             return
         raise AssertionError(f"Unhandled regional activation layout: {self.layout}")

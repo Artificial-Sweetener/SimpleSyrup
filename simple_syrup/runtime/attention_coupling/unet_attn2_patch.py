@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import torch
 
@@ -24,15 +24,41 @@ class _UnetAttn2Invocation:
     execution: UnetAttn2Execution
 
 
+@runtime_checkable
+class UnetPackedOperationScope(Protocol):
+    """Publish compact attn2 execution around native attention operations."""
+
+    def begin_packed(self, execution: UnetAttn2Execution) -> None:
+        """Open one compact operation scope."""
+
+        ...
+
+    def end_packed(self, execution: UnetAttn2Execution) -> None:
+        """Close the matching compact operation scope."""
+
+        ...
+
+
 class UnetAttn2PatchPair:
     """Own one collision-detecting input/output callback pair."""
 
-    def __init__(self, resolver: UnetAttn2ExecutionResolver) -> None:
+    def __init__(
+        self,
+        resolver: UnetAttn2ExecutionResolver,
+        *,
+        operation_scope: UnetPackedOperationScope | None = None,
+    ) -> None:
         """Retain the sole per-layer execution-resolution authority."""
 
         if not isinstance(resolver, UnetAttn2ExecutionResolver):
             raise TypeError("UNet attn2 patch pair requires an execution resolver.")
+        if operation_scope is not None and not isinstance(
+            operation_scope,
+            UnetPackedOperationScope,
+        ):
+            raise TypeError("UNet attn2 operation scope has an invalid type.")
         self._resolver = resolver
+        self._operation_scope = operation_scope
 
     def input_patch(
         self,
@@ -50,6 +76,8 @@ class UnetAttn2PatchPair:
         if not isinstance(execution, UnetAttn2Execution):
             raise TypeError("UNet attn2 resolver returned an invalid execution.")
         expanded = execution.expand(n, context_attn2, value_attn2)
+        if self._operation_scope is not None:
+            self._operation_scope.begin_packed(execution)
         options[_INVOCATION_KEY] = _UnetAttn2Invocation(execution)
         return expanded.query, expanded.context, expanded.value
 
@@ -64,6 +92,8 @@ class UnetAttn2PatchPair:
         invocation = options.pop(_INVOCATION_KEY, None)
         if not isinstance(invocation, _UnetAttn2Invocation):
             raise ValueError("UNet attn2 output callback has no matching input state.")
+        if self._operation_scope is not None:
+            self._operation_scope.end_packed(invocation.execution)
         return invocation.execution.blend(n)
 
     @staticmethod

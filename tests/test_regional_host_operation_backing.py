@@ -17,7 +17,10 @@ from simple_syrup.domain.regional_activation_geometry import (
     RegionalActivationGeometry,
     RegionalActivationLayout,
 )
-from simple_syrup.domain.regional_lora_plan import RegionalLoraAdapterIdentity
+from simple_syrup.domain.regional_lora_plan import (
+    RegionalLoraAdapterIdentity,
+    RegionalLoraBranch,
+)
 from simple_syrup.masking.regional_activation_mask_projection import (
     RegionalActivationMaskBatch,
 )
@@ -45,6 +48,10 @@ from simple_syrup.runtime.regional_lora.linear_execution_plan import (
 from simple_syrup.runtime.regional_lora.operation_invocation import (
     RegionalOperationInvocation,
     RegionalOperationInvocationContext,
+    StaticRegionalOperationInvocationResolver,
+)
+from simple_syrup.runtime.regional_lora.operation_mask_resolution import (
+    RegionalOperationMaskBatch,
 )
 from simple_syrup.runtime.regional_lora.preparation import (
     RegionalLoraTargetPreparation,
@@ -98,7 +105,9 @@ def test_linear_active_path_applies_only_task_local_regional_delta() -> None:
     masks = _linear_masks(inputs.shape, torch.tensor([[[[1.0], [0.0]]]]))
 
     with context.activate(
-        {"diffusion_model.linear": RegionalOperationInvocation(masks, (1.0,))}
+        StaticRegionalOperationInvocationResolver(
+            {"diffusion_model.linear": RegionalOperationInvocation(masks, (1.0,))}
+        )
     ):
         output = patch(inputs)
 
@@ -162,14 +171,21 @@ def test_convolution_inactive_and_active_paths_preserve_host_semantics() -> None
         2,
         RegionalActivationBatchAlignment(1, 1),
     )
-    masks = RegionalActivationMaskBatch(
+    spatial_masks = RegionalActivationMaskBatch(
         torch.tensor([[[[[1.0, 0.0], [0.0, 0.0]]]]]),
         geometry,
+    )
+    masks = RegionalOperationMaskBatch(
+        spatial_masks.multipliers,
+        spatial_masks.geometry,
+        (0,),
     )
 
     torch.testing.assert_close(patch(inputs), inputs)
     with context.activate(
-        {"diffusion_model.conv": RegionalOperationInvocation(masks, (1.0,))}
+        StaticRegionalOperationInvocationResolver(
+            {"diffusion_model.conv": RegionalOperationInvocation(masks, (1.0,))}
+        )
     ):
         output = patch(inputs)
 
@@ -206,6 +222,7 @@ def _linear_plan() -> RegionalLinearExecutionPlan:
             RegionalLinearTargetUse(
                 0,
                 0,
+                RegionalLoraBranch.POSITIVE,
                 RegionalLinearOperationKey(
                     identity,
                     target.target,
@@ -242,6 +259,7 @@ def _convolution_plan() -> RegionalConvolutionExecutionPlan:
             RegionalConvolutionTargetUse(
                 0,
                 0,
+                RegionalLoraBranch.POSITIVE,
                 (id(preparation.down), id(preparation.up), None),
                 preparation,
                 parameters,
@@ -254,7 +272,7 @@ def _convolution_plan() -> RegionalConvolutionExecutionPlan:
 def _linear_masks(
     shape: torch.Size,
     multipliers: torch.Tensor,
-) -> RegionalActivationMaskBatch:
+) -> RegionalOperationMaskBatch:
     """Return consumer-spatialized masks for one B/S/C input."""
 
     geometry = RegionalActivationGeometry(
@@ -265,7 +283,12 @@ def _linear_masks(
         int(shape[1]),
         RegionalActivationBatchAlignment(int(shape[0]), 1),
     )
-    return RegionalActivationMaskBatch(multipliers, geometry)
+    spatial = RegionalActivationMaskBatch(multipliers, geometry)
+    return RegionalOperationMaskBatch(
+        spatial.multipliers,
+        spatial.geometry,
+        (0,),
+    )
 
 
 def _uuid(value: int) -> UUID:

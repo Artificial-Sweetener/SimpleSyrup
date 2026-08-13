@@ -26,6 +26,7 @@ class ComfyServerCommand:
     comfy_root: Path
     python_executable: Path
     port: int
+    launch_arguments: tuple[str, ...] = ()
 
     def arguments(self) -> tuple[str, ...]:
         """Return the shell-free loopback launch argument list."""
@@ -40,12 +41,18 @@ class ComfyServerCommand:
             "--disable-auto-launch",
             "--database-url",
             "sqlite:///:memory:",
+            *self.launch_arguments,
         )
 
     def validate(self) -> None:
         """Fail before launch when the authoritative install is incomplete."""
 
         validate_loopback_port(self.port)
+        if any(
+            not isinstance(argument, str) or not argument.strip()
+            for argument in self.launch_arguments
+        ):
+            raise ValueError("Comfy launch arguments must be non-empty strings.")
         if not self.comfy_root.is_dir() or not (self.comfy_root / "main.py").is_file():
             raise ValueError("Comfy root must contain main.py.")
         if not self.python_executable.is_file():

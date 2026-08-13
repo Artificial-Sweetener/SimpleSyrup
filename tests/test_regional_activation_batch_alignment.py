@@ -27,7 +27,15 @@ from simple_syrup.runtime.regional_lora.activation_batch_alignment import (
 def test_resolver_composes_real_cfg_latent_and_tiled_authorities() -> None:
     """Adapt exact chunk and view batches without recreating their ordering."""
 
-    contexts = _contexts(latent_batch_size=2)
+    contexts = _contexts(
+        latent_batch_size=2,
+        branches=(
+            RegionalAttentionBranch.POSITIVE,
+            RegionalAttentionBranch.NEGATIVE,
+            RegionalAttentionBranch.POSITIVE,
+            RegionalAttentionBranch.NEGATIVE,
+        ),
+    )
     layout = SpatialBatchLayout(
         8,
         4,
@@ -50,6 +58,68 @@ def test_resolver_composes_real_cfg_latent_and_tiled_authorities() -> None:
     assert alignment.spatial_layout is layout
 
 
+def test_resolver_collapses_view_repeated_context_chunks_to_logical_cfg() -> None:
+    """Count repeated spatial views as invocations, not new CFG branches."""
+
+    contexts = _contexts(
+        latent_batch_size=2,
+        branches=(
+            RegionalAttentionBranch.POSITIVE,
+            RegionalAttentionBranch.NEGATIVE,
+            RegionalAttentionBranch.POSITIVE,
+            RegionalAttentionBranch.NEGATIVE,
+        ),
+    )
+    layout = SpatialBatchLayout(
+        8,
+        4,
+        (
+            SpatialView(SpatialViewKind.TILE, 0, 0, 4, 4, 4, 4),
+            SpatialView(SpatialViewKind.TILE, 4, 0, 4, 4, 4, 4),
+        ),
+        input_batch_size=4,
+    )
+
+    alignment = RegionalActivationBatchAlignmentResolver().resolve(
+        contexts,
+        spatial_layout=layout,
+    )
+
+    assert alignment.latent_batch_size == 2
+    assert alignment.chunk_count == 2
+    assert alignment.base_batch_size == 4
+    assert alignment.invocation_batch_size == 8
+
+
+def test_resolver_rejects_nonrepeating_view_chunk_branches() -> None:
+    """Fail closed when expanded contexts do not preserve view-major CFG order."""
+
+    contexts = _contexts(
+        latent_batch_size=2,
+        branches=(
+            RegionalAttentionBranch.POSITIVE,
+            RegionalAttentionBranch.NEGATIVE,
+            RegionalAttentionBranch.NEGATIVE,
+            RegionalAttentionBranch.POSITIVE,
+        ),
+    )
+    layout = SpatialBatchLayout(
+        8,
+        4,
+        (
+            SpatialView(SpatialViewKind.TILE, 0, 0, 4, 4, 4, 4),
+            SpatialView(SpatialViewKind.TILE, 4, 0, 4, 4, 4, 4),
+        ),
+        input_batch_size=4,
+    )
+
+    with pytest.raises(ValueError, match="view-major branch order"):
+        RegionalActivationBatchAlignmentResolver().resolve(
+            contexts,
+            spatial_layout=layout,
+        )
+
+
 def test_resolver_rejects_layout_that_disagrees_with_context_batch() -> None:
     """Refuse a view layout built over a different CFG/latent base batch."""
 
@@ -61,33 +131,35 @@ def test_resolver_rejects_layout_that_disagrees_with_context_batch() -> None:
         input_batch_size=2,
     )
 
-    with pytest.raises(ValueError, match="input batch"):
+    with pytest.raises(ValueError, match="expanded context batch"):
         RegionalActivationBatchAlignmentResolver().resolve(
             contexts,
             spatial_layout=layout,
         )
 
 
-def _contexts(*, latent_batch_size: int) -> BatchedRegionalAttentionContexts:
+def _contexts(
+    *,
+    latent_batch_size: int,
+    branches: tuple[RegionalAttentionBranch, ...] = (
+        RegionalAttentionBranch.POSITIVE,
+        RegionalAttentionBranch.NEGATIVE,
+    ),
+) -> BatchedRegionalAttentionContexts:
     """Return one actual two-branch chunk-major alignment value."""
 
-    chunks = (
+    chunks = tuple(
         RegionalAttentionChunkBatch(
-            0,
-            RegionalAttentionBranch.POSITIVE,
-            0,
-            latent_batch_size,
-        ),
-        RegionalAttentionChunkBatch(
-            1,
-            RegionalAttentionBranch.NEGATIVE,
-            latent_batch_size,
-            latent_batch_size * 2,
-        ),
+            chunk_index,
+            branch,
+            chunk_index * latent_batch_size,
+            (chunk_index + 1) * latent_batch_size,
+        )
+        for chunk_index, branch in enumerate(branches)
     )
     return BatchedRegionalAttentionContexts(
         latent_batch_size,
         chunks,
-        torch.zeros((latent_batch_size * 2, 1, 2)),
+        torch.zeros((latent_batch_size * len(chunks), 1, 2)),
         (),
     )

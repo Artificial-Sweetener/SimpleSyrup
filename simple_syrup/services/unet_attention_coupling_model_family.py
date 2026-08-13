@@ -13,6 +13,9 @@ from comfy.ldm.modules.diffusionmodules.openaimodel import UNetModel
 
 from ..domain.processed_regional_attention import ProcessedRegionalAttentionPlan
 from ..runtime.attention_coupling.context_validation import RegionalContextValidator
+from ..runtime.attention_coupling.family_admission import (
+    AttentionCouplingFamilyAdmission,
+)
 from ..runtime.attention_coupling.unet import StandardUnetAttentionBackend
 from ..runtime.attention_coupling.unet_attention_state import (
     StandardUnetAttentionState,
@@ -22,6 +25,10 @@ from ..runtime.attention_coupling.unet_context import (
 )
 from ..runtime.regional_attention_diagnostics import (
     RegionalAttentionDiagnosticsBuilder,
+)
+from ..runtime.regional_lora.standard_unet_operation_preparation import (
+    StandardUnetOperationAdmission,
+    StandardUnetOperationPreparation,
 )
 from ..runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 
@@ -33,6 +40,9 @@ class StandardUnetAttentionCouplingModelFamily:
 
     backend_class: ClassVar[type[StandardUnetAttentionBackend]] = (
         StandardUnetAttentionBackend
+    )
+    operation_preparation_class: ClassVar[type[StandardUnetOperationPreparation]] = (
+        StandardUnetOperationPreparation
     )
 
     @property
@@ -51,33 +61,32 @@ class StandardUnetAttentionCouplingModelFamily:
                 "Standard UNet Attention Coupling requires a BxCxHxW image latent."
             )
 
-    def validate_adaptation(self, adaptation: RegionalLoraPlanAdaptation) -> None:
-        """Reject regional model WeightHooks before loading or patch mutation."""
+    def admit_adaptation(
+        self,
+        model: object,
+        adaptation: RegionalLoraPlanAdaptation,
+    ) -> AttentionCouplingFamilyAdmission:
+        """Resolve and bind the complete regional operation surface before load."""
 
         if not isinstance(adaptation, RegionalLoraPlanAdaptation):
             raise TypeError(
                 "Standard UNet Attention Coupling requires regional adaptation."
             )
-        adapter_count = len(adaptation.plan.adapters)
-        if adapter_count:
-            raise ValueError(
-                "Standard SD/SDXL Attention Coupling does not support regional "
-                "model-side WeightHooks; observed "
-                f"{adapter_count} adapter use(s)."
-            )
+        return self.operation_preparation_class().admit(model, adaptation)
 
     def derive(
         self,
         *,
         model: object,
         processed_plan: ProcessedRegionalAttentionPlan,
-        adaptation: RegionalLoraPlanAdaptation,
+        admission: AttentionCouplingFamilyAdmission,
         region_strengths: tuple[float, ...],
         latent_batch_size: int,
     ) -> object:
         """Build shared diagnostics state and derive the paired attn2 backend."""
 
-        self.validate_adaptation(adaptation)
+        if not isinstance(admission, StandardUnetOperationAdmission):
+            raise TypeError("Standard UNet derivation requires family admission.")
         if isinstance(latent_batch_size, bool) or not isinstance(
             latent_batch_size, int
         ):
@@ -92,4 +101,12 @@ class StandardUnetAttentionCouplingModelFamily:
                 backend=_STANDARD_UNET_BACKEND_IDENTITY,
             ),
         )
-        return self.backend_class().derive(model=model, state=state).model
+        return (
+            self.backend_class()
+            .derive(
+                model=model,
+                state=state,
+                admission=admission,
+            )
+            .model
+        )

@@ -38,6 +38,7 @@ class ManagedComfyServer:
         artifacts: IntegrationArtifacts,
         required_node_ids: frozenset[str],
         readiness_timeout: float = 180.0,
+        launch_arguments: tuple[str, ...] = (),
     ) -> None:
         """Retain immutable launch inputs without starting external state."""
 
@@ -45,6 +46,7 @@ class ManagedComfyServer:
         self._artifacts = artifacts
         self._required = required_node_ids
         self._readiness_timeout = readiness_timeout
+        self._launch_arguments = launch_arguments
         self._running: RunningManagedComfy | None = None
 
     def __enter__(self) -> RunningManagedComfy:
@@ -52,7 +54,10 @@ class ManagedComfyServer:
 
         port = select_unused_loopback_port()
         command = ComfyServerCommand(
-            self._root, self._root / "venv" / "Scripts" / "python.exe", port
+            self._root,
+            self._root / "venv" / "Scripts" / "python.exe",
+            port,
+            self._launch_arguments,
         )
         process = WindowsComfyProcess.start(
             command,

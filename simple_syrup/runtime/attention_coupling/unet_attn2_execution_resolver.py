@@ -157,6 +157,8 @@ class StandardUnetAttn2ExecutionResolver:
             contexts,
             projected.flattened,
             self._state.region_strengths,
+            geometry.query.query_height,
+            geometry.query.query_width,
         )
         snapshot = self._state.diagnostics.build(
             contexts,

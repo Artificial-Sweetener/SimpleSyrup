@@ -18,6 +18,7 @@ from simple_syrup.domain.regional_activation_geometry import (
     RegionalActivationLayout,
     RegionalTemporalOwnership,
 )
+from simple_syrup.domain.regional_lora_plan import RegionalLoraBranch
 from simple_syrup.domain.spatial_views import (
     SpatialBatchLayout,
     SpatialView,
@@ -36,6 +37,9 @@ from simple_syrup.runtime.regional_lora.convolution_execution_plan import (
 )
 from simple_syrup.runtime.regional_lora.convolution_preparation import (
     RegionalConvolutionPreparation,
+)
+from simple_syrup.runtime.regional_lora.operation_mask_resolution import (
+    RegionalOperationMaskBatch,
 )
 
 
@@ -175,6 +179,7 @@ def test_multiple_adapters_preserve_declared_addition_order() -> None:
     second = RegionalConvolutionTargetUse(
         1,
         1,
+        RegionalLoraBranch.POSITIVE,
         (id(second_down), id(second_up), None),
         RegionalConvolutionPreparation(second_down, None, second_up),
         fixture.parameters,
@@ -234,6 +239,7 @@ def test_grouped_convolution_matches_grouped_merged_weight_reference() -> None:
     use = RegionalConvolutionTargetUse(
         0,
         0,
+        RegionalLoraBranch.POSITIVE,
         (id(down), id(up), None),
         RegionalConvolutionPreparation(down, None, up),
         parameters,
@@ -287,7 +293,7 @@ def test_view_major_tiled_batch_keeps_each_tile_mask_on_its_rows() -> None:
         ),
         dim=0,
     )
-    masks = RegionalActivationMaskBatch(
+    spatial_masks = RegionalActivationMaskBatch(
         view_values.unsqueeze(0).unsqueeze(2),
         RegionalActivationGeometry(
             RegionalActivationLayout.DIRECT_CONVOLUTION_2D,
@@ -297,6 +303,11 @@ def test_view_major_tiled_batch_keeps_each_tile_mask_on_its_rows() -> None:
             fixture.rank_spatial[1],
             RegionalActivationBatchAlignment(2, 1, _two_view_layout()),
         ),
+    )
+    masks = RegionalOperationMaskBatch(
+        spatial_masks.multipliers,
+        spatial_masks.geometry,
+        (0,),
     )
 
     result = RegionalConvolutionExecutor().execute(
@@ -436,6 +447,7 @@ class _Fixture:
         self.use = RegionalConvolutionTargetUse(
             0,
             0,
+            RegionalLoraBranch.POSITIVE,
             (
                 id(self.down),
                 id(self.up),
@@ -525,14 +537,14 @@ def _mask_batch(
     dimension: int,
     input_batch: int,
     features: int,
-) -> RegionalActivationMaskBatch:
+) -> RegionalOperationMaskBatch:
     """Wrap region/spatial masks in direct convolution geometry."""
 
     if values.ndim == dimension:
         values = values.unsqueeze(0)
     regions = int(values.shape[0])
-    spatial = tuple(int(value) for value in values.shape[1:])
-    invocation = (input_batch, features, *spatial)
+    spatial_shape = tuple(int(value) for value in values.shape[1:])
+    invocation = (input_batch, features, *spatial_shape)
     layout = {
         1: RegionalActivationLayout.DIRECT_CONVOLUTION_1D,
         2: RegionalActivationLayout.DIRECT_CONVOLUTION_2D,
@@ -542,8 +554,8 @@ def _mask_batch(
         layout,
         invocation,
         1,
-        1 if dimension == 1 else spatial[-2],
-        spatial[-1],
+        1 if dimension == 1 else spatial_shape[-2],
+        spatial_shape[-1],
         RegionalActivationBatchAlignment(input_batch, 1),
         temporal_axis=2 if dimension == 3 else None,
         temporal_ownership=(
@@ -552,13 +564,18 @@ def _mask_batch(
             else RegionalTemporalOwnership.NONE
         ),
     )
-    expanded = values.reshape(regions, 1, 1, *spatial).expand(
+    expanded = values.reshape(regions, 1, 1, *spatial_shape).expand(
         -1,
         input_batch,
         -1,
-        *spatial,
+        *spatial_shape,
     )
-    return RegionalActivationMaskBatch(expanded, geometry)
+    spatial_masks = RegionalActivationMaskBatch(expanded, geometry)
+    return RegionalOperationMaskBatch(
+        spatial_masks.multipliers,
+        spatial_masks.geometry,
+        tuple(range(regions)),
+    )
 
 
 def _reference_rank_spatial(

@@ -164,4 +164,4 @@ def _execution() -> UnetAttn2Execution:
             ),
         ),
     )
-    return UnetAttn2Execution(contexts, torch.ones(1, 1, 8), (1.0,))
+    return UnetAttn2Execution(contexts, torch.ones(1, 1, 8), (1.0,), 2, 4)

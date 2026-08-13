@@ -13,7 +13,10 @@ import comfy.model_patcher
 import torch
 from comfy.weight_adapter.lora import LoRAAdapter
 
-from ...domain.regional_lora_plan import RegionalLoraAdapterIdentity
+from ...domain.regional_lora_plan import (
+    RegionalLoraAdapterIdentity,
+    RegionalLoraBranch,
+)
 from .execution_cache import ModelCloneLineage, RegionalLoraExecutionCache
 from .preparation import (
     RegionalLoraCompatibleBatchPreparation,
@@ -43,6 +46,7 @@ class RegionalLinearTargetUse:
 
     composition_index: int
     region_index: int
+    branch: RegionalLoraBranch
     operation_key: RegionalLinearOperationKey
     preparation: RegionalLoraTargetPreparation
     base_strength: float
@@ -60,6 +64,8 @@ class RegionalLinearTargetUse:
                 raise ValueError(f"Regional Linear {name} must be non-negative.")
         if not isinstance(self.operation_key, RegionalLinearOperationKey):
             raise TypeError("Regional Linear use requires an operation key.")
+        if not isinstance(self.branch, RegionalLoraBranch):
+            raise TypeError("Regional Linear use branch has an invalid type.")
         if not isinstance(self.preparation, RegionalLoraTargetPreparation):
             raise TypeError("Regional Linear use requires target preparation.")
         if not isinstance(self.base_strength, float) or not math.isfinite(
@@ -201,11 +207,13 @@ class RegionalLinearExecutionPlanFactory:
             raise ValueError("Regional Linear execution requires a bound operation.")
         if binding.module_class is not BoundRegionalLoraModuleClass.LINEAR:
             raise ValueError("Regional Linear execution requires a Linear target.")
-        if binding.spatial_capability is not (
-            BoundRegionalLoraSpatialCapability.CONSUMER_SPATIALIZED
+        if binding.spatial_capability not in (
+            BoundRegionalLoraSpatialCapability.SPATIAL_TOKENS,
+            BoundRegionalLoraSpatialCapability.PACKED_IMAGE_TOKENS,
+            BoundRegionalLoraSpatialCapability.PACKED_CONTEXT_TOKENS,
         ):
             raise ValueError(
-                "Regional Linear execution requires proven consumer spatialization."
+                "Regional Linear execution requires a proven token-consumer role."
             )
         operation = binding.normalized_target.operation
         if not isinstance(operation, LoRAAdapter):
@@ -237,6 +245,7 @@ class RegionalLinearExecutionPlanFactory:
         return RegionalLinearTargetUse(
             descriptor.adapter.composition_index,
             descriptor.adapter.region_index,
+            descriptor.adapter.branch,
             RegionalLinearOperationKey(
                 adapter_identity,
                 descriptor.target.parameter_path,

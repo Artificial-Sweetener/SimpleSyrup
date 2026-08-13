@@ -13,11 +13,12 @@ import torch
 import torch.nn.functional as functional
 
 from ...domain.regional_activation_geometry import RegionalActivationLayout
-from ...masking.regional_activation_mask_projection import RegionalActivationMaskBatch
 from .convolution_execution_plan import (
     RegionalConvolutionExecutionPlan,
     RegionalConvolutionTargetUse,
 )
+from .convolution_rank_geometry import REGIONAL_CONVOLUTION_RANK_GEOMETRY_RESOLVER
+from .operation_mask_resolution import RegionalOperationMaskBatch
 
 
 class RegionalConvolutionExecutor:
@@ -29,7 +30,7 @@ class RegionalConvolutionExecutor:
         inputs: torch.Tensor,
         *args: object,
         plan: RegionalConvolutionExecutionPlan,
-        masks: RegionalActivationMaskBatch,
+        masks: RegionalOperationMaskBatch,
         schedule_strengths: tuple[float, ...],
         **kwargs: object,
     ) -> torch.Tensor:
@@ -66,7 +67,7 @@ class RegionalConvolutionExecutor:
             scale = use.base_strength * schedule_strengths[index]
             if scale == 0.0:
                 continue
-            multiplier = masks.multipliers[use.region_index]
+            multiplier = masks.multipliers[index]
             if not bool(torch.count_nonzero(multiplier)):
                 continue
             result = result + self._delta(
@@ -171,8 +172,8 @@ class RegionalConvolutionExecutor:
             raise ValueError("Regional convolution input dimensionality is invalid.")
         if int(inputs.shape[1]) != parameters.input_channels:
             raise ValueError("Regional convolution input channel count is invalid.")
-        if not isinstance(masks, RegionalActivationMaskBatch):
-            raise TypeError("Regional convolution execution requires activation masks.")
+        if not isinstance(masks, RegionalOperationMaskBatch):
+            raise TypeError("Regional convolution execution requires operation masks.")
         expected_layout = {
             1: RegionalActivationLayout.DIRECT_CONVOLUTION_1D,
             2: RegionalActivationLayout.DIRECT_CONVOLUTION_2D,
@@ -200,13 +201,13 @@ class RegionalConvolutionExecutor:
             for strength in schedule_strengths
         ):
             raise TypeError("Regional convolution schedule strengths must be finite.")
-        if any(
-            use.region_index >= int(masks.multipliers.shape[0]) for use in plan.uses
+        if masks.composition_indices != tuple(
+            use.composition_index for use in plan.uses
         ):
             raise ValueError(
-                "Regional convolution use references an unavailable region."
+                "Regional convolution operation masks must align to target uses."
             )
-        expected_spatial = _rank_spatial_shape(
+        expected_spatial = REGIONAL_CONVOLUTION_RANK_GEOMETRY_RESOLVER.resolve(
             tuple(int(value) for value in inputs.shape[2:]),
             plan.uses[0],
         )
@@ -232,59 +233,6 @@ class RegionalConvolutionExecutor:
         if multiplier_spatial != expected_spatial:
             raise ValueError("Regional convolution mask spatial shape is invalid.")
         return expected_spatial
-
-
-def _rank_spatial_shape(
-    input_spatial: tuple[int, ...],
-    use: RegionalConvolutionTargetUse,
-) -> tuple[int, ...]:
-    """Return exact rank-activation spatial dimensions before original execution."""
-
-    parameters = use.parameters
-    down = use.preparation.down
-    if down.ndim == 2 or use.preparation.middle is None:
-        down_kernel = parameters.kernel_size
-    else:
-        down_kernel = tuple(int(value) for value in down.shape[2:])
-    spatial = tuple(
-        _convolution_output_size(
-            size,
-            kernel,
-            stride,
-            padding,
-            dilation,
-        )
-        for size, kernel, stride, padding, dilation in zip(
-            input_spatial,
-            down_kernel,
-            parameters.stride,
-            parameters.padding,
-            parameters.dilation,
-            strict=True,
-        )
-    )
-    middle = use.preparation.middle
-    if middle is not None:
-        middle_kernel = tuple(int(value) for value in middle.shape[2:])
-        spatial = tuple(
-            _convolution_output_size(size, kernel, 1, 0, 1)
-            for size, kernel in zip(spatial, middle_kernel, strict=True)
-        )
-    if any(size < 1 for size in spatial):
-        raise ValueError("Regional convolution rank activation would be empty.")
-    return spatial
-
-
-def _convolution_output_size(
-    size: int,
-    kernel: int,
-    stride: int,
-    padding: int,
-    dilation: int,
-) -> int:
-    """Return Torch's ordinary convolution output size for one axis."""
-
-    return ((size + 2 * padding - dilation * (kernel - 1) - 1) // stride) + 1
 
 
 def _convolution_weight(

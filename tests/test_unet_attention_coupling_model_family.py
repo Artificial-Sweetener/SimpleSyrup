@@ -35,6 +35,9 @@ from simple_syrup.runtime.attention_coupling.unet_attention_state import (
 from simple_syrup.runtime.attention_coupling.unet_context import (
     STANDARD_UNET_REGIONAL_CONTEXT_VALIDATOR,
 )
+from simple_syrup.runtime.regional_lora.standard_unet_operation_preparation import (
+    StandardUnetOperationAdmission,
+)
 from simple_syrup.runtime.regional_lora_host_payload import RegionalLoraHostPayload
 from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 from simple_syrup.services.unet_attention_coupling_model_family import (
@@ -65,11 +68,11 @@ def test_unet_family_builds_shared_state_and_derives_paired_backend() -> None:
     _Backend.calls = []
     try:
         family.validate_latent(torch.zeros(2, 4, 8, 8))
-        family.validate_adaptation(adaptation)
+        admission = family.admit_adaptation("model", adaptation)
         derived = family.derive(
             model="model",
             processed_plan=plan,
-            adaptation=adaptation,
+            admission=admission,
             region_strengths=(0.75,),
             latent_batch_size=2,
         )
@@ -87,20 +90,20 @@ def test_unet_family_builds_shared_state_and_derives_paired_backend() -> None:
     assert state.diagnostics.backend.endswith(".UNetModel")
 
 
-def test_unet_family_rejects_regional_model_hooks_before_derivation() -> None:
-    """Fail closed instead of silently omitting a regional model-side adapter."""
+def test_unet_family_requires_complete_regional_admission_before_derivation() -> None:
+    """Fail closed when derivation receives no bound operation evidence."""
 
     family = StandardUnetAttentionCouplingModelFamily()
     adaptation = _regional_lora_adaptation()
     _Backend.calls = []
 
-    with pytest.raises(ValueError, match="1 adapter use"):
-        family.validate_adaptation(adaptation)
-    with pytest.raises(ValueError, match="1 adapter use"):
+    with pytest.raises(ValueError, match="complete target binding"):
+        StandardUnetOperationAdmission(adaptation, None, {}, None)
+    with pytest.raises(TypeError, match="family admission"):
         family.derive(
             model="model",
             processed_plan=_plan(),
-            adaptation=adaptation,
+            admission=object(),  # type: ignore[arg-type]
             region_strengths=(1.0,),
             latent_batch_size=1,
         )

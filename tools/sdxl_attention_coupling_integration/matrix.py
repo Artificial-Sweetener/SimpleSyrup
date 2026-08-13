@@ -40,12 +40,24 @@ POSITIVE_PROMPTS = (
     "one complete distinct red-haired female mage in crimson robes at the far "
     "right, full body, standing alone",
 )
+POSITIVE_PROMPTS_G = (
+    "cinematic fantasy key art, coherent forest clearing, two adult adventurers, "
+    "wide environmental composition, unified lighting and perspective",
+    "cinematic fantasy knight character design, coherent blue armor, full body",
+    "cinematic fantasy mage character design, coherent crimson robes, full body",
+)
 NEGATIVE_PROMPTS = (
     "single person, centered person, touching people, overlapping people, fused "
     "people, merged body, split face, half-and-half person, duplicate body, "
     "collage, split screen, cropped, low quality, blurry",
     "low quality, malformed armor, fused body",
     "low quality, malformed hands, fused body",
+)
+NEGATIVE_PROMPTS_G = (
+    "collage, split screen, incoherent scene, duplicate bodies, fused people, "
+    "cropped composition, low quality",
+    "malformed knight, incoherent armor, low quality",
+    "malformed mage, incoherent hands, low quality",
 )
 
 

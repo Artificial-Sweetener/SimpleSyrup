@@ -27,7 +27,9 @@ class BoundRegionalLoraSpatialCapability(StrEnum):
     """Declare how one bound operation can receive regional spatial ownership."""
 
     DIRECT = "direct"
-    CONSUMER_SPATIALIZED = "consumer_spatialized"
+    SPATIAL_TOKENS = "spatial_tokens"
+    PACKED_IMAGE_TOKENS = "packed_image_tokens"
+    PACKED_CONTEXT_TOKENS = "packed_context_tokens"
     GLOBAL_ONLY = "global_only"
     UNSUPPORTED = "unsupported"
 

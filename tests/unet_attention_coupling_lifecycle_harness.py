@@ -26,6 +26,10 @@ from simple_syrup.runtime.attention_coupling.unet_attention_state import (
 from simple_syrup.runtime.regional_attention_diagnostics import (
     RegionalAttentionDiagnosticsBuilder,
 )
+from simple_syrup.runtime.regional_lora.standard_unet_operation_preparation import (
+    StandardUnetOperationAdmission,
+)
+from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 
 
 class _UnetModelRoot(nn.Module):
@@ -64,7 +68,17 @@ class UnetAttentionCouplingLifecycleHarness(AttentionCouplingLifecycleHarness):
         source_options = deepcopy(source.model_options)
         source_objects = source.object_patches.copy()
 
-        built = StandardUnetAttentionBackend().derive(model=source, state=state)
+        admission = StandardUnetOperationAdmission(
+            RegionalLoraPlanAdaptation(state.plan.lora_plan, ()),
+            None,
+            {},
+            None,
+        )
+        built = StandardUnetAttentionBackend().derive(
+            model=source,
+            state=state,
+            admission=admission,
+        )
         derived: Any = built.model
         patches = derived.model_options["transformer_options"]["patches"]
 

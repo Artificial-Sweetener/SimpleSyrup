@@ -16,6 +16,7 @@ from tools.comfy_api import JsonObject
 from tools.comfy_integration import managed_server
 from tools.comfy_integration.artifacts import IntegrationArtifacts
 from tools.comfy_integration.managed_server import ManagedComfyServer
+from tools.comfy_integration.server_process import ComfyServerCommand
 
 
 class _FakeProcess:
@@ -122,3 +123,36 @@ def test_readiness_failure_stops_process_before_propagation(
             pytest.fail("unreachable")
 
     assert process.stop_calls == 1
+
+
+def test_context_passes_optional_launch_arguments_to_command_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Route CPU-only registration probes through the canonical lifecycle."""
+
+    process = _FakeProcess()
+    _configure(monkeypatch, process)
+    artifacts = IntegrationArtifacts(tmp_path)
+    captured: list[tuple[str, ...]] = []
+
+    def start(command: ComfyServerCommand, **kwargs: object) -> _FakeProcess:
+        """Capture the exact immutable launch arguments."""
+
+        del kwargs
+        captured.append(command.launch_arguments)
+        return process
+
+    monkeypatch.setattr(
+        "tools.comfy_integration.managed_server.WindowsComfyProcess.start",
+        start,
+    )
+
+    with ManagedComfyServer(
+        comfy_root=Path("<COMFY_ROOT>"),
+        artifacts=artifacts,
+        required_node_ids=frozenset(),
+        launch_arguments=("--cpu",),
+    ):
+        pass
+
+    assert captured == [("--cpu",)]

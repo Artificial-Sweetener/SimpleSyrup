@@ -312,11 +312,14 @@ def _linear_spatial_capabilities(
         if not isinstance(path, str) or not path.strip():
             raise ValueError("Linear spatial capability paths must be nonempty.")
         if capability not in (
-            BoundRegionalLoraSpatialCapability.CONSUMER_SPATIALIZED,
+            BoundRegionalLoraSpatialCapability.SPATIAL_TOKENS,
+            BoundRegionalLoraSpatialCapability.PACKED_IMAGE_TOKENS,
+            BoundRegionalLoraSpatialCapability.PACKED_CONTEXT_TOKENS,
             BoundRegionalLoraSpatialCapability.GLOBAL_ONLY,
         ):
             raise ValueError(
-                "Linear target capability must be consumer-spatialized or global-only."
+                "Linear target capability must declare one supported token role or "
+                "global-only ownership."
             )
     return capabilities
 

@@ -30,6 +30,10 @@ from simple_syrup.runtime.attention_coupling.unet_attention_state import (
 from simple_syrup.runtime.regional_attention_diagnostics import (
     RegionalAttentionDiagnosticsBuilder,
 )
+from simple_syrup.runtime.regional_lora.standard_unet_operation_preparation import (
+    StandardUnetOperationAdmission,
+)
+from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 
 
 def test_standard_unet_backend_installs_one_paired_patch_on_a_direct_clone() -> None:
@@ -41,6 +45,7 @@ def test_standard_unet_backend_installs_one_paired_patch_on_a_direct_clone() -> 
     built = StandardUnetAttentionBackend().derive(
         model=source,
         state=state,
+        admission=_empty_admission(),
     )
     derived: Any = built.model
 
@@ -79,9 +84,17 @@ def test_standard_unet_backend_rejects_existing_attn2_patch_without_mutation() -
         StandardUnetAttentionBackend().derive(
             model=source,
             state=state,
+            admission=_empty_admission(),
         )
 
     assert source.model_options["transformer_options"]["patches"] == before
+
+
+def _empty_admission() -> StandardUnetOperationAdmission:
+    """Return one no-operation standard-family admission."""
+
+    adaptation = RegionalLoraPlanAdaptation(EMPTY_REGIONAL_LORA_PLAN, ())
+    return StandardUnetOperationAdmission(adaptation, None, {}, None)
 
 
 def _state() -> StandardUnetAttentionState:

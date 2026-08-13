@@ -12,6 +12,9 @@ import torch
 
 from ..domain.processed_regional_attention import ProcessedRegionalAttentionPlan
 from ..runtime.attention_coupling.context_validation import RegionalContextValidator
+from ..runtime.attention_coupling.family_admission import (
+    AttentionCouplingFamilyAdmission,
+)
 from ..runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 
 
@@ -29,8 +32,12 @@ class AttentionCouplingModelFamily(Protocol):
 
         ...
 
-    def validate_adaptation(self, adaptation: RegionalLoraPlanAdaptation) -> None:
-        """Reject regional model-adapter behavior unsupported by this family."""
+    def admit_adaptation(
+        self,
+        model: object,
+        adaptation: RegionalLoraPlanAdaptation,
+    ) -> AttentionCouplingFamilyAdmission:
+        """Return complete family evidence before model loading or mutation."""
 
         ...
 
@@ -39,7 +46,7 @@ class AttentionCouplingModelFamily(Protocol):
         *,
         model: object,
         processed_plan: ProcessedRegionalAttentionPlan,
-        adaptation: RegionalLoraPlanAdaptation,
+        admission: AttentionCouplingFamilyAdmission,
         region_strengths: tuple[float, ...],
         latent_batch_size: int,
     ) -> object:

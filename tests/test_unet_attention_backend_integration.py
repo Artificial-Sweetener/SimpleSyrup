@@ -31,6 +31,10 @@ from simple_syrup.runtime.attention_coupling.unet_attention_state import (
 from simple_syrup.runtime.regional_attention_diagnostics import (
     RegionalAttentionDiagnosticsBuilder,
 )
+from simple_syrup.runtime.regional_lora.standard_unet_operation_preparation import (
+    StandardUnetOperationAdmission,
+)
+from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 
 
 class _ZeroAttention(nn.Module):
@@ -177,7 +181,17 @@ def test_backend_projects_unique_resolutions_once_in_one_native_trajectory(
     diffusion_model = _ResolutionDiffusionModel(context_dimension)
     source = _patcher(diffusion_model)
     state = _state(context_dimension)
-    built = StandardUnetAttentionBackend().derive(model=source, state=state)
+    admission = StandardUnetOperationAdmission(
+        RegionalLoraPlanAdaptation(EMPTY_REGIONAL_LORA_PLAN, ()),
+        None,
+        {},
+        None,
+    )
+    built = StandardUnetAttentionBackend().derive(
+        model=source,
+        state=state,
+        admission=admission,
+    )
     derived: Any = built.model
     wrappers = derived.get_all_wrappers("diffusion_model")
     patches = derived.model_options["transformer_options"]["patches"]
