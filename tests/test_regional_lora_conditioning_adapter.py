@@ -43,8 +43,8 @@ class _Model:
 def test_adapter_extracts_ordered_positive_and_negative_regional_stacks() -> None:
     """Preserve region, branch, hook order, identity, strength, and schedules."""
 
-    positive_hooks = _hooks(("pc-ADAPTER_A-0.8-0.0", "pc-detail-0.4-0.0"))
-    negative_hooks = _hooks(("pc-ADAPTER_B-0.6-0.0",))
+    positive_hooks = _hooks(("pc-PRIMARY_ADAPTER-0.8-0.0", "pc-detail-0.4-0.0"))
+    negative_hooks = _hooks(("pc-SECONDARY_ADAPTER-0.6-0.0",))
     positive = ConditioningBatch(
         (
             _conditioning(),
@@ -68,9 +68,9 @@ def test_adapter_extracts_ordered_positive_and_negative_regional_stacks() -> Non
     adaptation = RegionalLoraConditioningAdapter().adapt(plan, model=_Model())
 
     assert [item.adapter_identity.value for item in adaptation.plan.adapters] == [
-        "pc-ADAPTER_A-0.8-0.0",
+        "pc-PRIMARY_ADAPTER-0.8-0.0",
         "pc-detail-0.4-0.0",
-        "pc-ADAPTER_B-0.6-0.0",
+        "pc-SECONDARY_ADAPTER-0.6-0.0",
     ]
     assert [item.region_index for item in adaptation.plan.adapters] == [0, 0, 1]
     assert [item.branch for item in adaptation.plan.adapters] == [
@@ -93,7 +93,7 @@ def test_adapter_extracts_ordered_positive_and_negative_regional_stacks() -> Non
 def test_adapter_accepts_cloned_schedule_entries_and_rejects_mixed_groups() -> None:
     """Use one shared model schedule owner across every text-schedule entry."""
 
-    hooks = _hooks(("pc-ADAPTER_A-0.8-0.0",))
+    hooks = _hooks(("pc-PRIMARY_ADAPTER-0.8-0.0",))
     cloned = hooks.clone()
     scheduled_conditioning: list[list[Any]] = [
         [torch.ones((1, 2, 3)), {"hooks": hooks}],
@@ -136,7 +136,7 @@ def test_adapter_retains_encoded_text_loras_without_model_admission() -> None:
         key="lora_te1_regional.lora_down.weight",
     )
     regional_model_hooks = _weight_hook(
-        identity="pc-ADAPTER_A-0.8-0.0",
+        identity="pc-PRIMARY_ADAPTER-0.8-0.0",
         model_strength=0.8,
         clip_strength=0.0,
         key="diffusion_model.blocks.0.lora_A.weight",
@@ -154,7 +154,7 @@ def test_adapter_retains_encoded_text_loras_without_model_admission() -> None:
 
     assert [item.composition_index for item in adaptation.plan.adapters] == [0]
     assert [item.adapter_identity.value for item in adaptation.plan.adapters] == [
-        "pc-ADAPTER_A-0.8-0.0"
+        "pc-PRIMARY_ADAPTER-0.8-0.0"
     ]
     model_hook = regional_model_hooks.get_type(comfy.hooks.EnumHookType.Weight)[0]
     assert len(adaptation.adapter_payloads) == 1
@@ -204,7 +204,7 @@ def test_adapter_accepts_different_text_only_hooks_across_schedule_entries() -> 
 def test_adapter_rejects_global_hooks_and_opaque_regional_identity() -> None:
     """Require global MODEL ownership and a stable regional adapter identity."""
 
-    hooks = _hooks(("pc-ADAPTER_A-0.8-0.0",))
+    hooks = _hooks(("pc-PRIMARY_ADAPTER-0.8-0.0",))
     global_plan = build_raw_regional_attention_plan(
         positive=ConditioningBatch((_conditioning(hooks), _conditioning())),
         negative=ConditioningBatch((_conditioning(), _conditioning())),

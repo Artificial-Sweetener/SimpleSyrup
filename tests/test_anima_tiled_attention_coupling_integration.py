@@ -42,7 +42,7 @@ from tools.anima_tiled_attention_coupling_integration.workflow import (
 from tools.comfy_api import ImageReference, JsonObject
 
 
-def test_matrix_covers_modes_batches_masks_cfg_and_scheduled_adapter_a() -> None:
+def test_matrix_covers_modes_batches_masks_cfg_and_scheduled_primary_adapter() -> None:
     """Pin the complete managed tiled runtime matrix."""
 
     definitions = cases()
@@ -58,8 +58,9 @@ def test_matrix_covers_modes_batches_masks_cfg_and_scheduled_adapter_a() -> None
         "uncovered-center-strip",
     }
     assert {case.cfg for case in definitions} == {1.0, 4.0}
-    assert all(
-        any("ADAPTER_A" in adapter.lora_name for adapter in case.regional_loras)
+    assert all(case.regional_loras for case in definitions)
+    assert any(
+        len({adapter.lora_name for adapter in case.regional_loras}) == 2
         for case in definitions
     )
     assert any(

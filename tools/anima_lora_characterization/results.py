@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Journal and finalize complete validated ADAPTER_A characterization results."""
+"""Journal and finalize complete validated adapter characterization results."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from .history_outputs import LoraCompletedOutputs
 from .json_contract import array_value, object_value, text_value
 from .matrix import LoraRun, runs
 
-BENCHMARK_ID = "adapter_a-global-characterization-v1"
+BENCHMARK_ID = "adapter-global-characterization-v1"
 
 
 class LoraResultRecorder:
@@ -120,7 +120,7 @@ class LoraResultRecorder:
             raise ValueError("LoRA journal does not match the current matrix.")
         adapter = object_value(root.get("adapter"), "journal adapter")
         if adapter.get("sha256") != self._inventory.sha256:
-            raise ValueError("LoRA journal does not match the pinned adapter.")
+            raise ValueError("LoRA journal does not match the selected adapter.")
         started = root.get("started_at_utc")
         if isinstance(started, str) and started:
             self._started_at = started
@@ -139,7 +139,7 @@ class LoraResultRecorder:
             "started_at_utc": self._started_at,
             "completed_at_utc": completed_at,
             "adapter": {
-                "stable_name": "adapter-a.safetensors",
+                "stable_name": "selected-adapter.safetensors",
                 "size_bytes": self._inventory.size_bytes,
                 "sha256": self._inventory.sha256,
                 "pair_count": len(self._inventory.pairs),

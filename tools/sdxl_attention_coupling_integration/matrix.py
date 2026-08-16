@@ -8,10 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-CHECKPOINT_STABLE_NAME = "juggernautXL_juggXIByRundiffusion.safetensors"
-CHECKPOINT_SOURCE_NAME = f"SDXL\\{CHECKPOINT_STABLE_NAME}"
-CHECKPOINT_SIZE = 7_105_350_536
-CHECKPOINT_SHA256 = "33e58e86686f6b386c526682b5da9228ead4f91d994abd4b053442dc5b42719e"
+from .sampling_controls import SDXL_VISUAL_SAMPLING
+
 SOURCE_WIDTH = 1024
 SOURCE_HEIGHT = 1024
 TARGET_WIDTH = 1536
@@ -19,11 +17,7 @@ TARGET_HEIGHT = 1536
 UPSCALE_FACTOR = 1.5
 REGION_WIDTH = round(TARGET_WIDTH * 0.4)
 RIGHT_REGION_START = TARGET_WIDTH - REGION_WIDTH
-SEED = 7_429_113_057
-CFG = 5.0
-SAMPLER = "dpmpp_2m_sde"
-SCHEDULER = "karras"
-SOURCE_STEPS = 24
+REGIONAL_PROMPT_WEIGHT = 0.4
 REFINEMENT_STEPS = 12
 REFINEMENT_DENOISE = 0.25
 TILE_SIZE = 128
@@ -81,7 +75,7 @@ MODES = (
         "SimpleSyrup.KSamplerAttentionCoupling",
         SOURCE_WIDTH,
         SOURCE_HEIGHT,
-        SOURCE_STEPS,
+        SDXL_VISUAL_SAMPLING.steps,
         frozenset({"full"}),
     ),
     SdxlIntegrationMode(

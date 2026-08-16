@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from tools.anima_attention_coupling_integration.matrix import IntegrationCase
 from tools.anima_attention_coupling_prompts import (
     GLOBAL_GLOBAL_ADAPTER,
-    PINNED_ADAPTER_A,
+    PINNED_PRIMARY_ADAPTER,
     GlobalLora,
     RegionalLora,
 )
@@ -36,60 +36,60 @@ class GlobalRegionalLoraCase:
 def cases() -> tuple[GlobalRegionalLoraCase, ...]:
     """Return ordered clean, transition, global-only, and duplicate coverage."""
 
-    global_adapter_a = GlobalLora(PINNED_ADAPTER_A, 0.35)
-    regional_adapter_a = RegionalLora(0, PINNED_ADAPTER_A, 0.8)
+    global_primary_adapter = GlobalLora(PINNED_PRIMARY_ADAPTER, 0.35)
+    regional_primary_adapter = RegionalLora(0, PINNED_PRIMARY_ADAPTER, 0.8)
     return (
         GlobalRegionalLoraCase(
             IntegrationCase(
-                "global-global_adapter-regional-adapter_a-before",
-                "Distinct global GLOBAL_ADAPTER and regional ADAPTER_A before transition",
+                "global-global_adapter-regional-primary_adapter-before",
+                "Distinct global and regional adapters before transition",
                 1.0,
                 MASK_CASE_ID,
                 0,
                 global_loras=(GlobalLora(GLOBAL_GLOBAL_ADAPTER, 0.35),),
-                regional_loras=(regional_adapter_a,),
+                regional_loras=(regional_primary_adapter,),
             )
         ),
         GlobalRegionalLoraCase(
             IntegrationCase(
-                "regional-adapter_a-only",
-                "Regional ADAPTER_A only through Anima Attention Coupling",
+                "regional-primary_adapter-only",
+                "Regional PRIMARY_ADAPTER only through Anima Attention Coupling",
                 1.0,
                 MASK_CASE_ID,
                 0,
-                regional_loras=(regional_adapter_a,),
+                regional_loras=(regional_primary_adapter,),
             )
         ),
         GlobalRegionalLoraCase(
             IntegrationCase(
-                "global-global_adapter-regional-adapter_a-after",
-                "Distinct global GLOBAL_ADAPTER and regional ADAPTER_A after transition",
+                "global-global_adapter-regional-primary_adapter-after",
+                "Distinct global and regional adapters after transition",
                 1.0,
                 MASK_CASE_ID,
                 0,
                 global_loras=(GlobalLora(GLOBAL_GLOBAL_ADAPTER, 0.35),),
-                regional_loras=(regional_adapter_a,),
+                regional_loras=(regional_primary_adapter,),
             )
         ),
         GlobalRegionalLoraCase(
             IntegrationCase(
-                "global-adapter_a-only",
-                "Global ADAPTER_A only through Anima Attention Coupling",
+                "global-primary_adapter-only",
+                "Global PRIMARY_ADAPTER only through Anima Attention Coupling",
                 1.0,
                 MASK_CASE_ID,
                 0,
-                global_loras=(global_adapter_a,),
+                global_loras=(global_primary_adapter,),
             )
         ),
         GlobalRegionalLoraCase(
             IntegrationCase(
-                "duplicate-global-regional-adapter_a",
-                "Exact global and regional ADAPTER_A duplicate rejection",
+                "duplicate-global-regional-primary_adapter",
+                "Exact global and regional PRIMARY_ADAPTER duplicate rejection",
                 1.0,
                 MASK_CASE_ID,
                 0,
-                global_loras=(global_adapter_a,),
-                regional_loras=(regional_adapter_a,),
+                global_loras=(global_primary_adapter,),
+                regional_loras=(regional_primary_adapter,),
             ),
             expect_overlap_error=True,
         ),

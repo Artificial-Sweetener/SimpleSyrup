@@ -30,8 +30,8 @@ from simple_syrup.runtime.attention_coupling.unet_attention_state import (
 from simple_syrup.runtime.regional_attention_diagnostics import (
     RegionalAttentionDiagnosticsBuilder,
 )
-from simple_syrup.runtime.regional_lora.standard_unet_operation_preparation import (
-    StandardUnetOperationAdmission,
+from simple_syrup.runtime.regional_lora.standard_unet_native_admission import (
+    StandardUnetNativeLoraAdmission,
 )
 from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 
@@ -53,6 +53,10 @@ def test_standard_unet_backend_installs_one_paired_patch_on_a_direct_clone() -> 
     assert built.state is state
     assert source.model_options["transformer_options"].get("patches") is None
     patches = derived.model_options["transformer_options"]["patches"]
+    assert tuple(patches) == (
+        "attn2_patch",
+        "attn2_output_patch",
+    )
     assert len(patches["attn2_patch"]) == 1
     assert len(patches["attn2_output_patch"]) == 1
     assert (
@@ -63,6 +67,23 @@ def test_standard_unet_backend_installs_one_paired_patch_on_a_direct_clone() -> 
         "simple_syrup.unet_regional_attention_contexts",
     )
     assert len(wrappers) == 1
+
+
+def test_standard_unet_backend_preserves_global_self_attention() -> None:
+    """Keep SDXL scene formation on Comfy's unmodified attn1 execution."""
+
+    built = StandardUnetAttentionBackend().derive(
+        model=_patcher(),
+        state=_state(),
+        admission=_empty_admission(),
+    )
+    derived: Any = built.model
+    patches = derived.model_options["transformer_options"]["patches"]
+
+    assert "attn1_patch" not in patches
+    assert "attn1_output_patch" not in patches
+    assert len(patches["attn2_patch"]) == 1
+    assert len(patches["attn2_output_patch"]) == 1
 
 
 def test_standard_unet_backend_rejects_existing_attn2_patch_without_mutation() -> None:
@@ -90,11 +111,45 @@ def test_standard_unet_backend_rejects_existing_attn2_patch_without_mutation() -
     assert source.model_options["transformer_options"]["patches"] == before
 
 
-def _empty_admission() -> StandardUnetOperationAdmission:
-    """Return one no-operation standard-family admission."""
+def test_standard_unet_backend_preserves_existing_attn1_patch() -> None:
+    """Leave a foreign global self-attention owner intact on the derived child."""
+
+    source = _patcher()
+
+    def existing(
+        query: torch.Tensor,
+        context: torch.Tensor,
+        value: torch.Tensor,
+        options: dict[str, Any],
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return the supplied tensors through a foreign existing patch."""
+
+        del options
+        return query, context, value
+
+    source.set_model_attn1_patch(existing)
+    built = StandardUnetAttentionBackend().derive(
+        model=source,
+        state=_state(),
+        admission=_empty_admission(),
+    )
+    derived: Any = built.model
+    source_patches = source.model_options["transformer_options"]["patches"]
+    derived_patches = derived.model_options["transformer_options"]["patches"]
+
+    assert source_patches == {"attn1_patch": [existing]}
+    assert derived_patches["attn1_patch"] == [existing]
+    assert "attn1_output_patch" not in derived_patches
+    assert len(derived_patches["attn2_patch"]) == 1
+    assert len(derived_patches["attn2_output_patch"]) == 1
+    assert source.object_patches == {}
+
+
+def _empty_admission() -> StandardUnetNativeLoraAdmission:
+    """Return one prompt-only standard-family admission."""
 
     adaptation = RegionalLoraPlanAdaptation(EMPTY_REGIONAL_LORA_PLAN, ())
-    return StandardUnetOperationAdmission(adaptation, None, {}, None)
+    return StandardUnetNativeLoraAdmission(adaptation, None)
 
 
 def _state() -> StandardUnetAttentionState:

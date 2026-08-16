@@ -324,6 +324,44 @@ def test_cuda_low_precision_matches_explicit_execution_dtype_reference(
     torch.testing.assert_close(result, expected, rtol=0.01, atol=0.01)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_cuda_compatible_adapters_accumulate_distinct_regional_targets(
+    dtype: torch.dtype,
+) -> None:
+    """Accumulate two same-shape adapter targets from one compatible rank batch."""
+
+    fixture = _fixture(device=torch.device("cuda"), dtype=dtype)
+    second = _target(
+        "second",
+        torch.tensor([[0.3, -0.2, 0.1, 0.4], [-0.1, 0.2, 0.5, -0.3]]),
+        torch.tensor([[0.2, 0.1], [-0.4, 0.2], [0.3, -0.2]]),
+    )
+    plan = _plan(
+        (
+            _use(fixture, composition=0, region=0),
+            _use(fixture, composition=1, region=1, target=second),
+        )
+    )
+    masks = torch.stack(
+        (
+            torch.full((2, 6), 0.25, device="cuda", dtype=dtype),
+            torch.full((2, 6), 0.75, device="cuda", dtype=dtype),
+        )
+    )
+
+    result = _execute(fixture, plan, masks, (1.0, 1.0))
+
+    expected = fixture.base(fixture.inputs)
+    for target, mask in ((fixture.target, masks[0]), (second, masks[1])):
+        rank = functional.linear(fixture.inputs, target.down.to("cuda", dtype))
+        expected = expected + functional.linear(
+            rank * (mask * target.intrinsic_scale).unsqueeze(-1),
+            target.up.to("cuda", dtype),
+        )
+    torch.testing.assert_close(result, expected, rtol=0.01, atol=0.01)
+
+
 class _Fixture:
     """Retain deterministic Linear execution values for one device and dtype."""
 

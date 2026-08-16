@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 import torch
@@ -19,6 +19,7 @@ from ...domain.regional_lora_plan import RegionalLoraBranch
 from ...masking.regional_activation_mask_projection import (
     RegionalActivationMaskBatch,
 )
+from .linear_invocation_preparation import RegionalLinearInvocationPreparationCache
 
 
 class RegionalOperationMaskUse(Protocol):
@@ -50,6 +51,11 @@ class RegionalOperationMaskBatch:
     multipliers: torch.Tensor
     geometry: RegionalActivationGeometry
     composition_indices: tuple[int, ...]
+    linear_invocations: RegionalLinearInvocationPreparationCache = field(
+        default_factory=RegionalLinearInvocationPreparationCache,
+        compare=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         """Require exact use order and a valid activation-mask tensor contract."""

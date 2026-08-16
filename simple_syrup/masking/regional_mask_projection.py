@@ -28,6 +28,7 @@ class RegionalMaskProjectionMode(StrEnum):
     CONTINUOUS_COVERAGE = "continuous_coverage"
     SOFT = "soft"
     HARD_PRESERVING = "hard_preserving"
+    NEAREST = "nearest"
 
 
 class RegionalMaskProjector:
@@ -138,6 +139,12 @@ class RegionalMaskProjector:
                 batched,
                 size=(height, width),
                 mode="nearest-exact",
+            ).squeeze(1)
+        if mode is RegionalMaskProjectionMode.NEAREST:
+            return functional.interpolate(
+                batched,
+                size=(height, width),
+                mode="nearest",
             ).squeeze(1)
         if mode is RegionalMaskProjectionMode.SOFT:
             return functional.interpolate(

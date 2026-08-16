@@ -16,14 +16,9 @@ from .matrix import (
     TARGET_HEIGHT,
     TARGET_WIDTH,
 )
-from .visual_cases import (
-    BASE_NEGATIVE_G,
-    BASE_NEGATIVE_L,
-    BASE_POSITIVE_G,
-    BASE_POSITIVE_L,
-    RegionalVisualAdapter,
-    SdxlVisualCase,
-)
+from .visual_case_model import RegionalVisualAdapter, SdxlVisualCase
+from .visual_lora_graph import SdxlVisualLoraGraphBuilder
+from .visual_prompt_schedule import schedule_visual_regional_prompt
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,56 +43,125 @@ class SdxlVisualConditioningBuilder:
     ) -> BuiltSdxlVisualConditioning:
         """Build one native G/L conditioning batch for the declared case."""
 
-        for adapter in case.global_adapters:
-            loaded = graph.add(
-                "LoraLoaderModelOnly",
-                model=model,
-                lora_name=adapter.lora_name,
-                strength_model=adapter.strength,
-            )
-            model = [loaded, 0]
+        loaded = SdxlVisualLoraGraphBuilder().load_global(
+            graph,
+            model=model,
+            clip=clip,
+            adapters=case.global_adapters,
+        )
+        model = loaded.model
+        clip = loaded.clip
+        shared_positive_g = self._with_optional(
+            case.base_positive_g,
+            case.global_style_g,
+        )
+        shared_positive_l = self._with_optional(
+            case.base_positive_l,
+            case.global_style_l,
+        )
         base_positive = self._encode(
             graph,
             clip=clip,
-            text_g=BASE_POSITIVE_G,
-            text_l=BASE_POSITIVE_L,
+            text_g=shared_positive_g,
+            text_l=shared_positive_l,
         )
         base_negative = self._encode(
             graph,
             clip=clip,
-            text_g=BASE_NEGATIVE_G,
-            text_l=BASE_NEGATIVE_L,
+            text_g=case.base_negative_g,
+            text_l=case.base_negative_l,
         )
-        left_positive, left_negative = self._regional_pair(
+        left_has_regional_negative = self._has_regional_negative(
+            case.left_negative_g,
+            case.left_negative_l,
+        )
+        right_has_regional_negative = self._has_regional_negative(
+            case.right_negative_g,
+            case.right_negative_l,
+        )
+        right_requires_negative = right_has_regional_negative or bool(
+            case.right_adapters
+        )
+        left_requires_negative = (
+            left_has_regional_negative
+            or bool(case.left_adapters)
+            or right_requires_negative
+        )
+        left_positive, left_negative = self._regional_conditionings(
             graph,
             clip=clip,
-            positive_g=case.left_g,
-            positive_l=case.left_l,
+            positive_g=self._with_optional(shared_positive_g, case.left_g),
+            positive_l=self._with_optional(shared_positive_l, case.left_l),
+            negative_g=self._with_optional(
+                case.base_negative_g,
+                case.left_negative_g,
+            ),
+            negative_l=self._with_optional(
+                case.base_negative_l,
+                case.left_negative_l,
+            ),
+            include_regional_negative=left_requires_negative,
             adapters=case.left_adapters,
+            start_percent=case.regional_prompt_start_percent,
         )
-        right_positive, right_negative = self._regional_pair(
+        right_positive, right_negative = self._regional_conditionings(
             graph,
             clip=clip,
-            positive_g=case.right_g,
-            positive_l=case.right_l,
+            positive_g=self._with_optional(shared_positive_g, case.right_g),
+            positive_l=self._with_optional(shared_positive_l, case.right_l),
+            negative_g=self._with_optional(
+                case.base_negative_g,
+                case.right_negative_g,
+            ),
+            negative_l=self._with_optional(
+                case.base_negative_l,
+                case.right_negative_l,
+            ),
+            include_regional_negative=right_requires_negative,
             adapters=case.right_adapters,
+            start_percent=case.regional_prompt_start_percent,
+        )
+        negative_entries = tuple(
+            conditioning
+            for conditioning in (base_negative, left_negative, right_negative)
+            if conditioning is not None
         )
         return BuiltSdxlVisualConditioning(
             model,
             self._pack(graph, (base_positive, left_positive, right_positive)),
-            self._pack(graph, (base_negative, left_negative, right_negative)),
+            self._pack(graph, negative_entries),
         )
 
-    def _regional_pair(
+    @staticmethod
+    def _with_optional(prompt: str, addition: str) -> str:
+        """Append one non-empty externally supplied prompt fragment."""
+
+        return f"{prompt}, {addition}" if addition else prompt
+
+    @staticmethod
+    def _has_regional_negative(negative_g: str, negative_l: str) -> bool:
+        """Require regional G and L negatives to be authored as one pair."""
+
+        has_g = bool(negative_g.strip())
+        has_l = bool(negative_l.strip())
+        if has_g != has_l:
+            raise ValueError("Regional negative G and L prompts must be paired.")
+        return has_g
+
+    def _regional_conditionings(
         self,
         graph: SdxlWorkflowGraph,
         *,
         clip: NodeReference,
         positive_g: str,
         positive_l: str,
+        negative_g: str,
+        negative_l: str,
+        include_regional_negative: bool,
         adapters: tuple[RegionalVisualAdapter, ...],
-    ) -> tuple[NodeReference, NodeReference]:
-        """Encode and hook one region's positive and negative SDXL entries."""
+        start_percent: float,
+    ) -> tuple[NodeReference, NodeReference | None]:
+        """Encode paired hooked CFG entries or one prompt-only positive."""
 
         hooks = self._hooks(graph, adapters)
         regional_clip = clip
@@ -115,15 +179,28 @@ class SdxlVisualConditioningBuilder:
             text_g=positive_g,
             text_l=positive_l,
         )
-        negative = self._encode(
-            graph,
-            clip=regional_clip,
-            text_g=BASE_NEGATIVE_G,
-            text_l=BASE_NEGATIVE_L,
-        )
         if hooks is not None:
             positive = self._attach(graph, positive, hooks)
-            negative = self._attach(graph, negative, hooks)
+        positive = schedule_visual_regional_prompt(
+            graph,
+            positive,
+            start_percent=start_percent,
+        )
+        negative: NodeReference | None = None
+        if include_regional_negative:
+            negative = self._encode(
+                graph,
+                clip=regional_clip,
+                text_g=negative_g,
+                text_l=negative_l,
+            )
+            if hooks is not None:
+                negative = self._attach(graph, negative, hooks)
+            negative = schedule_visual_regional_prompt(
+                graph,
+                negative,
+                start_percent=start_percent,
+            )
         return positive, negative
 
     def _hooks(
@@ -133,51 +210,18 @@ class SdxlVisualConditioningBuilder:
     ) -> NodeReference | None:
         """Create, schedule, combine, and label one region's ordered hooks."""
 
-        created = tuple(self._hook(graph, adapter) for adapter in adapters)
-        if not created:
+        hooks, identities = SdxlVisualLoraGraphBuilder().regional_hooks(
+            graph,
+            adapters,
+        )
+        if hooks is None:
             return None
-        hooks = created[0]
-        for added in created[1:]:
-            combined = graph.add("CombineHooks2", hooks_A=hooks, hooks_B=added)
-            hooks = [combined, 0]
-        identities = [adapter.lora_name for adapter in adapters]
-        if len(set(identities)) != len(identities):
-            raise ValueError("One region cannot repeat the same adapter identity.")
         labeled = graph.add(
             "SimpleSyrup.LabelRegionalLoraHooks",
             hooks=hooks,
             adapter_identities_json=json.dumps(identities, separators=(",", ":")),
         )
         return [labeled, 0]
-
-    @staticmethod
-    def _hook(
-        graph: SdxlWorkflowGraph,
-        adapter: RegionalVisualAdapter,
-    ) -> NodeReference:
-        """Create one independently scheduled model-only LoRA hook."""
-
-        hook = graph.add(
-            "CreateHookLoraModelOnly",
-            lora_name=adapter.lora_name,
-            strength_model=adapter.strength,
-        )
-        if adapter.schedule == ((0.0, 1.0),):
-            return [hook, 0]
-        previous: NodeReference | None = None
-        for start_percent, strength_mult in adapter.schedule:
-            inputs: dict[str, object] = {
-                "strength_mult": strength_mult,
-                "start_percent": start_percent,
-            }
-            if previous is not None:
-                inputs["prev_hook_kf"] = previous
-            keyframe = graph.add("CreateHookKeyframe", **inputs)
-            previous = [keyframe, 0]
-        if previous is None:
-            raise ValueError("Regional adapter schedule cannot be empty.")
-        scheduled = graph.add("SetHookKeyframes", hooks=[hook, 0], hook_kf=previous)
-        return [scheduled, 0]
 
     @staticmethod
     def _encode(

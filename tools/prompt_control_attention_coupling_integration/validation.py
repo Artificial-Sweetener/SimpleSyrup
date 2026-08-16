@@ -144,20 +144,22 @@ def _conditioning_without_hooks(snapshot: JsonObject) -> JsonObject:
 
 
 def _validate_static_hook(hooks: list[object]) -> None:
-    """Require one full-quality static ADAPTER_A WeightHook."""
+    """Require one full-quality static PRIMARY_ADAPTER WeightHook."""
 
     if len(hooks) != 1:
-        raise ValueError("P9.1 static regional ADAPTER_A must expose one WeightHook.")
+        raise ValueError(
+            "P9.1 static regional PRIMARY_ADAPTER must expose one WeightHook."
+        )
     hook = _object(hooks[0], "static hook")
     if (
-        hook.get("identity") != "adapter_a-static-0.75"
+        hook.get("identity") != "primary_adapter-static-0.75"
         or hook.get("order") != 0
         or hook.get("hook_type") != "WeightHook"
         or hook.get("hook_scope") != "hooked_only"
         or hook.get("keyframes")
         != [{"start_percent": 0.0, "strength": 1.0, "guarantee_steps": 1}]
     ):
-        raise ValueError("P9.1 static regional ADAPTER_A hook identity changed.")
+        raise ValueError("P9.1 static regional PRIMARY_ADAPTER hook identity changed.")
     _same_number(hook.get("base_strength_model"), 0.75, "static model strength")
     _same_number(hook.get("base_strength_clip"), 0.25, "static CLIP strength")
 

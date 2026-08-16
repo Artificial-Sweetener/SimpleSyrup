@@ -10,6 +10,7 @@ import hashlib
 from importlib import import_module
 from pathlib import Path
 
+import numpy as np
 import torch
 from PIL import Image, ImageOps
 
@@ -47,6 +48,11 @@ class MaskFileLoader:
             normalized_image = ImageOps.exif_transpose(image)
             source_width, source_height = normalized_image.size
             has_alpha = "A" in normalized_image.getbands()
+            full_coverage = self._full_coverage_pixels(
+                normalized_image,
+                channel=channel,
+                has_alpha=has_alpha,
+            )
         if frame_count != 1:
             raise ValueError(
                 f"Load Mask Batch requires one mask per file; {annotated_path!r} "
@@ -65,7 +71,12 @@ class MaskFileLoader:
                 f"Load Mask Batch requires one mask per file; {annotated_path!r} "
                 f"returned shape {tuple(mask.shape)}."
             )
-        return mask.float().clamp(0.0, 1.0)
+        normalized = mask.float().clamp(0.0, 1.0)
+        return torch.where(
+            full_coverage.to(device=normalized.device),
+            torch.ones((), device=normalized.device, dtype=normalized.dtype),
+            normalized,
+        )
 
     def fingerprint(self, annotated_path: str) -> str:
         """Return the content fingerprint for one validated mask file."""
@@ -86,6 +97,26 @@ class MaskFileLoader:
         if not folder_paths.exists_annotated_filepath(annotated_path):
             raise ValueError(f"Mask file does not exist: {annotated_path!r}.")
         return Path(folder_paths.get_annotated_filepath(annotated_path))
+
+    @staticmethod
+    def _full_coverage_pixels(
+        image: Image.Image,
+        *,
+        channel: str,
+        has_alpha: bool,
+    ) -> torch.Tensor:
+        """Return exact authored pixels that represent full mask coverage."""
+
+        if channel == "alpha":
+            if not has_alpha:
+                return torch.zeros((1, image.height, image.width), dtype=torch.bool)
+            values = np.asarray(image.getchannel("A"), dtype=np.uint8)
+            authored = values == 0
+        else:
+            channel_index = {"red": 0, "green": 1, "blue": 2}[channel]
+            values = np.asarray(image.convert("RGB"), dtype=np.uint8)
+            authored = values[..., channel_index] == 255
+        return torch.from_numpy(np.array(authored, copy=True)).unsqueeze(0)
 
     def _validate_channel(self, channel: str) -> None:
         """Reject channels outside ComfyUI's native mask choices."""

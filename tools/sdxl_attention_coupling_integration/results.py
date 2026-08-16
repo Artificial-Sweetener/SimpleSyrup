@@ -13,6 +13,7 @@ from typing import cast
 
 from tools.comfy_api import JsonObject
 
+from .checkpoint_link import CheckpointArtifactIdentity
 from .evidence_validation import (
     sdxl_image_evidence,
     validate_sdxl_diagnostics,
@@ -20,9 +21,6 @@ from .evidence_validation import (
 )
 from .history import SdxlModeHistoryEvidence
 from .matrix import (
-    CHECKPOINT_SHA256,
-    CHECKPOINT_SIZE,
-    CHECKPOINT_STABLE_NAME,
     MODES,
     REFINEMENT_DENOISE,
     SOURCE_HEIGHT,
@@ -37,12 +35,13 @@ from .workflow import BuiltSdxlAttentionCouplingWorkflow
 class SdxlIntegrationResultRecorder:
     """Own Phase 8 SDXL acceptance validation and durable persistence."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, checkpoint: CheckpointArtifactIdentity) -> None:
         """Retain one existing collision-resistant managed-run directory."""
 
         self._root = root.resolve()
         if not self._root.is_dir():
             raise ValueError("SDXL result root must already exist.")
+        self._checkpoint = checkpoint
         self._observations: list[JsonObject] = []
 
     def record_workflow(
@@ -138,9 +137,9 @@ class SdxlIntegrationResultRecorder:
             status="completed",
             extra={
                 "checkpoint": {
-                    "stable_name": CHECKPOINT_STABLE_NAME,
-                    "size": CHECKPOINT_SIZE,
-                    "sha256": CHECKPOINT_SHA256,
+                    "stable_name": self._checkpoint.stable_name,
+                    "size": self._checkpoint.size,
+                    "sha256": self._checkpoint.sha256,
                 },
                 "source_size": [SOURCE_WIDTH, SOURCE_HEIGHT],
                 "target_size": [TARGET_WIDTH, TARGET_HEIGHT],

@@ -18,10 +18,13 @@ from tools.sdxl_attention_coupling_integration.matrix import (
     POSITIVE_PROMPTS_G,
     REFINEMENT_DENOISE,
     REFINEMENT_STEPS,
-    SOURCE_STEPS,
+    REGIONAL_PROMPT_WEIGHT,
     TILE_BATCH_SIZE,
     TILE_OVERLAP,
     TILE_SIZE,
+)
+from tools.sdxl_attention_coupling_integration.sampling_controls import (
+    SDXL_VISUAL_SAMPLING,
 )
 from tools.sdxl_attention_coupling_integration.workflow import (
     build_sdxl_attention_coupling_workflow,
@@ -78,7 +81,16 @@ def test_workflow_uses_three_public_nodes_and_exact_upscale_product_flow() -> No
     assert contextual_inputs["latent_image"] == [encoded_node_id, 0]
     assert MODES[2].expected_model_calls == CONTEXTUAL_EXPECTED_MODEL_CALLS == 61
     full_inputs = _inputs(by_class["SimpleSyrup.KSamplerAttentionCoupling"][0])
-    assert full_inputs["steps"] == SOURCE_STEPS
+    assert full_inputs["steps"] == SDXL_VISUAL_SAMPLING.steps
+    assert all(
+        _inputs(node)["regional_prompt_weight"] == REGIONAL_PROMPT_WEIGHT == 0.4
+        for sampler_class in (
+            "SimpleSyrup.KSamplerAttentionCoupling",
+            "SimpleSyrup.KSamplerAttentionCouplingTiled",
+            "SimpleSyrup.KSamplerAttentionCouplingContextual",
+        )
+        for node in by_class[sampler_class]
+    )
     assert "CLIPTextEncode" not in by_class
     clip_inputs = [_inputs(node) for node in by_class["CLIPTextEncodeSDXL"]]
     assert [inputs["text_l"] for inputs in clip_inputs] == [

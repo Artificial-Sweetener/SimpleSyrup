@@ -14,9 +14,9 @@ from tools.attention_coupling_benchmark.comfy_probe.anima_regional_profile_spec 
     VisualRegionalAdapter,
 )
 
-PINNED_ADAPTER_A = "Anima\\style\\adapter-a.safetensors"
-PINNED_ADAPTER_B = "Anima\\style\\adapter-b.safetensors"
-GLOBAL_GLOBAL_ADAPTER = "Anima\\style\\global-adapter.safetensors"
+PINNED_PRIMARY_ADAPTER = "Anima\\style\\adapter-a.safetensors"
+PINNED_SECONDARY_ADAPTER = "Anima\\style\\adapter-b.safetensors"
+GLOBAL_GLOBAL_ADAPTER = "Anima\\style\\GLOBAL_ADAPTER_anima.safetensors"
 SEED = 1_029_384_756
 WIDTH = 1024
 HEIGHT = 1024
@@ -78,32 +78,38 @@ def profiles() -> tuple[VisualOutputProfile, ...]:
 
     return (
         VisualOutputProfile(
-            "global-reference-adapter_a",
-            "Ordinary global ADAPTER_A reference",
+            "global-reference-primary_adapter",
+            "Ordinary global PRIMARY_ADAPTER reference",
             VisualProfileKind.GLOBAL_REFERENCE,
-            (GlobalVisualAdapter(PINNED_ADAPTER_A, 1.0),),
+            (GlobalVisualAdapter(PINNED_PRIMARY_ADAPTER, 1.0),),
             (),
             FIDELITY_PROMPT,
             (),
             None,
         ),
         VisualOutputProfile(
-            "regional-optimized-adapter_a-all-one",
-            "Optimized regional ADAPTER_A with an all-one mask",
+            "regional-optimized-primary_adapter-all-one",
+            "Optimized regional PRIMARY_ADAPTER with an all-one mask",
             VisualProfileKind.REGIONAL_OPTIMIZED,
             (),
-            (VisualRegionalAdapter(0, RegionalLoraBranch.POSITIVE, PINNED_ADAPTER_A, 1.0),),
+            (
+                VisualRegionalAdapter(
+                    0, RegionalLoraBranch.POSITIVE, PINNED_PRIMARY_ADAPTER, 1.0
+                ),
+            ),
             FIDELITY_PROMPT,
             (FIDELITY_PROMPT,),
             "all-one",
         ),
         VisualOutputProfile(
-            "regional-optimized-adapter_a-four-all-one",
-            "Optimized four-adapter ADAPTER_A composition with an all-one mask",
+            "regional-optimized-primary_adapter-four-all-one",
+            "Optimized four-adapter PRIMARY_ADAPTER composition with an all-one mask",
             VisualProfileKind.REGIONAL_OPTIMIZED,
             (),
             tuple(
-                VisualRegionalAdapter(0, RegionalLoraBranch.POSITIVE, PINNED_ADAPTER_A, 0.25)
+                VisualRegionalAdapter(
+                    0, RegionalLoraBranch.POSITIVE, PINNED_PRIMARY_ADAPTER, 0.25
+                )
                 for _index in range(4)
             ),
             FIDELITY_PROMPT,
@@ -111,13 +117,17 @@ def profiles() -> tuple[VisualOutputProfile, ...]:
             "all-one",
         ),
         VisualOutputProfile(
-            "regional-split-global-global_adapter-left-adapter_a-right-adapter_b",
-            "Global GLOBAL_ADAPTER with left ADAPTER_A and right ADAPTER_B",
+            "regional-split-global-global_adapter-left-primary_adapter-right-secondary_adapter",
+            "Global adapter with distinct left and right regional adapters",
             VisualProfileKind.REGIONAL_OPTIMIZED,
             (GlobalVisualAdapter(GLOBAL_GLOBAL_ADAPTER, 0.35),),
             (
-                VisualRegionalAdapter(0, RegionalLoraBranch.POSITIVE, PINNED_ADAPTER_A, 0.8),
-                VisualRegionalAdapter(1, RegionalLoraBranch.POSITIVE, PINNED_ADAPTER_B, 0.8),
+                VisualRegionalAdapter(
+                    0, RegionalLoraBranch.POSITIVE, PINNED_PRIMARY_ADAPTER, 0.8
+                ),
+                VisualRegionalAdapter(
+                    1, RegionalLoraBranch.POSITIVE, PINNED_SECONDARY_ADAPTER, 0.8
+                ),
             ),
             SPLIT_GLOBAL_PROMPT,
             SPLIT_REGIONAL_PROMPTS,

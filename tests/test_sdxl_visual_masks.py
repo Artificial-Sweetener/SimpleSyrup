@@ -11,7 +11,9 @@ from typing import cast
 
 from PIL import Image
 
-from tools.sdxl_attention_coupling_integration.visual_cases import VisualMaskProfile
+from tools.sdxl_attention_coupling_integration.visual_case_model import (
+    VisualMaskProfile,
+)
 from tools.sdxl_attention_coupling_integration.visual_masks import (
     ManagedSdxlVisualMasks,
 )

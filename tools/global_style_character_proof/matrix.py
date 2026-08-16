@@ -2,18 +2,18 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Define fixed CHARACTER_A-region and global-ADAPTER_A comparison cases."""
+"""Define regional-character and global-style comparison cases."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-ADAPTER_A_NAME = r"Anima\style\adapter-a.safetensors"
+PRIMARY_ADAPTER_NAME = r"Anima\style\adapter-a.safetensors"
 
 
 @dataclass(frozen=True, slots=True)
 class GlobalStyleCharacterCase:
-    """Describe one whole-image style strength with right-region CHARACTER_A."""
+    """Describe one whole-image style strength with a regional character."""
 
     case_id: str
     label: str
@@ -25,18 +25,18 @@ def cases() -> tuple[GlobalStyleCharacterCase, ...]:
 
     return (
         GlobalStyleCharacterCase(
-            "character_a-right-only",
-            "character_a RIGHT 1.0 — no global style",
+            "character-right-only",
+            "CHARACTER RIGHT 1.0 — no global style",
             None,
         ),
         GlobalStyleCharacterCase(
-            "global-adapter_a-050-character_a-right",
-            "GLOBAL ADAPTER_A 0.5 + character_a RIGHT 1.0",
+            "global-style-050-character-right",
+            "GLOBAL STYLE 0.5 + CHARACTER RIGHT 1.0",
             0.5,
         ),
         GlobalStyleCharacterCase(
-            "global-adapter_a-100-character_a-right",
-            "GLOBAL ADAPTER_A 1.0 + character_a RIGHT 1.0",
+            "global-style-100-character-right",
+            "GLOBAL STYLE 1.0 + CHARACTER RIGHT 1.0",
             1.0,
         ),
     )

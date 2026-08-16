@@ -13,6 +13,7 @@ from uuid import uuid4
 import pytest
 import torch
 from comfy.ldm.modules.attention import BasicTransformerBlock
+from comfy.patcher_extension import WrappersMP
 from torch import nn
 
 from simple_syrup.domain.conditioning_schedule import ConditioningScheduleRange
@@ -33,7 +34,11 @@ from simple_syrup.domain.spatial_views import (
     SpatialViewKind,
 )
 from simple_syrup.runtime.attention_coupling.unet_attention_context_wrapper import (
+    UNET_ATTENTION_CONTEXT_WRAPPER_KEY,
     StandardUnetAttentionContextDiffusionWrapper,
+)
+from simple_syrup.runtime.attention_coupling.unet_attention_phase_session import (
+    STANDARD_UNET_ATTENTION_PHASE_SESSION,
 )
 from simple_syrup.runtime.attention_coupling.unet_attention_state import (
     StandardUnetAttentionState,
@@ -207,7 +212,10 @@ def test_dynamic_unet_callbacks_consume_current_schedule_and_cfg_state() -> None
     patches = UnetAttn2PatchPair(resolver)
     block, self_attention, cross_attention, feed_forward = _block()
     model = _DiffusionModel()
-    wrapper = StandardUnetAttentionContextDiffusionWrapper(model, state)
+    wrapper = StandardUnetAttentionContextDiffusionWrapper(
+        state,
+        STANDARD_UNET_ATTENTION_PHASE_SESSION,
+    )
     executor = _NestedUnetExecutor(
         model,
         block,
@@ -282,7 +290,13 @@ def _invoke(
         None,
         {
             "cond_or_uncond": selectors,
+            "sample_sigmas": torch.tensor([1.0, 0.0]),
             "sigmas": torch.full((batch,), sigma),
+            "wrappers": {
+                WrappersMP.DIFFUSION_MODEL: {
+                    UNET_ATTENTION_CONTEXT_WRAPPER_KEY: [wrapper]
+                }
+            },
         },
     )
     if not isinstance(output, torch.Tensor):

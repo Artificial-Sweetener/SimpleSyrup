@@ -9,8 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from tools.anima_attention_coupling_prompts import (
-    PINNED_ADAPTER_B,
-    PINNED_ADAPTER_A,
+    PINNED_PRIMARY_ADAPTER,
+    PINNED_SECONDARY_ADAPTER,
     GlobalLora,
     RegionalLora,
 )
@@ -61,8 +61,8 @@ def cases() -> tuple[ContextualIntegrationCase, ...]:
     """Return local, reduced-global, and sub-token cases for both fusion modes."""
 
     scheduled = (
-        RegionalLora(0, PINNED_ADAPTER_A, 0.8, (0.0, 0.75)),
-        RegionalLora(1, PINNED_ADAPTER_B, 0.8, (0.25, 1.0)),
+        RegionalLora(0, PINNED_PRIMARY_ADAPTER, 0.8, (0.0, 0.75)),
+        RegionalLora(1, PINNED_SECONDARY_ADAPTER, 0.8, (0.25, 1.0)),
     )
     definitions: list[ContextualIntegrationCase] = []
     for diffusion_mode in ("multidiffusion", "mixture_of_diffusers"):
@@ -77,7 +77,7 @@ def cases() -> tuple[ContextualIntegrationCase, ...]:
                     case_id=f"{diffusion_mode}-local-segs",
                     label=(
                         f"{mode_label}; local Contextual branch; SEGS plus "
-                        "overlapping regions; scheduled ADAPTER_A/ADAPTER_B"
+                        "overlapping regions; scheduled regional LoRAs"
                     ),
                     diffusion_mode=diffusion_mode,
                     branch_mode="local",
@@ -90,7 +90,7 @@ def cases() -> tuple[ContextualIntegrationCase, ...]:
                     case_id=f"{diffusion_mode}-reduced-global-segs",
                     label=(
                         f"{mode_label}; local plus reduced-global correction; SEGS "
-                        "plus overlapping regions; scheduled ADAPTER_A/ADAPTER_B"
+                        "plus overlapping regions; scheduled regional LoRAs"
                     ),
                     diffusion_mode=diffusion_mode,
                     branch_mode="reduced_global",
@@ -103,7 +103,7 @@ def cases() -> tuple[ContextualIntegrationCase, ...]:
                     case_id=f"{diffusion_mode}-sub-token-global",
                     label=(
                         f"{mode_label}; reduced-global correction; one-pixel "
-                        "sub-token region; scheduled ADAPTER_A/ADAPTER_B"
+                        "sub-token region; scheduled PRIMARY_ADAPTER/SECONDARY_ADAPTER"
                     ),
                     diffusion_mode=diffusion_mode,
                     branch_mode="sub_token_reduced_global",

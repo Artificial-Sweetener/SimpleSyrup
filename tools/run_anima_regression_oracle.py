@@ -45,11 +45,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--level",
-        choices=("accepted", "focused", "full"),
+        choices=("accepted", "focused", "full", "complete"),
         default="focused",
         help=(
-            "Select accepted artifacts only, focused Anima gates, or all "
-            "repository gates."
+            "Select accepted artifacts only, focused Anima gates, full repository "
+            "gates, or the complete oracle including managed Anima reruns."
         ),
     )
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
@@ -58,7 +58,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     recorder = AnimaRegressionResultRecorder(args.output_root / _run_id())
     manifest = default_manifest(REPO_ROOT)
     commands = _commands(
-        args.level, manifest.focused_command, manifest.repository_commands
+        args.level,
+        manifest.focused_command,
+        manifest.repository_commands,
+        manifest.managed_rerun_commands,
     )
     artifacts: tuple[ArtifactObservation, ...] = ()
     observations: tuple[CommandObservation, ...] = ()
@@ -90,6 +93,7 @@ def _commands(
     level: str,
     focused: OracleCommand,
     repository: tuple[OracleCommand, ...],
+    managed: tuple[OracleCommand, ...],
 ) -> tuple[OracleCommand, ...]:
     """Return the exact ordered commands for one declared verification level."""
 
@@ -97,7 +101,11 @@ def _commands(
         return ()
     if level == "focused":
         return (focused,)
-    return (focused, *repository)
+    if level == "full":
+        return (focused, *repository)
+    if level == "complete":
+        return (focused, *repository, *managed)
+    raise ValueError(f"Unsupported Anima regression-oracle level: {level!r}")
 
 
 def _run_id() -> str:

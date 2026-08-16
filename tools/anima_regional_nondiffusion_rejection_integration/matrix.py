@@ -8,16 +8,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tools.anima_attention_coupling_prompts import PINNED_ADAPTER_A
+from tools.anima_attention_coupling_prompts import PINNED_PRIMARY_ADAPTER
 from tools.anima_regional_lora_admission_integration.graph_contract import (
     CFG,
     PublicRegionalLoraHook,
     RegionalLoraAdmissionGraphCase,
 )
 
-TURBO_LORA_NAME = r"Anima\anima-turbo-lora-v0.2.safetensors"
-TURBO_ADAPTER_IDENTITY = "anima-turbo-v0.2"
-ADAPTER_A_ADAPTER_IDENTITY = "supported-adapter_a"
+TURBO_LORA_NAME = r"Anima\mixed-target-adapter.safetensors"
+MIXED_TARGET_ADAPTER_IDENTITY = "mixed-target-adapter"
+PRIMARY_ADAPTER_ADAPTER_IDENTITY = "supported-primary_adapter"
 LLM_ADAPTER_TARGET_FIXTURE = "llm-adapter-target"
 NON_DIFFUSION_OWNER_BUNDLE_FIXTURE = "non-diffusion-owner-bundle"
 
@@ -33,7 +33,7 @@ class PinnedTurboArtifactIdentity:
 
 
 PINNED_TURBO = PinnedTurboArtifactIdentity(
-    stable_name="anima-turbo-lora-v0.2.safetensors",
+    stable_name="mixed-target-adapter.safetensors",
     lora_name=TURBO_LORA_NAME,
     size_bytes=148_902_616,
     sha256="1b55e40bdb1d0e5a78cb498f245fccfdaae97823265db957d2aabdcf4cd3caf1",
@@ -41,12 +41,12 @@ PINNED_TURBO = PinnedTurboArtifactIdentity(
 TURBO_HOOK = PublicRegionalLoraHook(
     TURBO_LORA_NAME,
     1.0,
-    TURBO_ADAPTER_IDENTITY,
+    MIXED_TARGET_ADAPTER_IDENTITY,
 )
-ADAPTER_A_HOOK = PublicRegionalLoraHook(
-    PINNED_ADAPTER_A,
+PRIMARY_ADAPTER_HOOK = PublicRegionalLoraHook(
+    PINNED_PRIMARY_ADAPTER,
     0.75,
-    ADAPTER_A_ADAPTER_IDENTITY,
+    PRIMARY_ADAPTER_ADAPTER_IDENTITY,
 )
 
 
@@ -95,7 +95,7 @@ def cases() -> tuple[AnimaNondiffusionRejectionCase, ...]:
             0,
             (
                 "failed before sampling",
-                TURBO_ADAPTER_IDENTITY,
+                MIXED_TARGET_ADAPTER_IDENTITY,
                 "diffusion_model.llm_adapter.blocks.0.cross_attn.k_proj",
                 "diffusion_model.llm_adapter.blocks.5.self_attn.v_proj",
                 llm_reason,
@@ -137,9 +137,9 @@ def cases() -> tuple[AnimaNondiffusionRejectionCase, ...]:
             ),
         ),
         AnimaNondiffusionRejectionCase(
-            "adapter_a-plus-nondiffusion-bundle",
-            "Reject ADAPTER_A plus non-diffusion owners without partial sampling",
-            (ADAPTER_A_HOOK,),
+            "primary_adapter-plus-nondiffusion-bundle",
+            "Reject PRIMARY_ADAPTER plus non-diffusion owners without partial sampling",
+            (PRIMARY_ADAPTER_HOOK,),
             NON_DIFFUSION_OWNER_BUNDLE_FIXTURE,
             NON_DIFFUSION_OWNER_BUNDLE_FIXTURE,
             CFG,

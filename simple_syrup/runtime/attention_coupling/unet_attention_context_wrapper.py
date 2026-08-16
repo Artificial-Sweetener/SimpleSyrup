@@ -6,23 +6,21 @@
 
 from __future__ import annotations
 
-from weakref import ReferenceType, ref
-
 import torch
 
 from ..diffusion_wrapper_executor import DiffusionWrapperExecutor
+from ..diffusion_wrapper_invocation import DIFFUSION_WRAPPER_INVOCATION_VALIDATOR
 from ..model_patcher_mutations import ModelDiffusionWrapperMutation
-from ..regional_attention_model_call import (
-    REGIONAL_ATTENTION_MODEL_CALL_RESOLVER,
-    RegionalAttentionModelCallResolver,
+from ..regional_attention_model_call import RegionalAttentionModelCallResolver
+from .standard_unet_model_output_validation import (
+    STANDARD_UNET_MODEL_OUTPUT_VALIDATOR,
+    StandardUnetModelOutputValidator,
 )
-from ..regional_lora.operation_invocation import (
-    REGIONAL_OPERATION_INVOCATION_CONTEXT,
-)
-from ..regional_lora.standard_unet_operation_session import (
-    StandardUnetRegionalOperationSession,
+from .unet_attention_phase_session import (
+    StandardUnetAttentionPhaseSession,
 )
 from .unet_attention_state import StandardUnetAttentionState
+from .unet_model_call_resolver import STANDARD_UNET_MODEL_CALL_RESOLVER
 
 UNET_ATTENTION_CONTEXT_WRAPPER_KEY = "simple_syrup.unet_regional_attention_contexts"
 
@@ -32,36 +30,32 @@ class StandardUnetAttentionContextDiffusionWrapper:
 
     def __init__(
         self,
-        diffusion_model: object,
         state: StandardUnetAttentionState,
+        attention_phase: StandardUnetAttentionPhaseSession,
         *,
         model_call_resolver: RegionalAttentionModelCallResolver = (
-            REGIONAL_ATTENTION_MODEL_CALL_RESOLVER
+            STANDARD_UNET_MODEL_CALL_RESOLVER
         ),
-        operation_session: StandardUnetRegionalOperationSession | None = None,
+        output_validator: StandardUnetModelOutputValidator = (
+            STANDARD_UNET_MODEL_OUTPUT_VALIDATOR
+        ),
     ) -> None:
-        """Retain weak model identity and the shared plan/call authorities."""
+        """Retain the shared plan and model-call authorities."""
 
-        try:
-            self._model: ReferenceType[object] = ref(diffusion_model)
-        except TypeError as error:
-            raise TypeError(
-                "Standard UNet diffusion model must be weak-referenceable."
-            ) from error
         if not isinstance(state, StandardUnetAttentionState):
             raise TypeError("Standard UNet context wrapper requires attention state.")
+        if not isinstance(attention_phase, StandardUnetAttentionPhaseSession):
+            raise TypeError("Standard UNet context wrapper requires phase state.")
         if not isinstance(model_call_resolver, RegionalAttentionModelCallResolver):
             raise TypeError(
                 "Standard UNet context wrapper requires a model-call resolver."
             )
         self._state = state
+        self._attention_phase = attention_phase
         self._model_call_resolver = model_call_resolver
-        if operation_session is not None and not isinstance(
-            operation_session,
-            StandardUnetRegionalOperationSession,
-        ):
-            raise TypeError("Standard UNet operation session has an invalid type.")
-        self._operation_session = operation_session
+        if not isinstance(output_validator, StandardUnetModelOutputValidator):
+            raise TypeError("Standard UNet output validator has an invalid type.")
+        self._output_validator = output_validator
 
     def __call__(
         self,
@@ -71,10 +65,6 @@ class StandardUnetAttentionContextDiffusionWrapper:
     ) -> object:
         """Resolve and publish contexts for exactly one nested UNet execution."""
 
-        if self._model() is not executor.class_obj:
-            raise ValueError(
-                "Standard UNet context wrapper executor does not own the bound model."
-            )
         if not args or not isinstance(args[0], torch.Tensor):
             raise TypeError("Standard UNet context wrapper requires model input.")
         if len(args) < 3 or not isinstance(args[2], torch.Tensor):
@@ -87,6 +77,12 @@ class StandardUnetAttentionContextDiffusionWrapper:
                 "Standard UNet context wrapper requires dictionary sixth positional "
                 "transformer options."
             )
+        DIFFUSION_WRAPPER_INVOCATION_VALIDATOR.require_owned(
+            executor,
+            args[5],
+            key=UNET_ATTENTION_CONTEXT_WRAPPER_KEY,
+            wrapper=self,
+        )
         contexts = self._model_call_resolver.resolve(
             self._state.plan,
             model_input=args[0],
@@ -95,33 +91,24 @@ class StandardUnetAttentionContextDiffusionWrapper:
         )
         forwarded_args = (*args[:2], contexts.base_context, *args[3:])
         with (
+            self._attention_phase.activate(args[5]),
             self._state.execution_context.activate(contexts),
             self._state.resolution_cache.activate(),
         ):
-            if self._operation_session is not None:
-                with (
-                    self._operation_session.activate(contexts, args[5]),
-                    REGIONAL_OPERATION_INVOCATION_CONTEXT.activate(
-                        self._operation_session
-                    ),
-                ):
-                    return executor(*forwarded_args, **kwargs)
-            return executor(*forwarded_args, **kwargs)
+            output = executor(*forwarded_args, **kwargs)
+            return self._output_validator.validate(output, model_input=args[0])
 
 
 def unet_attention_context_wrapper_mutation(
-    diffusion_model: object,
     state: StandardUnetAttentionState,
-    *,
-    operation_session: StandardUnetRegionalOperationSession | None = None,
+    attention_phase: StandardUnetAttentionPhaseSession,
 ) -> ModelDiffusionWrapperMutation:
     """Return the clone-local standard-UNet context wrapper mutation."""
 
     return ModelDiffusionWrapperMutation(
         UNET_ATTENTION_CONTEXT_WRAPPER_KEY,
         StandardUnetAttentionContextDiffusionWrapper(
-            diffusion_model,
             state,
-            operation_session=operation_session,
+            attention_phase,
         ),
     )

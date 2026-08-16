@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Run the fixed-seed global and regional ADAPTER_A visual comparison."""
+"""Run the fixed-seed global and regional PRIMARY_ADAPTER visual comparison."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from tools.comfy_integration.history_output import extract_saved_image
 from tools.comfy_integration.loopback_port import is_loopback_port_available
 from tools.comfy_integration.managed_server import ManagedComfyServer
 from tools.global_lora_visual_proof.matrix import (
-    ADAPTER_A_NAME,
+    PRIMARY_ADAPTER_NAME,
     GlobalLoraVisualCase,
     cases,
     render_positive_prompt,
@@ -39,9 +39,9 @@ SOURCE_WORKFLOW = (
     COMFY_ROOT
     / "benchmark_artifacts"
     / "anima-regional-prompting-v1"
-    / "user-prompt-checkpoint_a-regional-lora-pair"
+    / "user-prompt-reference_checkpoint-regional-lora-pair"
     / "20260812T160702Z-ad444583"
-    / "checkpoint_a-adapter_a-pink-only__workflow.json"
+    / "reference_checkpoint-primary_adapter-pink-only__workflow.json"
 )
 
 
@@ -174,7 +174,7 @@ def _workflow(
             "class_type": "LoraLoaderModelOnly",
             "inputs": {
                 "model": ["1", 0],
-                "lora_name": ADAPTER_A_NAME,
+                "lora_name": PRIMARY_ADAPTER_NAME,
                 "strength_model": case.global_strength,
             },
         }

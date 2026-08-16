@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .graph import NodeReference, SdxlWorkflowGraph
-from .matrix import CFG, SAMPLER, SCHEDULER, SEED
+from .sampling_controls import SDXL_VISUAL_SAMPLING
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +44,8 @@ def add_sampler_branch(
     run_id: str,
     steps: int,
     denoise: float,
+    regional_prompt_weight: float,
+    region_mask_feather: int,
     sampler_inputs: dict[str, object],
     filename_prefix: str | None = None,
 ) -> SdxlSamplerBranchResult:
@@ -64,16 +66,16 @@ def add_sampler_branch(
     sampled = graph.add(
         node_id,
         model=[captured, 0],
-        seed=SEED,
+        seed=SDXL_VISUAL_SAMPLING.seed,
         steps=steps,
-        cfg=CFG,
-        sampler_name=SAMPLER,
-        scheduler=SCHEDULER,
+        cfg=SDXL_VISUAL_SAMPLING.cfg,
+        sampler_name=SDXL_VISUAL_SAMPLING.sampler,
+        scheduler=SDXL_VISUAL_SAMPLING.scheduler,
         positive=positive,
         negative=negative,
         region_masks=masks,
-        regional_prompt_weight=1.0,
-        region_mask_feather=32,
+        regional_prompt_weight=regional_prompt_weight,
+        region_mask_feather=region_mask_feather,
         latent_image=latent,
         denoise=denoise,
         **sampler_inputs,

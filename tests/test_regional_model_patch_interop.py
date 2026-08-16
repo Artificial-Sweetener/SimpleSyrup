@@ -117,6 +117,24 @@ def test_validator_preserves_easycache_and_unrelated_model_state() -> None:
     assert cached.object_patches == before_objects
 
 
+def test_validator_reports_generic_model_weight_patches_without_mutation() -> None:
+    """Publish populated MODEL weight-patch state without inspecting identity."""
+
+    source = _patcher()
+    source.patches["projection.weight"] = [object()]
+    before = {key: values.copy() for key, values in source.patches.items()}
+
+    report = REGIONAL_MODEL_PATCH_INTEROP_VALIDATOR.validate(
+        source,
+        _capabilities(RegionalModelFamily.STANDARD_UNET),
+    )
+
+    assert report.preserved_modifiers == (
+        RegionalPreservedModelModifier.MODEL_WEIGHT_PATCH,
+    )
+    assert source.patches == before
+
+
 def test_validator_rejects_lazycache_without_mutating_it() -> None:
     """Reject whole-denoiser reuse that cannot execute exact skipped-step LoRA math."""
 

@@ -11,8 +11,8 @@ from typing import Literal
 
 TextConstruction = Literal["lazy", "adjacent", "overlapping", "inactive"]
 
-ADAPTER_A = "Anima\\style\\adapter-a.safetensors"
-ADAPTER_B = "Anima\\style\\adapter-b.safetensors"
+PRIMARY_ADAPTER = "Anima\\style\\adapter-a.safetensors"
+SECONDARY_ADAPTER = "Anima\\style\\adapter-b.safetensors"
 
 
 @dataclass(frozen=True)
@@ -28,7 +28,7 @@ class ExpectedConditioning:
 class ExpectedAdapter:
     """Describe one expected ordered adapter and native keyframe schedule."""
 
-    identity: str
+    slot: str
     strength_model: float
     strength_clip: float
     keyframes: tuple[tuple[float, float], ...]
@@ -45,6 +45,7 @@ class PromptControlCase:
     expected_positive: tuple[ExpectedConditioning, ...]
     expected_adapters: tuple[ExpectedAdapter, ...] = ()
     expect_static_model_lora: bool = False
+    expected_static_target_count: int | None = None
     expected_negative: tuple[ExpectedConditioning, ...] = (
         ExpectedConditioning(0.0, 1.0),
     )
@@ -88,19 +89,20 @@ def cases() -> tuple[PromptControlCase, ...]:
             "lora-single-static",
             "lazy",
             "a calm subject",
-            f"<lora:{ADAPTER_A}:0.75:0.25>",
+            f"<lora:{PRIMARY_ADAPTER}:0.75:0.25>",
             (ExpectedConditioning(0.0, 1.0),),
             expect_static_model_lora=True,
+            expected_static_target_count=None,
         ),
         PromptControlCase(
             "lora-single-scheduled",
             "lazy",
             "a calm subject",
-            f"[<lora:{ADAPTER_A}:0.75:0.25>:0.25,0.75]",
+            f"[<lora:{PRIMARY_ADAPTER}:0.75:0.25>:0.25,0.75]",
             (ExpectedConditioning(0.0, 1.0),),
             (
                 ExpectedAdapter(
-                    "adapter_a-0.75-0.25",
+                    "adapter-0",
                     0.75,
                     0.25,
                     ((0.0, 0.0), (0.25, 1.0), (0.75, 0.0)),
@@ -114,11 +116,14 @@ def cases() -> tuple[PromptControlCase, ...]:
             "lora-adjacent",
             "lazy",
             "a calm subject",
-            f"[<lora:{ADAPTER_A}:0.4>:0.0,0.5] [<lora:{ADAPTER_B}:0.6>:0.5,1.0]",
+            (
+                f"[<lora:{PRIMARY_ADAPTER}:0.4>:0.0,0.5] "
+                f"[<lora:{SECONDARY_ADAPTER}:0.6>:0.5,1.0]"
+            ),
             (ExpectedConditioning(0.0, 1.0),),
             (
-                ExpectedAdapter("adapter_a-0.4", 0.4, 0.4, ((0.0, 1.0), (0.5, 0.0))),
-                ExpectedAdapter("adapter_b-0.6", 0.6, 0.6, ((0.0, 0.0), (0.5, 1.0))),
+                ExpectedAdapter("adapter-0", 0.4, 0.4, ((0.0, 1.0), (0.5, 0.0))),
+                ExpectedAdapter("adapter-1", 0.6, 0.6, ((0.0, 0.0), (0.5, 1.0))),
             ),
             expected_negative=(ExpectedConditioning(0.5, 1.0),),
             expected_model_call_count=12,
@@ -128,17 +133,20 @@ def cases() -> tuple[PromptControlCase, ...]:
             "lora-stacked-overlap",
             "lazy",
             "a calm subject",
-            f"[<lora:{ADAPTER_A}:0.4>:0.0,0.75] [<lora:{ADAPTER_B}:0.6>:0.25,1.0]",
+            (
+                f"[<lora:{PRIMARY_ADAPTER}:0.4>:0.0,0.75] "
+                f"[<lora:{SECONDARY_ADAPTER}:0.6>:0.25,1.0]"
+            ),
             (ExpectedConditioning(0.0, 1.0),),
             (
                 ExpectedAdapter(
-                    "adapter_a-0.4",
+                    "adapter-0",
                     0.4,
                     0.4,
                     ((0.0, 1.0), (0.25, 0.0), (0.25, 1.0), (0.75, 0.0)),
                 ),
                 ExpectedAdapter(
-                    "adapter_b-0.6",
+                    "adapter-1",
                     0.6,
                     0.6,
                     ((0.0, 0.0), (0.25, 1.0), (0.75, 0.0), (0.75, 1.0)),
@@ -158,7 +166,7 @@ def cases() -> tuple[PromptControlCase, ...]:
             "lora-inactive",
             "lazy",
             "a calm subject",
-            f"[<lora:{ADAPTER_A}:0.5>:0.5,0.5]",
+            f"[<lora:{PRIMARY_ADAPTER}:0.5>:0.5,0.5]",
             (ExpectedConditioning(0.0, 1.0),),
         ),
     )

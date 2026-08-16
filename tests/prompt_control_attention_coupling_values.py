@@ -51,7 +51,7 @@ def _snapshot(case: PromptControlAttentionCase, baseline: JsonObject) -> JsonObj
     if not case.characterization.expect_static_model_lora:
         return result
     hook: JsonObject = {
-        "identity": "adapter_a-static-0.75",
+        "identity": "primary_adapter-static-0.75",
         "order": 0,
         "hook_type": "WeightHook",
         "hook_ref": "opaque-hook-ref-0",

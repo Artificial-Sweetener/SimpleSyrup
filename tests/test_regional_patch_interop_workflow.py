@@ -130,7 +130,7 @@ def test_rejected_spatial_cases_use_unsampled_1024_to_1536_latent(case_id: str) 
     assert scale_inputs["height"] == 1536
 
 
-def test_scheduled_cache_graph_authors_the_exact_regional_adapter_a_interval() -> None:
+def test_scheduled_cache_graph_authors_the_exact_regional_adapter_interval() -> None:
     """Reach cache rejection through public scheduled Prompt Control metadata."""
 
     definition = next(

@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Own the immutable pinned ADAPTER_A global characterization matrix."""
+"""Own the immutable global LoRA characterization matrix."""
 
 from __future__ import annotations
 
@@ -11,9 +11,6 @@ from typing import Literal
 
 LoraMode = Literal["static", "scheduled"]
 
-PINNED_LORA_NAME = "Anima\\style\\adapter-a.safetensors"
-PINNED_LORA_SIZE = 138_663_768
-PINNED_LORA_SHA256 = "0c915b59f464fd3d72c49a241440f8a41582ec76b597b0029e18b657b600c7d8"
 MEASUREMENT_SEEDS = (1_029_384_756, 3_141_592_653, 2_718_281_828)
 CAPTURE_SEED = MEASUREMENT_SEEDS[0]
 SCHEDULE = ((0.0, 0.0), (0.25, 1.0), (0.5, 0.5), (0.75, 0.0))
@@ -21,7 +18,7 @@ SCHEDULE = ((0.0, 0.0), (0.25, 1.0), (0.5, 0.5), (0.75, 0.0))
 
 @dataclass(frozen=True)
 class AdapterDefinition:
-    """Define one ordered identity applied from the pinned adapter artifact."""
+    """Define one ordered identity applied from the selected adapter artifact."""
 
     identity: str
     strength: float
@@ -51,7 +48,8 @@ class LoraRun:
 
         evidence_kind = "outputs" if self.capture_outputs else "measurement"
         return (
-            f"adapter_a-global__{self.profile.profile_id}__{evidence_kind}__seed-{self.seed}"
+            f"adapter-global__{self.profile.profile_id}__"
+            f"{evidence_kind}__seed-{self.seed}"
         )
 
 

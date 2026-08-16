@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import torch
 
-from simple_syrup.runtime.regional_lora.anima_self_attention_coherence import (
-    AnimaSelfAttentionCoherencePolicy,
+from simple_syrup.runtime.regional_self_attention_coherence import (
+    RegionalSelfAttentionCoherencePolicy,
 )
 
 
@@ -18,7 +18,7 @@ def test_vertical_split_builds_continuous_boundary_blend() -> None:
 
     owners = torch.tensor([[0, 0, 0, 0, 1, 1, 1, 1]])
 
-    profile = AnimaSelfAttentionCoherencePolicy(radius=1).resolve(
+    profile = RegionalSelfAttentionCoherencePolicy(radius=1).resolve(
         owners,
         height=1,
         width=8,
@@ -38,7 +38,7 @@ def test_two_dimensional_corner_does_not_globalize_interiors() -> None:
 
     owners = torch.tensor([[0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1]])
 
-    profile = AnimaSelfAttentionCoherencePolicy(
+    profile = RegionalSelfAttentionCoherencePolicy(
         radius=0,
         interior_global_blend=0.0,
     ).resolve(
@@ -58,7 +58,7 @@ def test_existing_uncovered_tokens_remain_shared() -> None:
 
     owners = torch.tensor([[0, -1, 1, 1]])
 
-    profile = AnimaSelfAttentionCoherencePolicy(
+    profile = RegionalSelfAttentionCoherencePolicy(
         radius=0,
         interior_global_blend=0.0,
     ).resolve(
@@ -76,7 +76,7 @@ def test_geometry_mismatch_fails_closed() -> None:
     """Reject flattened ownership that cannot reconstruct the active grid."""
 
     try:
-        AnimaSelfAttentionCoherencePolicy().resolve(
+        RegionalSelfAttentionCoherencePolicy().resolve(
             torch.zeros((1, 3), dtype=torch.long),
             height=2,
             width=2,
@@ -92,7 +92,7 @@ def test_invalid_global_composition_strength_fails_closed() -> None:
 
     for strength in (-0.1, 1.0, True):
         try:
-            AnimaSelfAttentionCoherencePolicy(interior_global_blend=strength)
+            RegionalSelfAttentionCoherencePolicy(interior_global_blend=strength)
         except ValueError:
             pass
         else:

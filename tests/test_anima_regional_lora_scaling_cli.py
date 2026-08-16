@@ -58,10 +58,21 @@ def test_scaling_cli_writes_result_and_returns_gate_status(
     monkeypatch.setattr(
         cli_module,
         "_arguments",
-        lambda: type("Args", (), {"repeats": 3, "output_root": tmp_path})(),
+        lambda: type(
+            "Args",
+            (),
+            {
+                "repeats": 3,
+                "output_root": tmp_path,
+                "artifact_inventory": tmp_path / "inventory.json",
+            },
+        )(),
     )
+    monkeypatch.setattr(cli_module, "load_performance_artifacts", lambda path: ())
     monkeypatch.setattr(
-        cli_module, "default_scaling_manifest", lambda repeats: manifest
+        cli_module,
+        "default_scaling_manifest",
+        lambda *, repeats, artifacts: manifest,
     )
     monkeypatch.setattr(
         ANIMA_REGIONAL_LORA_SCALING_RUNNER,

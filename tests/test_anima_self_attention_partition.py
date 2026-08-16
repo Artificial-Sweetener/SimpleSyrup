@@ -8,15 +8,15 @@ from __future__ import annotations
 
 import torch
 
-from simple_syrup.runtime.regional_lora import (
-    anima_self_attention_partition_execution as partition_execution,
+from simple_syrup.runtime.regional_self_attention_coherence import (
+    RegionalSelfAttentionCoherencePolicy,
+    RegionalSelfAttentionCoherenceProfile,
 )
-from simple_syrup.runtime.regional_lora.anima_self_attention_coherence import (
-    AnimaSelfAttentionCoherencePolicy,
-    AnimaSelfAttentionCoherenceProfile,
+from simple_syrup.runtime.regional_self_attention_partition import (
+    RegionalSelfAttentionPartitionPlan,
 )
-from simple_syrup.runtime.regional_lora.anima_self_attention_partition import (
-    AnimaSelfAttentionPartitionPlan,
+from simple_syrup.runtime.regional_self_attention_partition_execution import (
+    RegionalSelfAttentionPartitionExecution,
 )
 
 
@@ -30,7 +30,7 @@ def test_symmetric_cfg_split_batches_regions_by_equal_geometry() -> None:
         ]
     )
 
-    plan = AnimaSelfAttentionPartitionPlan.build(_profile(owners))
+    plan = RegionalSelfAttentionPartitionPlan.build(_profile(owners))
     groups = plan.regional_groups
 
     assert len(groups) == 1
@@ -55,7 +55,7 @@ def test_partition_relation_matches_dense_ownership_relation() -> None:
     """Cover every and only the query/key pairs allowed by ownership policy."""
 
     owners = torch.tensor([[0, 0, -1, 1, 1]])
-    plan = AnimaSelfAttentionPartitionPlan.build(_profile(owners))
+    plan = RegionalSelfAttentionPartitionPlan.build(_profile(owners))
     reconstructed = torch.zeros((1, 5, 5), dtype=torch.bool)
 
     for group in plan.regional_groups:
@@ -76,7 +76,7 @@ def test_different_batch_layouts_remain_exact() -> None:
 
     owners = torch.tensor([[0, -1, 1], [0, 1, 1]])
 
-    plan = AnimaSelfAttentionPartitionPlan.build(_profile(owners))
+    plan = RegionalSelfAttentionPartitionPlan.build(_profile(owners))
 
     assert sum(group.call_count for group in plan.regional_groups) == 4
     assert sum(group.call_count for group in plan.global_groups) == 1
@@ -92,7 +92,7 @@ def test_invalid_owners_fail_closed() -> None:
         torch.tensor([[-2]], dtype=torch.long),
     ):
         try:
-            AnimaSelfAttentionPartitionPlan.build(_profile(owners))
+            RegionalSelfAttentionPartitionPlan.build(_profile(owners))
         except (TypeError, ValueError):
             pass
         else:
@@ -107,9 +107,9 @@ def test_compact_execution_matches_dense_masked_sdpa() -> None:
     q = torch.randn((1, 5, 2, 4))
     k = torch.randn_like(q)
     v = torch.randn_like(q)
-    plan = AnimaSelfAttentionPartitionPlan.build(_profile(owners))
+    plan = RegionalSelfAttentionPartitionPlan.build(_profile(owners))
 
-    compact = partition_execution.AnimaSelfAttentionPartitionExecution().execute(
+    compact = RegionalSelfAttentionPartitionExecution().execute(
         q,
         k,
         v,
@@ -147,15 +147,15 @@ def test_boundary_queries_blend_regional_and_global_attention_continuously() -> 
     """Interpolate boundary outputs without changing owned interior outputs."""
 
     owners = torch.tensor([[0, 0, 1, 1]])
-    profile = AnimaSelfAttentionCoherenceProfile(
+    profile = RegionalSelfAttentionCoherenceProfile(
         query_owners=owners,
         shared_keys=torch.tensor([[False, True, True, False]]),
         global_blend=torch.tensor([[0.0, 0.5, 0.5, 0.0]]),
     )
-    plan = AnimaSelfAttentionPartitionPlan.build(profile)
+    plan = RegionalSelfAttentionPartitionPlan.build(profile)
     q = torch.arange(4.0).reshape(1, 4, 1, 1)
 
-    output = partition_execution.AnimaSelfAttentionPartitionExecution().execute(
+    output = RegionalSelfAttentionPartitionExecution().execute(
         q,
         q,
         q,
@@ -179,12 +179,12 @@ def test_owned_interiors_retain_the_full_scene_residual() -> None:
         ),
         dim=1,
     ).reshape(1, -1)
-    profile = AnimaSelfAttentionCoherencePolicy(radius=0).resolve(
+    profile = RegionalSelfAttentionCoherencePolicy(radius=0).resolve(
         owners,
         height=8,
         width=8,
     )
-    plan = AnimaSelfAttentionPartitionPlan.build(profile)
+    plan = RegionalSelfAttentionPartitionPlan.build(profile)
 
     interior = 18
     assert not bool(profile.shared_keys[0, interior])
@@ -196,15 +196,15 @@ def test_global_blend_uses_installed_bfloat16_execution_dtype() -> None:
     """Convert policy weights before the dtype-strict installed lerp operation."""
 
     owners = torch.tensor([[0, 0, 1, 1]])
-    profile = AnimaSelfAttentionCoherenceProfile(
+    profile = RegionalSelfAttentionCoherenceProfile(
         query_owners=owners,
         shared_keys=torch.tensor([[False, True, True, False]]),
         global_blend=torch.tensor([[0.125, 1.0, 1.0, 0.125]]),
     )
-    plan = AnimaSelfAttentionPartitionPlan.build(profile)
+    plan = RegionalSelfAttentionPartitionPlan.build(profile)
     q = torch.arange(4.0, dtype=torch.bfloat16).reshape(1, 4, 1, 1)
 
-    output = partition_execution.AnimaSelfAttentionPartitionExecution().execute(
+    output = RegionalSelfAttentionPartitionExecution().execute(
         q,
         q,
         q,
@@ -218,11 +218,11 @@ def test_global_blend_uses_installed_bfloat16_execution_dtype() -> None:
     assert torch.equal(output.flatten(), q.flatten())
 
 
-def _profile(owners: torch.Tensor) -> AnimaSelfAttentionCoherenceProfile:
+def _profile(owners: torch.Tensor) -> RegionalSelfAttentionCoherenceProfile:
     """Build a profile whose existing shared owners use global attention."""
 
     shared = owners.eq(-1)
-    return AnimaSelfAttentionCoherenceProfile(
+    return RegionalSelfAttentionCoherenceProfile(
         query_owners=owners,
         shared_keys=shared,
         global_blend=shared.to(torch.float32),

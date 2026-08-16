@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Capture the fixed global ADAPTER_A LoRA matrix through an existing ComfyUI."""
+"""Capture the fixed global PRIMARY_ADAPTER LoRA matrix through an existing ComfyUI."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from pathlib import Path
 from tools.anima_lora_characterization.artifact_inventory import (
     AdapterInventory,
     inspect_adapter,
-    validate_pinned_inventory,
 )
 from tools.anima_lora_characterization.history_outputs import (
     parse_completed_outputs,
@@ -33,7 +32,7 @@ LOGGER = logging.getLogger("simple_syrup.anima_lora_characterization")
 
 
 def main() -> int:
-    """Run or resume the complete pinned matrix against one loopback server."""
+    """Run or resume the complete matrix against one loopback server."""
 
     arguments = _arguments()
     logging.basicConfig(
@@ -42,9 +41,8 @@ def main() -> int:
     )
     manifest = load_manifest()
     inventory = inspect_adapter(arguments.lora_path)
-    validate_pinned_inventory(inventory)
     client = LoopbackComfyClient(arguments.server_url)
-    workflow_builder = LoraWorkflowBuilder()
+    workflow_builder = LoraWorkflowBuilder(arguments.lora_name)
     run_matrix = runs()
     positive_prompt = _positive_prompt(manifest)
     required_nodes = {
@@ -68,7 +66,7 @@ def main() -> int:
     if arguments.max_runs is not None:
         pending = pending[: arguments.max_runs]
     LOGGER.info(
-        "Pinned ADAPTER_A characterization starting: total=%s pending=%s",
+        "Pinned PRIMARY_ADAPTER characterization starting: total=%s pending=%s",
         len(run_matrix),
         len(pending),
     )
@@ -89,16 +87,18 @@ def main() -> int:
         ):
             return 1
     if arguments.max_runs is not None:
-        LOGGER.info("Bounded ADAPTER_A smoke batch completed; result remains in-progress.")
+        LOGGER.info(
+            "Bounded PRIMARY_ADAPTER smoke batch completed; result remains in-progress."
+        )
         return 0
     try:
         result_path = recorder.finalize()
     except ValueError:
         LOGGER.exception(
-            "Pinned ADAPTER_A matrix did not reach a successful terminal state."
+            "Pinned PRIMARY_ADAPTER matrix did not reach a successful terminal state."
         )
         return 1
-    LOGGER.info("Pinned ADAPTER_A result completed: %s", result_path)
+    LOGGER.info("Pinned PRIMARY_ADAPTER result completed: %s", result_path)
     return 0
 
 
@@ -116,7 +116,9 @@ def _execute_run(
 ) -> bool:
     """Execute and durably record one run without owning retry policy."""
 
-    LOGGER.info("Executing ADAPTER_A run %s/%s: %s", index, total, run.artifact_id)
+    LOGGER.info(
+        "Executing PRIMARY_ADAPTER run %s/%s: %s", index, total, run.artifact_id
+    )
     try:
         workflow = workflow_builder.build(run, manifest.sampling, positive_prompt)
         prompt_id = client.submit(workflow.prompt)
@@ -136,7 +138,7 @@ def _execute_run(
             outputs.metrics.get("peak_vram_bytes"), "peak_vram_bytes"
         )
         LOGGER.info(
-            "ADAPTER_A run completed: calls=%s runtime_ms=%.2f peak_GiB=%.2f",
+            "PRIMARY_ADAPTER run completed: calls=%s runtime_ms=%.2f peak_GiB=%.2f",
             model_call_count,
             runtime_ms,
             peak_vram_bytes / 1024**3,
@@ -144,7 +146,7 @@ def _execute_run(
         return True
     except Exception as error:
         recorder.record_failure(run, error)
-        LOGGER.exception("ADAPTER_A run failed: %s", run.artifact_id)
+        LOGGER.exception("PRIMARY_ADAPTER run failed: %s", run.artifact_id)
         return False
 
 
@@ -189,6 +191,7 @@ def _arguments() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lora-path", type=Path, required=True)
+    parser.add_argument("--lora-name", required=True)
     parser.add_argument("--server-url", default="http://127.0.0.1:8297")
     parser.add_argument(
         "--output-root",

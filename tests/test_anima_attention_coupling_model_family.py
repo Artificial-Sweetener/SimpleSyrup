@@ -16,10 +16,14 @@ from simple_syrup.domain.processed_regional_attention import (
     ProcessedRegionalAttentionPlan,
 )
 from simple_syrup.domain.regional_lora_plan import EMPTY_REGIONAL_LORA_PLAN
+from simple_syrup.domain.regional_model_capabilities import RegionalModelFamily
 from simple_syrup.runtime.attention_coupling.anima_context import (
     ANIMA_REGIONAL_CONTEXT_VALIDATOR,
 )
 from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
+from simple_syrup.runtime.regional_model_patch_interop import (
+    RegionalModelPatchInteropReport,
+)
 from simple_syrup.services.anima_attention_coupling_model_family import (
     AnimaAttentionCouplingModelFamily,
 )
@@ -53,6 +57,10 @@ def test_anima_family_retains_single_frame_context_and_backend_policy() -> None:
             model="model",
             processed_plan=processed,
             admission=admission,
+            interop_report=RegionalModelPatchInteropReport(
+                RegionalModelFamily.ANIMA,
+                (),
+            ),
             region_strengths=(0.75,),
             latent_batch_size=2,
         )

@@ -30,6 +30,10 @@ from simple_syrup.domain.regional_lora_plan import RegionalLoraPlan
 from simple_syrup.domain.regional_mask_bank import RegionalMaskBank
 from simple_syrup.runtime.regional_attention_batching import (
     REGIONAL_ATTENTION_BATCHING_SERVICE,
+    RegionalAttentionBatchingService,
+)
+from simple_syrup.runtime.regional_attention_sequence_alignment import (
+    REGIONAL_ATTENTION_SEQUENCE_ALIGNER,
 )
 
 
@@ -227,8 +231,8 @@ def test_batching_rejects_invalid_chunk_or_batch_inputs(
         )
 
 
-def test_batching_rejects_cross_branch_sequence_or_dtype_mismatch() -> None:
-    """Preflight all possible branches before concatenating partial batches."""
+def test_batching_rejects_cross_branch_dtype_mismatch() -> None:
+    """Preflight execution dtype before concatenating partial batches."""
 
     plan = _plan(negative_dtype=torch.float16)
     with pytest.raises(ValueError, match="dtypes must match"):
@@ -246,21 +250,29 @@ def test_batching_rejects_cross_branch_sequence_or_dtype_mismatch() -> None:
             latent_batch_size=1,
         )
 
+
+def test_batching_ignores_unselected_branch_sequence_lengths() -> None:
+    """Keep an unselected branch from changing the active attention length."""
+
     plan = _plan(negative_sequence_length=3)
-    with pytest.raises(ValueError, match="sequence shapes must match"):
-        REGIONAL_ATTENTION_BATCHING_SERVICE.align(
-            plan,
-            base_context=torch.cat(
-                (
-                    plan.positive.base_context.entries[0].cross_attention,
-                    plan.positive.base_context.entries[0].cross_attention,
-                )
-            ),
-            cond_or_uncond=[0, 1],
-            conditioning_uuids=_uuids_for_selectors(plan, [0, 1]),
-            sigma=0.5,
-            latent_batch_size=1,
-        )
+
+    aligned = RegionalAttentionBatchingService(
+        sequence_aligner=REGIONAL_ATTENTION_SEQUENCE_ALIGNER
+    ).align(
+        plan,
+        base_context=plan.positive.base_context.entries[0].cross_attention,
+        cond_or_uncond=[0],
+        conditioning_uuids=_uuids_for_selectors(plan, [0]),
+        sigma=0.5,
+        latent_batch_size=1,
+    )
+
+    assert aligned.base_context.shape == (1, 2, 3)
+    assert all(
+        entry.context.shape == (1, 2, 3)
+        for region in aligned.regions
+        for entry in region.entries
+    )
 
 
 def test_batched_value_rejects_noncontiguous_chunk_ranges() -> None:

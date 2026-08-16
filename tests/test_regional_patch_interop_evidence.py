@@ -226,7 +226,7 @@ def _diagnostics(
 
 
 def _diagnostic_snapshot(mode: str) -> JsonObject:
-    """Return one exact static-ADAPTER_A diagnostic record."""
+    """Return one exact static-PRIMARY_ADAPTER diagnostic record."""
 
     return {
         "strategy": "attention_coupling",
@@ -240,7 +240,7 @@ def _diagnostic_snapshot(mode: str) -> JsonObject:
                 "branch": "positive",
                 "target_count": 448,
                 "effective_strength": 0.75,
-                "adapter_token": "adapter_a-token",
+                "adapter_token": "primary_adapter-token",
             },
             {
                 "active": True,
@@ -249,7 +249,7 @@ def _diagnostic_snapshot(mode: str) -> JsonObject:
                 "branch": "negative",
                 "target_count": 448,
                 "effective_strength": 0.75,
-                "adapter_token": "adapter_a-token",
+                "adapter_token": "primary_adapter-token",
             },
         ],
         "estimated_work": {

@@ -25,9 +25,7 @@ from simple_syrup.runtime.regional_lora_plan_adapter import (
     RegionalLoraHookSource,
 )
 
-PINNED_ADAPTER_A_IDENTITY = (
-    "<MODEL_ROOT>\\Loras\\Anima\\style\\adapter-a.safetensors"
-)
+ADAPTER_IDENTITY = "adapter.safetensors"
 
 
 def test_hook_adapter_preserves_identity_order_ownership_strength_and_schedules() -> (
@@ -88,7 +86,7 @@ def test_hook_adapter_preserves_identity_order_ownership_strength_and_schedules(
     negative_weight_hook.hook_keyframe = negative_schedule
     positive_snapshot = _hook_snapshot(positive_hooks)
     negative_snapshot = _hook_snapshot(negative_hooks)
-    adapter_a_identity = RegionalLoraAdapterIdentity(PINNED_ADAPTER_A_IDENTITY)
+    primary_adapter_identity = RegionalLoraAdapterIdentity(ADAPTER_IDENTITY)
 
     adaptation = REGIONAL_LORA_PLAN_ADAPTER.adapt(
         (
@@ -96,13 +94,13 @@ def test_hook_adapter_preserves_identity_order_ownership_strength_and_schedules(
                 region_index=2,
                 branch=RegionalLoraBranch.POSITIVE,
                 hooks=positive_hooks,
-                adapter_identities=(adapter_a_identity,),
+                adapter_identities=(primary_adapter_identity,),
             ),
             RegionalLoraHookSource(
                 region_index=5,
                 branch=RegionalLoraBranch.NEGATIVE,
                 hooks=negative_hooks,
-                adapter_identities=(adapter_a_identity,),
+                adapter_identities=(primary_adapter_identity,),
             ),
         ),
         model=_Model(),
@@ -111,8 +109,8 @@ def test_hook_adapter_preserves_identity_order_ownership_strength_and_schedules(
 
     assert [adapter.composition_index for adapter in plan.adapters] == [0, 1]
     assert [adapter.adapter_identity.value for adapter in plan.adapters] == [
-        PINNED_ADAPTER_A_IDENTITY,
-        PINNED_ADAPTER_A_IDENTITY,
+        ADAPTER_IDENTITY,
+        ADAPTER_IDENTITY,
     ]
     assert [adapter.region_index for adapter in plan.adapters] == [2, 5]
     assert [adapter.branch for adapter in plan.adapters] == [

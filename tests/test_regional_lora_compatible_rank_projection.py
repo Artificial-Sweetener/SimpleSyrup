@@ -14,10 +14,10 @@ from simple_syrup.runtime.regional_lora.compatible_rank_projection import (
 )
 
 
-def test_compatible_projection_uses_one_a_projection_over_union_support(
+def test_compatible_projection_uses_dense_a_projection_at_half_support(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Batch adapter ranks while excluding rows unused by every multiplier."""
+    """Batch adapter ranks densely when gathering would save only half the rows."""
 
     inputs = torch.arange(8, dtype=torch.float32).reshape(4, 2)
     down = torch.cat((torch.eye(2), torch.eye(2)), dim=0)
@@ -34,7 +34,7 @@ def test_compatible_projection_uses_one_a_projection_over_union_support(
         weights: torch.Tensor,
         bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Record the one exact shared compact A projection."""
+        """Record the one exact shared dense A projection."""
 
         observed_batches.append(int(values.shape[0]))
         return original_linear(values, weights, bias)
@@ -51,14 +51,39 @@ def test_compatible_projection_uses_one_a_projection_over_union_support(
         multipliers=multipliers,
         rank=2,
     )
-    deltas = projector.deltas(projection)
+    deltas = projector.materialize_deltas(projection)
 
-    expected = torch.stack(
-        tuple(inputs * multiplier[:, None] for multiplier in multipliers),
-        dim=1,
+    expected = tuple(inputs * multiplier[:, None] for multiplier in multipliers)
+    assert len(deltas) == len(expected)
+    for observed, expected_delta in zip(deltas, expected, strict=True):
+        torch.testing.assert_close(observed, expected_delta)
+        assert observed.is_contiguous()
+    assert observed_batches == [4]
+
+
+def test_materialized_deltas_stay_contiguous_with_multi_axis_inputs() -> None:
+    """Keep every target contiguous across real transformer leading dimensions."""
+
+    inputs = torch.arange(48, dtype=torch.float32).reshape(2, 3, 8)
+    down = torch.cat((torch.eye(2, 8), torch.eye(2, 8)), dim=0)
+    up = torch.stack((torch.eye(4, 2), torch.eye(4, 2)))
+    multipliers = (
+        torch.ones((2, 3), dtype=torch.float32),
+        torch.full((2, 3), 0.5, dtype=torch.float32),
     )
-    torch.testing.assert_close(deltas, expected)
-    assert observed_batches == [2]
+    projector = RegionalLoraCompatibleRankProjector()
+    projection = projector.prepare(
+        inputs,
+        down=down,
+        up=up,
+        multipliers=multipliers,
+        rank=2,
+    )
+
+    deltas = projector.materialize_deltas(projection)
+
+    assert tuple(delta.shape for delta in deltas) == ((2, 3, 4), (2, 3, 4))
+    assert all(delta.is_contiguous() for delta in deltas)
 
 
 @pytest.mark.parametrize("sparse", [False, True])

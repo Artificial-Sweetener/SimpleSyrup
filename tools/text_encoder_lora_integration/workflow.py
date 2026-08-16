@@ -43,11 +43,17 @@ from tools.anima_tiled_attention_coupling_integration.matrix import (
 )
 
 from .conditioning import TextEncoderLoraConditioningWorkflow
+from .fixture import TextEncoderLoraFixtureIdentity
 from .matrix import TextEncoderLoraCase, TextEncoderLoraSpatialMode
 
 
 class TextEncoderLoraWorkflowBuilder:
     """Build one instrumented P9.4 workflow for its declared spatial mode."""
+
+    def __init__(self, fixture: TextEncoderLoraFixtureIdentity) -> None:
+        """Retain the externally selected text-encoder adapter identity."""
+
+        self._fixture = fixture
 
     def build(
         self,
@@ -58,7 +64,7 @@ class TextEncoderLoraWorkflowBuilder:
     ) -> BuiltAnimaAttentionCouplingWorkflow:
         """Bind one case to the accepted shared Anima graph owner."""
 
-        conditioning = TextEncoderLoraConditioningWorkflow(case)
+        conditioning = TextEncoderLoraConditioningWorkflow(case, self._fixture)
         if case.spatial_mode is TextEncoderLoraSpatialMode.FULL:
             builder = AnimaAttentionCouplingWorkflowBuilder(
                 public_node_id=FULL_NODE_ID,

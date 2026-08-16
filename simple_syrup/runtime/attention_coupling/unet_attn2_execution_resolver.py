@@ -23,14 +23,18 @@ from .unet_attention_diagnostics import (
     STANDARD_UNET_ATTENTION_DIAGNOSTICS_EMITTER,
     StandardUnetAttentionDiagnosticsEmitter,
 )
+from .unet_attention_geometry import (
+    STANDARD_UNET_ATTENTION_GEOMETRY_RESOLVER,
+    StandardUnetAttentionGeometry,
+    StandardUnetAttentionGeometryResolver,
+)
+from .unet_attention_resolution_key import StandardUnetAttentionResolutionKey
 from .unet_attention_state import StandardUnetAttentionState
 from .unet_attn2_execution import UnetAttn2Execution
-from .unet_attn2_geometry import (
-    STANDARD_UNET_ATTN2_GEOMETRY_RESOLVER,
-    StandardUnetAttn2Geometry,
-    StandardUnetAttn2GeometryResolver,
+from .unet_regional_row_activity import (
+    STANDARD_UNET_REGIONAL_ROW_ACTIVITY_RESOLVER,
+    StandardUnetRegionalRowActivityResolver,
 )
-from .unet_attn2_resolution_cache import StandardUnetAttn2ResolutionKey
 
 
 @runtime_checkable
@@ -75,8 +79,8 @@ class StandardUnetAttn2ExecutionResolver:
         self,
         state: StandardUnetAttentionState,
         *,
-        geometry_resolver: StandardUnetAttn2GeometryResolver = (
-            STANDARD_UNET_ATTN2_GEOMETRY_RESOLVER
+        geometry_resolver: StandardUnetAttentionGeometryResolver = (
+            STANDARD_UNET_ATTENTION_GEOMETRY_RESOLVER
         ),
         query_masks: RegionalAttentionQueryMaskProjector = (
             REGIONAL_ATTENTION_QUERY_MASK_PROJECTOR
@@ -84,21 +88,27 @@ class StandardUnetAttn2ExecutionResolver:
         diagnostics: StandardUnetAttentionDiagnosticsEmitter = (
             STANDARD_UNET_ATTENTION_DIAGNOSTICS_EMITTER
         ),
+        row_activity: StandardUnetRegionalRowActivityResolver = (
+            STANDARD_UNET_REGIONAL_ROW_ACTIVITY_RESOLVER
+        ),
     ) -> None:
         """Retain exact state, geometry, projection, and emission authorities."""
 
         if not isinstance(state, StandardUnetAttentionState):
             raise TypeError("Standard UNet resolver requires attention state.")
-        if not isinstance(geometry_resolver, StandardUnetAttn2GeometryResolver):
+        if not isinstance(geometry_resolver, StandardUnetAttentionGeometryResolver):
             raise TypeError("Standard UNet resolver requires a geometry resolver.")
         if not isinstance(query_masks, RegionalAttentionQueryMaskProjector):
             raise TypeError("Standard UNet resolver requires a mask projector.")
         if not isinstance(diagnostics, StandardUnetAttentionDiagnosticsEmitter):
             raise TypeError("Standard UNet resolver requires diagnostics emission.")
+        if not isinstance(row_activity, StandardUnetRegionalRowActivityResolver):
+            raise TypeError("Standard UNet resolver requires regional row activity.")
         self._state = state
         self._geometry_resolver = geometry_resolver
         self._query_masks = query_masks
         self._diagnostics = diagnostics
+        self._row_activity = row_activity
 
     @property
     def state(self) -> StandardUnetAttentionState:
@@ -129,7 +139,7 @@ class StandardUnetAttn2ExecutionResolver:
             self._state.plan.mask_bank,
             extra_options,
         )
-        key = StandardUnetAttn2ResolutionKey.from_geometry(geometry, query)
+        key = StandardUnetAttentionResolutionKey.from_geometry(geometry, query)
         return self._state.resolution_cache.resolve(
             key,
             lambda: self._build(query, contexts, geometry, extra_options),
@@ -139,7 +149,7 @@ class StandardUnetAttn2ExecutionResolver:
         self,
         query: torch.Tensor,
         contexts: BatchedRegionalAttentionContexts,
-        geometry: StandardUnetAttn2Geometry,
+        geometry: StandardUnetAttentionGeometry,
         extra_options: dict[str, Any],
     ) -> UnetAttn2Execution:
         """Project and diagnose one unique call-local resolution."""
@@ -149,13 +159,15 @@ class StandardUnetAttn2ExecutionResolver:
             query_geometry=geometry.query,
             layout=geometry.layout,
             form=RegionalMaskForm.CONDITIONING,
-            mode=RegionalMaskProjectionMode.CONTINUOUS_COVERAGE,
+            mode=RegionalMaskProjectionMode.NEAREST,
             device=query.device,
             dtype=query.dtype,
         )
+        activity = self._row_activity.resolve(self._state.plan, contexts)
+        effective_masks = projected.apply_row_activity(activity)
         execution = UnetAttn2Execution(
             contexts,
-            projected.flattened,
+            effective_masks,
             self._state.region_strengths,
             geometry.query.query_height,
             geometry.query.query_width,

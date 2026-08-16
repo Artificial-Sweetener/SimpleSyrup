@@ -54,6 +54,31 @@ def test_combiner_preserves_independent_batch_strengths() -> None:
     assert combined[:, 0, 0].tolist() == pytest.approx([5.0, 10.0])
 
 
+def test_combiner_reuses_one_output_when_every_strength_is_unity() -> None:
+    """Avoid numerical work when Comfy normalization is an exact identity."""
+
+    output = torch.randn((2, 4, 8), dtype=torch.float16)
+
+    combined = REGIONAL_CONDITIONING_OUTPUT_COMBINER.combine(
+        (output,),
+        strengths=((1.0, 1.0),),
+    )
+
+    assert combined is output
+
+
+def test_combiner_returns_exact_zero_for_inactive_float16_rows() -> None:
+    """Avoid denominator underflow when schedule selection prunes a region."""
+
+    combined = REGIONAL_CONDITIONING_OUTPUT_COMBINER.combine(
+        (torch.ones((2, 1, 1), dtype=torch.float16),),
+        strengths=((0.0, 1.0),),
+    )
+
+    assert torch.isfinite(combined).all()
+    assert combined[:, 0, 0].tolist() == [0.0, 1.0]
+
+
 def test_combiner_matches_installed_comfy_entry_multipliers() -> None:
     """Use installed Comfy's condition multiplier owner as the reference."""
 

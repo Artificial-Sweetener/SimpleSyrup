@@ -210,7 +210,7 @@ class AnimaRegionalLoraCompositionLinearPatch(AnimaHostBackedLinearModule):
                 for index in active_indices
                 if (multiplier := multipliers[index]) is not None
             )
-            batch_outputs = self._delta_executor.compatible_batch(
+            compatible_deltas = self._delta_executor.compatible_deltas(
                 inputs,
                 preparation=self._preparation_for_indices(
                     rank_batch,
@@ -219,7 +219,7 @@ class AnimaRegionalLoraCompositionLinearPatch(AnimaHostBackedLinearModule):
                 multipliers=active_multipliers,
             )
             for local_index, group_index in enumerate(active_indices):
-                group_outputs[group_index] = batch_outputs[..., local_index, :]
+                group_outputs[group_index] = compatible_deltas[local_index]
         active_outputs = tuple(
             group_output for group_output in group_outputs if group_output is not None
         )

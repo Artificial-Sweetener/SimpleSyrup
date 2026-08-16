@@ -53,8 +53,7 @@ def test_matrix_covers_counts_schedules_masks_feather_and_cfg() -> None:
     assert len(split.global_loras) == 1
     assert "GLOBAL_ADAPTER" in split.global_loras[0].lora_name
     assert [adapter.region_index for adapter in split.regional_loras] == [0, 1]
-    assert "ADAPTER_A" in split.regional_loras[0].lora_name
-    assert "ADAPTER_B" in split.regional_loras[1].lora_name
+    assert split.regional_loras[0].lora_name != split.regional_loras[1].lora_name
 
 
 def test_workflows_use_public_node_and_shared_sampler_owners() -> None:

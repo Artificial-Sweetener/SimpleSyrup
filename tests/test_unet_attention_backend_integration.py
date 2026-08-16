@@ -31,8 +31,8 @@ from simple_syrup.runtime.attention_coupling.unet_attention_state import (
 from simple_syrup.runtime.regional_attention_diagnostics import (
     RegionalAttentionDiagnosticsBuilder,
 )
-from simple_syrup.runtime.regional_lora.standard_unet_operation_preparation import (
-    StandardUnetOperationAdmission,
+from simple_syrup.runtime.regional_lora.standard_unet_native_admission import (
+    StandardUnetNativeLoraAdmission,
 )
 from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 
@@ -181,10 +181,8 @@ def test_backend_projects_unique_resolutions_once_in_one_native_trajectory(
     diffusion_model = _ResolutionDiffusionModel(context_dimension)
     source = _patcher(diffusion_model)
     state = _state(context_dimension)
-    admission = StandardUnetOperationAdmission(
+    admission = StandardUnetNativeLoraAdmission(
         RegionalLoraPlanAdaptation(EMPTY_REGIONAL_LORA_PLAN, ()),
-        None,
-        {},
         None,
     )
     built = StandardUnetAttentionBackend().derive(
@@ -198,7 +196,7 @@ def test_backend_projects_unique_resolutions_once_in_one_native_trajectory(
     model_input = torch.zeros(1, 4, 8, 12)
     base_context = state.plan.positive.base_context.entries[0].cross_attention
     caplog.set_level(
-        "INFO",
+        "DEBUG",
         logger="simple_syrup.runtime.attention_coupling.unet_diagnostics",
     )
 
@@ -214,8 +212,10 @@ def test_backend_projects_unique_resolutions_once_in_one_native_trajectory(
         None,
         {
             "cond_or_uncond": [0],
+            "sample_sigmas": torch.tensor([1.0, 0.0]),
             "sigmas": torch.tensor([0.5]),
             "patches": patches,
+            "wrappers": derived.wrappers,
         },
     )
 
@@ -264,9 +264,9 @@ def _expected_high_resolution() -> torch.Tensor:
 
 
 def _expected_low_resolution() -> torch.Tensor:
-    """Return the area-preserved result at the two-by-three query grid."""
+    """Return the nearest-projected result at the two-by-three query grid."""
 
-    columns = torch.tensor([3.0, 2.0, 1.0])
+    columns = torch.tensor([3.0, 3.0, 1.0])
     return columns.reshape(1, 1, 1, 3).expand(1, 32, 2, 3)
 
 

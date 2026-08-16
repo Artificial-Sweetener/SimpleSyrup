@@ -13,8 +13,13 @@ import torch
 
 from ...domain.regional_activation_geometry import RegionalActivationLayout
 from .delta_execution import REGIONAL_LORA_DELTA_EXECUTOR, RegionalLoraDeltaExecutor
+from .host_linear_parameters import RegionalHostLinearParameterProvider
 from .linear_execution_plan import RegionalLinearExecutionPlan
 from .operation_mask_resolution import RegionalOperationMaskBatch
+from .partitioned_linear_execution import (
+    REGIONAL_PARTITIONED_LINEAR_EXECUTOR,
+    RegionalPartitionedLinearExecutor,
+)
 
 
 class RegionalLinearExecutor:
@@ -23,12 +28,20 @@ class RegionalLinearExecutor:
     def __init__(
         self,
         delta_executor: RegionalLoraDeltaExecutor = REGIONAL_LORA_DELTA_EXECUTOR,
+        partitioned_executor: RegionalPartitionedLinearExecutor = (
+            REGIONAL_PARTITIONED_LINEAR_EXECUTOR
+        ),
     ) -> None:
         """Retain the existing model-neutral projection and accumulation owner."""
 
         if not isinstance(delta_executor, RegionalLoraDeltaExecutor):
             raise TypeError("Regional Linear execution requires a delta executor.")
+        if not isinstance(partitioned_executor, RegionalPartitionedLinearExecutor):
+            raise TypeError(
+                "Regional Linear execution requires a partitioned executor."
+            )
         self._delta_executor = delta_executor
+        self._partitioned_executor = partitioned_executor
 
     def execute(
         self,
@@ -38,11 +51,28 @@ class RegionalLinearExecutor:
         plan: RegionalLinearExecutionPlan,
         masks: RegionalOperationMaskBatch,
         schedule_strengths: tuple[float, ...],
+        parameter_provider: RegionalHostLinearParameterProvider | None = None,
         **kwargs: object,
     ) -> torch.Tensor:
         """Execute one original operation and ordered regional low-rank additions."""
 
         self._validate_call(inputs, plan, masks, schedule_strengths)
+        invocation = masks.linear_invocations.resolve(
+            plan,
+            mask_multipliers=masks.multipliers,
+            composition_indices=masks.composition_indices,
+            schedule_strengths=schedule_strengths,
+            leading_shape=tuple(int(size) for size in inputs.shape[:-1]),
+        )
+        if not args and not kwargs:
+            partitioned = self._partitioned_executor.execute(
+                inputs,
+                plan=plan,
+                multipliers=invocation.multipliers,
+                parameter_provider=parameter_provider,
+            )
+            if partitioned is not None:
+                return partitioned
         original_output = original(inputs, *args, **kwargs)
         if not isinstance(original_output, torch.Tensor):
             raise TypeError("Regional Linear original operation must return a tensor.")
@@ -59,21 +89,16 @@ class RegionalLinearExecutor:
                 "Regional Linear original output must match its target shape and "
                 "input execution type."
             )
-        multipliers = self._group_multipliers(
-            plan,
-            masks,
-            schedule_strengths=schedule_strengths,
-        )
         active = tuple(
             index
-            for index, multiplier in enumerate(multipliers)
+            for index, multiplier in enumerate(invocation.multipliers)
             if multiplier is not None
         )
         if not active:
             return original_output
         if len(active) == 1:
             index = active[0]
-            multiplier = multipliers[index]
+            multiplier = invocation.multipliers[index]
             if multiplier is None:
                 raise AssertionError("Active Regional Linear multiplier disappeared.")
             return self._delta_executor.add_masked_delta(
@@ -85,13 +110,13 @@ class RegionalLinearExecutor:
         deltas: list[torch.Tensor | None] = [None] * len(plan.groups)
         for indices, preparation in plan.rank_batches:
             selected = tuple(
-                index for index in indices if multipliers[index] is not None
+                index for index in indices if invocation.multipliers[index] is not None
             )
             if not selected:
                 continue
             if len(selected) == 1:
                 index = selected[0]
-                multiplier = multipliers[index]
+                multiplier = invocation.multipliers[index]
                 if multiplier is None:
                     raise AssertionError(
                         "Active Regional Linear multiplier disappeared."
@@ -107,51 +132,21 @@ class RegionalLinearExecutor:
                 complete_indices=indices,
                 complete=preparation,
             )
-            batch = self._delta_executor.compatible_batch(
+            compatible_deltas = self._delta_executor.compatible_deltas(
                 inputs,
                 preparation=selected_preparation,
                 multipliers=tuple(
                     multiplier
                     for index in selected
-                    if (multiplier := multipliers[index]) is not None
+                    if (multiplier := invocation.multipliers[index]) is not None
                 ),
             )
             for local_index, group_index in enumerate(selected):
-                deltas[group_index] = batch[..., local_index, :]
+                deltas[group_index] = compatible_deltas[local_index]
         return self._delta_executor.accumulate_ordered(
             original_output,
             tuple(delta for delta in deltas if delta is not None),
         )
-
-    @staticmethod
-    def _group_multipliers(
-        plan: RegionalLinearExecutionPlan,
-        masks: RegionalOperationMaskBatch,
-        *,
-        schedule_strengths: tuple[float, ...],
-    ) -> tuple[torch.Tensor | None, ...]:
-        """Combine contiguous repeated uses in declared floating addition order."""
-
-        strengths = {
-            use.composition_index: schedule_strengths[index]
-            for index, use in enumerate(plan.uses)
-        }
-        combined: list[torch.Tensor | None] = []
-        for group in plan.groups:
-            multiplier: torch.Tensor | None = None
-            for use in group.uses:
-                scale = use.base_strength * strengths[use.composition_index]
-                if scale == 0.0:
-                    continue
-                use_index = masks.composition_indices.index(use.composition_index)
-                contribution = masks.multipliers[use_index].squeeze(-1) * scale
-                multiplier = (
-                    contribution if multiplier is None else multiplier + contribution
-                )
-            if multiplier is not None and not bool(torch.count_nonzero(multiplier)):
-                multiplier = None
-            combined.append(multiplier)
-        return tuple(combined)
 
     @staticmethod
     def _validate_call(

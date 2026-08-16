@@ -38,7 +38,7 @@ def test_complete_evidence_passes_for_required_profile_classes(
 
 
 def test_validation_rejects_partial_target_surface() -> None:
-    """Never accept a run that silently omits an admitted ADAPTER_A target."""
+    """Never accept a run that silently omits an admitted PRIMARY_ADAPTER target."""
 
     run = next(item for item in runs() if item.profile.profile_id == "static-1")
     outputs = completed_outputs(run)

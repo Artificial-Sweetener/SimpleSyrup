@@ -133,6 +133,7 @@ def test_reduced_global_projection_uses_full_canvas_coverage() -> None:
     [
         (RegionalMaskProjectionMode.SOFT, "bilinear"),
         (RegionalMaskProjectionMode.HARD_PRESERVING, "nearest-exact"),
+        (RegionalMaskProjectionMode.NEAREST, "nearest"),
     ],
 )
 def test_query_projection_uses_requested_soft_or_hard_interpolation(

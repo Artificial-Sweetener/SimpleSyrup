@@ -34,8 +34,8 @@ from simple_syrup.runtime.regional_lora_plan_adapter import (  # noqa: E402
     RegionalLoraPlanAdaptation,
 )
 from tools.regional_lora_real_fixtures import (  # noqa: E402
-    REGIONAL_LORA_REAL_FIXTURES,
     RegionalLoraRealFixture,
+    load_real_fixtures,
 )
 
 
@@ -43,21 +43,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Resolve selected real fixtures and print their immutable observations."""
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "families",
-        nargs="*",
-        choices=tuple(REGIONAL_LORA_REAL_FIXTURES),
-        default=(),
-    )
+    parser.add_argument("--inventory", type=Path, required=True)
+    parser.add_argument("families", nargs="*", default=())
     parser.add_argument(
         "--output",
         type=Path,
         help="Atomically write the complete JSON evidence to this path.",
     )
     arguments = parser.parse_args(argv)
-    families = tuple(arguments.families) or tuple(REGIONAL_LORA_REAL_FIXTURES)
+    fixtures = load_real_fixtures(arguments.inventory)
+    families = tuple(arguments.families) or tuple(fixtures)
+    unknown = tuple(family for family in families if family not in fixtures)
+    if unknown:
+        parser.error(f"Unknown fixture roles: {', '.join(unknown)}")
     serialized = json.dumps(
-        [_characterize(REGIONAL_LORA_REAL_FIXTURES[family]) for family in families],
+        [_characterize(fixtures[family]) for family in families],
         indent=2,
         sort_keys=True,
     )

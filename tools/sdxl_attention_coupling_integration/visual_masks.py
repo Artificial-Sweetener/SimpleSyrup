@@ -12,7 +12,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from .matrix import TARGET_HEIGHT, TARGET_WIDTH
-from .visual_cases import VisualMaskProfile
+from .visual_case_model import VisualMaskProfile
 
 
 class ManagedSdxlVisualMasks:

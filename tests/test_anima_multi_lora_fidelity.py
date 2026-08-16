@@ -2,19 +2,17 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Prove ordered multi-LoRA fidelity, invariants, and pinned target execution."""
+"""Prove ordered multi-LoRA fidelity and complete target execution."""
 
 from __future__ import annotations
 
-from pathlib import Path
 from uuid import uuid4
 
 import torch
 from anima_branch_test_values import uniform_branch_invocation
 from comfy.hooks import HookKeyframe, HookKeyframeGroup, WeightHook
 from regional_attention_test_values import single_entry_regions
-from regional_lora_test_values import static_lora_schedule
-from safetensors.torch import load_file
+from regional_lora_test_values import complete_anima_admission, static_lora_schedule
 from torch import nn
 
 from simple_syrup.domain.regional_attention import RegionalAttentionBranch
@@ -55,7 +53,7 @@ from simple_syrup.runtime.regional_lora.anima_schedule_context import (
     AnimaRegionalLoraScheduleContext,
 )
 from simple_syrup.runtime.regional_lora.anima_targets import (
-    ANIMA_LORA_TARGET_CLASSIFIER,
+    ANIMA_BLOCK_COUNT,
     AnimaLoraAdmission,
     AnimaLoraTarget,
     AnimaLoraTargetFamily,
@@ -69,7 +67,6 @@ from simple_syrup.runtime.regional_lora_schedule_resolution import (
     RegionalLoraScheduleSession,
 )
 
-_PINNED_ADAPTER_A_PATH = Path(r"<MODEL_ROOT>\Loras\Anima\style\adapter-a.safetensors")
 _SELF_FAMILIES = frozenset(
     family for family in AnimaLoraTargetFamily if family.value.startswith("self_attn")
 )
@@ -343,11 +340,10 @@ def test_region_and_branch_permutations_change_only_their_owned_positions() -> N
     torch.testing.assert_close(negative.flatten(), torch.tensor([0.0, 2.0]))
 
 
-def test_pinned_adapter_a_executes_every_target_through_composition_path() -> None:
-    """Execute all 448 pinned rank-32 targets without ignored-key allowances."""
+def test_complete_surface_executes_every_target_through_composition_path() -> None:
+    """Execute every architecture-owned target without ignored-key allowances."""
 
-    weights = load_file(_PINNED_ADAPTER_A_PATH, device="cpu")
-    admission = ANIMA_LORA_TARGET_CLASSIFIER.admit(weights)
+    admission = complete_anima_admission()
     source_ids = tuple(
         (id(target.adapter.down), id(target.adapter.up)) for target in admission.targets
     )
@@ -357,17 +353,33 @@ def test_pinned_adapter_a_executes_every_target_through_composition_path() -> No
     cache = RegionalLoraExecutionCache()
     executions = (
         _execution(
-            0, None, "adapter_a", 0, 0.35, attention, model, cache, admission=admission
+            0,
+            None,
+            "primary_adapter",
+            0,
+            0.35,
+            attention,
+            model,
+            cache,
+            admission=admission,
         ),
         _execution(
-            1, None, "adapter_a", 1, -0.2, attention, model, cache, admission=admission
+            1,
+            None,
+            "primary_adapter",
+            1,
+            -0.2,
+            attention,
+            model,
+            cache,
+            admission=admission,
         ),
     )
     composition = AnimaRegionalLoraComposition(executions)
     executed: set[str] = set()
 
     for target in admission.targets:
-        output, original_calls = _execute_pinned_target(
+        output, original_calls = _execute_surface_target(
             target,
             composition,
             masks,
@@ -377,8 +389,9 @@ def test_pinned_adapter_a_executes_every_target_through_composition_path() -> No
         assert original_calls == 1
         executed.add(target.adapter.target)
 
-    assert len(executed) == 448
-    assert cache.size == 448
+    expected_target_count = ANIMA_BLOCK_COUNT * len(AnimaLoraTargetFamily)
+    assert len(executed) == expected_target_count
+    assert cache.size == expected_target_count
     assert (
         tuple(
             (id(target.adapter.down), id(target.adapter.up))
@@ -388,12 +401,12 @@ def test_pinned_adapter_a_executes_every_target_through_composition_path() -> No
     )
 
 
-def _execute_pinned_target(
+def _execute_surface_target(
     target: AnimaLoraTarget,
     composition: AnimaRegionalLoraComposition,
     masks: torch.Tensor,
 ) -> tuple[torch.Tensor, int]:
-    """Run one real pinned target under its exact family execution scope."""
+    """Run one generated target under its exact family execution scope."""
 
     cross = AnimaCrossAttentionInvocationContext()
     branch = AnimaLoraBranchInvocationContext()
@@ -438,17 +451,17 @@ def _execute_pinned_target(
         else:
             with schedule.activate(resolution), branch.activate(invocation):
                 output = patch(inputs)
-    expected = _pinned_reference(target, inputs, masks)
+    expected = _surface_reference(target, inputs, masks)
     torch.testing.assert_close(output, expected)
     return output, original.calls
 
 
-def _pinned_reference(
+def _surface_reference(
     target: AnimaLoraTarget,
     inputs: torch.Tensor,
     masks: torch.Tensor,
 ) -> torch.Tensor:
-    """Return explicit ordered per-use pinned full-rank delta output."""
+    """Return the explicit ordered per-use full-rank delta output."""
 
     delta = (inputs @ target.adapter.down.T) @ target.adapter.up.T
     result = torch.zeros_like(delta)

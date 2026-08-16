@@ -10,10 +10,10 @@ from dataclasses import dataclass
 from typing import Literal
 
 from tools.anima_attention_coupling_prompts import (
-    PINNED_ADAPTER_B,
-    PINNED_ADAPTER_A,
-    PINNED_NIJI,
-    PINNED_VNTG,
+    PINNED_PRIMARY_ADAPTER,
+    PINNED_QUATERNARY_ADAPTER,
+    PINNED_SECONDARY_ADAPTER,
+    PINNED_TERTIARY_ADAPTER,
     RegionalLora,
 )
 
@@ -80,12 +80,12 @@ class StrategyComparisonCase:
 def cases() -> tuple[StrategyComparisonCase, ...]:
     """Return the closed 16-case P10.2 matrix in execution order."""
 
-    one_lora = (RegionalLora(0, PINNED_ADAPTER_A, 0.8),)
+    one_lora = (RegionalLora(0, PINNED_PRIMARY_ADAPTER, 0.8),)
     four_loras = (
-        RegionalLora(0, PINNED_ADAPTER_A, 0.8),
-        RegionalLora(0, PINNED_NIJI, 0.55),
-        RegionalLora(1, PINNED_ADAPTER_B, 0.8),
-        RegionalLora(1, PINNED_VNTG, 0.55),
+        RegionalLora(0, PINNED_PRIMARY_ADAPTER, 0.8),
+        RegionalLora(0, PINNED_TERTIARY_ADAPTER, 0.55),
+        RegionalLora(1, PINNED_SECONDARY_ADAPTER, 0.8),
+        RegionalLora(1, PINNED_QUATERNARY_ADAPTER, 0.55),
     )
     definitions: list[StrategyComparisonCase] = []
     profiles: tuple[SpatialProfile, ...] = (
@@ -118,7 +118,7 @@ def cases() -> tuple[StrategyComparisonCase, ...]:
                 (
                     StrategyComparisonCase(
                         case_id=f"{profile.replace('_', '-')}-attention-one-lora",
-                        label=f"{readable} — Attention Coupling — one ADAPTER_A LoRA",
+                        label=f"{readable} — Attention Coupling — one LoRA",
                         strategy="attention_coupling",
                         spatial_profile=profile,
                         regional_loras=one_lora,

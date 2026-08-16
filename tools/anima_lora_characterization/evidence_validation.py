@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Enforce complete ADAPTER_A target, order, schedule, and denoiser evidence."""
+"""Enforce complete PRIMARY_ADAPTER target, order, schedule, and denoiser evidence."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def validate_run_evidence(
     ):
         raise ValueError("LoRA probe capture mode does not match the scheduled run.")
     if integer_value(metrics.get("model_call_count"), "model_call_count") != 30:
-        raise ValueError("Pinned global LoRA run must execute exactly 30 model calls.")
+        raise ValueError("Global LoRA run must execute exactly 30 model calls.")
     expected_targets = [f"{target}.weight" for target in inventory.target_keys]
     static = object_value(metrics.get("static_patches"), "static_patches")
     hooks = [
@@ -82,7 +82,9 @@ def _validate_static(
         raise ValueError("Static LoRA target count is incomplete.")
     expected_loaded = expected if count else []
     if string_list(static.get("target_keys"), "static target keys") != expected_loaded:
-        raise ValueError("Static LoRA loaded targets do not match the pinned surface.")
+        raise ValueError(
+            "Static LoRA loaded targets do not match the selected surface."
+        )
     if string_list(static.get("inconsistent_order_targets"), "inconsistent targets"):
         raise ValueError("Static LoRA patch order differs across targets.")
     order = [
@@ -114,7 +116,9 @@ def _validate_scheduled(
         ):
             raise ValueError("Scheduled LoRA hook target count is incomplete.")
         if string_list(hook.get("target_keys"), "hook target keys") != expected:
-            raise ValueError("Scheduled hook targets do not match the pinned surface.")
+            raise ValueError(
+                "Scheduled hook targets do not match the selected surface."
+            )
     expected_strengths = [
         [adapter.strength * multiplier for adapter in run.profile.adapters]
         for multiplier in (0.0, 1.0, 0.5, 0.0)

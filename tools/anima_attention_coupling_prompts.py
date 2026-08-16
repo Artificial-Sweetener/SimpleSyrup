@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-PINNED_ADAPTER_A = "Anima\\style\\adapter-a.safetensors"
-PINNED_ADAPTER_B = "Anima\\style\\adapter-b.safetensors"
-PINNED_NIJI = "Anima\\style\\adapter-c.safetensors"
-PINNED_VNTG = "Anima\\style\\adapter-d.safetensors"
-GLOBAL_GLOBAL_ADAPTER = "Anima\\style\\global-adapter.safetensors"
+PINNED_PRIMARY_ADAPTER = "Anima\\style\\adapter-a.safetensors"
+PINNED_SECONDARY_ADAPTER = "Anima\\style\\adapter-b.safetensors"
+PINNED_TERTIARY_ADAPTER = "Anima\\style\\adapter-c.safetensors"
+PINNED_QUATERNARY_ADAPTER = "Anima\\style\\adapter-d.safetensors"
+GLOBAL_GLOBAL_ADAPTER = "Anima\\style\\GLOBAL_ADAPTER_anima.safetensors"
 NEGATIVE_PROMPT = (
     "worst quality, low quality, score_1, score_2, score_3, artist name, "
     "blurry, jpeg artifacts, bad anatomy, bad hands, extra digits, watermark"

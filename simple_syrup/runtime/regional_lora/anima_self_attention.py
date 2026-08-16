@@ -12,6 +12,10 @@ import torch
 from torch import nn
 
 from ..model_patcher_mutations import ModelExactObjectPatchMutation
+from ..regional_self_attention_partition_execution import (
+    REGIONAL_SELF_ATTENTION_PARTITION_EXECUTION,
+    RegionalSelfAttentionPartitionExecution,
+)
 from .anima_activation_context import AnimaActivationContext
 from .anima_attention_execution import AnimaRegionalAttentionExecution
 from .anima_composition_phase_context import AnimaCompositionPhaseContext
@@ -19,10 +23,6 @@ from .anima_host_module_backing import AnimaHostModuleBacking
 from .anima_module_surface import AnimaModuleSurface
 from .anima_query_activity import AnimaRegionalQueryActivityContext
 from .anima_self_attention_partition_cache import AnimaSelfAttentionPartitionCache
-from .anima_self_attention_partition_execution import (
-    ANIMA_SELF_ATTENTION_PARTITION_EXECUTION,
-    AnimaSelfAttentionPartitionExecution,
-)
 
 _SELF_ATTENTION_CHILD_ATTRIBUTES = frozenset(
     {
@@ -50,8 +50,8 @@ class AnimaRegionalSelfAttentionPatch(nn.Module):
         phase_context: AnimaCompositionPhaseContext,
         query_activity: AnimaRegionalQueryActivityContext,
         partition_cache: AnimaSelfAttentionPartitionCache,
-        partition_execution: AnimaSelfAttentionPartitionExecution = (
-            ANIMA_SELF_ATTENTION_PARTITION_EXECUTION
+        partition_execution: RegionalSelfAttentionPartitionExecution = (
+            REGIONAL_SELF_ATTENTION_PARTITION_EXECUTION
         ),
     ) -> None:
         """Retain installed attention and focused ownership collaborators."""
@@ -67,7 +67,10 @@ class AnimaRegionalSelfAttentionPatch(nn.Module):
         self._query_activity = query_activity
         if not isinstance(partition_cache, AnimaSelfAttentionPartitionCache):
             raise TypeError("Anima self-attention requires a partition cache.")
-        if not isinstance(partition_execution, AnimaSelfAttentionPartitionExecution):
+        if not isinstance(
+            partition_execution,
+            RegionalSelfAttentionPartitionExecution,
+        ):
             raise TypeError("Anima self-attention requires partition execution.")
         self._partition_cache = partition_cache
         self._partition_execution = partition_execution

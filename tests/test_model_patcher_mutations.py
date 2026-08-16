@@ -12,13 +12,16 @@ from typing import Any, Protocol
 import pytest
 import torch
 
-from simple_syrup.runtime.model_patcher_mutations import (
+from simple_syrup.runtime.model_attention_patch_mutations import (
     ModelAttn2PatchesMutation,
+)
+from simple_syrup.runtime.model_patcher_mutations import (
     ModelCalcCondBatchMutation,
     ModelDenoiseMaskMutation,
     ModelDiffusionWrapperMutation,
     ModelExactObjectPatchMutation,
     ModelKeyedWrapperMutation,
+    ModelSharedObjectPatchMutation,
     ModelUnetWrapperMutation,
 )
 from simple_syrup.runtime.patcher_lifecycle import PATCHER_LIFECYCLE
@@ -615,6 +618,55 @@ def test_exact_object_patch_rejects_malformed_state_dictionary(
         ModelExactObjectPatchMutation("weight", expected, object()).apply(model)
 
     setattr(model, attribute_name, {})
+
+
+def test_shared_object_patch_accepts_exact_backup_and_live_replacement() -> None:
+    """Register the already-live replacement when both identities remain exact."""
+
+    model = _patcher(torch.nn.Linear(1, 1))
+    expected_backup = model.model.weight
+    replacement = torch.nn.Parameter(torch.zeros_like(expected_backup))
+    model.object_patches_backup["weight"] = expected_backup
+    model.model.weight = replacement
+
+    ModelSharedObjectPatchMutation(
+        "weight",
+        expected_backup,
+        replacement,
+    ).apply(model)
+
+    assert model.object_patches["weight"] is replacement
+
+
+@pytest.mark.parametrize("foreign_state", ["backup", "live"])
+def test_shared_object_patch_rejects_foreign_shared_state(
+    foreign_state: str,
+) -> None:
+    """Fail closed when either shared identity no longer belongs to the caller."""
+
+    model = _patcher(torch.nn.Linear(1, 1))
+    expected_backup = model.model.weight
+    replacement = torch.nn.Parameter(torch.zeros_like(expected_backup))
+    model.object_patches_backup["weight"] = (
+        object() if foreign_state == "backup" else expected_backup
+    )
+    model.model.weight = (
+        torch.nn.Parameter(torch.ones_like(expected_backup))
+        if foreign_state == "live"
+        else replacement
+    )
+
+    expected_error = (
+        "foreign shared backup" if foreign_state == "backup" else "foreign live"
+    )
+    with pytest.raises(ValueError, match=expected_error):
+        ModelSharedObjectPatchMutation(
+            "weight",
+            expected_backup,
+            replacement,
+        ).apply(model)
+
+    assert model.object_patches == {}
 
 
 def _patcher(model: torch.nn.Module) -> Any:

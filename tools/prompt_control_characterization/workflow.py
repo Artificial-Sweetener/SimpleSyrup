@@ -84,7 +84,7 @@ class PromptControlWorkflowBuilder:
             start=0.0,
             end=1.0,
         )
-        identities = [adapter.identity for adapter in case.expected_adapters]
+        identities = [adapter.slot for adapter in case.expected_adapters]
         snapshot_inputs: dict[str, object] = {
             "positive": positive,
             "negative": [negative_encode, 0],

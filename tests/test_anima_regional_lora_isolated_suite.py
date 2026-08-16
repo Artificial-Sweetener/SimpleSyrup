@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -20,6 +21,7 @@ from tools.anima_regional_lora_performance import isolated_suite as suite_module
 from tools.anima_regional_lora_performance.isolated_suite import (
     PreparedIsolatedScalingProfile,
 )
+from tools.anima_regional_lora_performance.manifest import PerformanceArtifact
 from tools.anima_regional_lora_performance.matrix_manifest import (
     default_scaling_manifest,
 )
@@ -36,7 +38,7 @@ def test_isolated_artifacts_are_verified_once_before_profile_sessions(
 ) -> None:
     """Verify each declared artifact once and retain its exact manifest object."""
 
-    manifest = default_scaling_manifest()
+    manifest = default_scaling_manifest(artifacts=_artifacts())
     verified: list[str] = []
     monkeypatch.setattr(
         suite_module,
@@ -56,7 +58,7 @@ def test_isolated_profile_prepares_only_the_selected_definition(
 ) -> None:
     """Load, derive, and build inputs for exactly one declared profile."""
 
-    manifest = default_scaling_manifest()
+    manifest = default_scaling_manifest(artifacts=_artifacts())
     definition = manifest.profiles[3]
     artifacts = suite_module.ValidatedScalingArtifacts(*manifest.artifacts)
     source = SimpleNamespace(load_device="cpu")
@@ -118,7 +120,7 @@ def test_isolated_session_unloads_when_preparation_fails(
 ) -> None:
     """Request installed model cleanup even when the selected load fails."""
 
-    manifest = default_scaling_manifest()
+    manifest = default_scaling_manifest(artifacts=_artifacts())
     artifacts = suite_module.ValidatedScalingArtifacts(*manifest.artifacts)
     unloaded: list[bool] = []
     monkeypatch.setattr(
@@ -141,6 +143,15 @@ def test_isolated_session_unloads_when_preparation_fails(
             pytest.fail("A failed isolated preparation must not yield.")
 
     assert unloaded == [True]
+
+
+def _artifacts() -> tuple[PerformanceArtifact, ...]:
+    """Return anonymous artifact identities for isolated coordination tests."""
+
+    return (
+        PerformanceArtifact("anima_base", Path("model.safetensors"), 1, "a" * 64),
+        PerformanceArtifact("regional_lora", Path("adapter.safetensors"), 1, "b" * 64),
+    )
 
 
 def test_cuda_runtime_stabilization_primes_math_then_releases_inputs(

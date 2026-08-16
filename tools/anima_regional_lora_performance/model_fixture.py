@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Load the exact installed Anima model and regional LoRA fixture."""
+"""Load an installed Anima model and selected regional LoRA fixture."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from .manifest import PerformanceArtifact
 
 @dataclass(frozen=True, slots=True)
 class AnimaPerformanceModelFixture:
-    """Retain one loaded model and exact admitted ADAPTER_A surface."""
+    """Retain one loaded model and its admitted adapter surface."""
 
     source: Any
     surface: AnimaModuleSurface
@@ -37,23 +37,13 @@ def load_model_fixture(
     model_artifact: PerformanceArtifact,
     lora_artifact: PerformanceArtifact,
 ) -> AnimaPerformanceModelFixture:
-    """Load installed artifacts and require full pinned adapter fidelity."""
+    """Load selected artifacts and require a nonempty admitted adapter surface."""
 
     source: Any = DiffusionModelLoader().load_path(model_artifact.path, "default")
     surface = ANIMA_MODULE_SURFACE_DISCOVERY.discover(source.model.diffusion_model)
     admission = ANIMA_LORA_TARGET_CLASSIFIER.admit(
         load_file(str(lora_artifact.path), device="cpu")
     )
-    _validate_admission(admission)
+    if not admission.targets:
+        raise ValueError("Anima performance adapter must expose admitted targets.")
     return AnimaPerformanceModelFixture(source, surface, admission)
-
-
-def _validate_admission(admission: AnimaLoraAdmission) -> None:
-    """Require every pinned rank-32 ADAPTER_A target before measurement."""
-
-    if len(admission.targets) != 448:
-        raise ValueError(
-            "Anima performance ADAPTER_A fixture must expose exactly 448 targets."
-        )
-    if any(target.adapter.rank != 32 for target in admission.targets):
-        raise ValueError("Anima performance ADAPTER_A fixture must retain full rank 32.")

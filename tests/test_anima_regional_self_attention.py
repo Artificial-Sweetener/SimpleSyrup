@@ -42,11 +42,11 @@ from simple_syrup.runtime.regional_lora.anima_query_mask_context import (
 from simple_syrup.runtime.regional_lora.anima_self_attention import (
     AnimaRegionalSelfAttentionPatch,
 )
-from simple_syrup.runtime.regional_lora.anima_self_attention_coherence import (
-    AnimaSelfAttentionCoherencePolicy,
-)
 from simple_syrup.runtime.regional_lora.anima_self_attention_partition_cache import (
     AnimaSelfAttentionPartitionCache,
+)
+from simple_syrup.runtime.regional_self_attention_coherence import (
+    RegionalSelfAttentionCoherencePolicy,
 )
 
 
@@ -219,7 +219,7 @@ def _patch(
             phase_context=phase,
             query_activity=AnimaRegionalQueryActivityContext(AnimaQueryMaskContext()),
             partition_cache=AnimaSelfAttentionPartitionCache(
-                coherence=AnimaSelfAttentionCoherencePolicy(radius=0)
+                coherence=RegionalSelfAttentionCoherencePolicy(radius=0)
             ),
         ),
         activation,

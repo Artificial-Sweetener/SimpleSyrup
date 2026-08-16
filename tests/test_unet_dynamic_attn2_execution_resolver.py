@@ -79,6 +79,7 @@ class _CountingQueryMaskProjector(RegionalAttentionQueryMaskProjector):
 
         super().__init__()
         self.query_grids: list[tuple[int, int]] = []
+        self.modes: list[RegionalMaskProjectionMode] = []
 
     def project(
         self,
@@ -96,6 +97,7 @@ class _CountingQueryMaskProjector(RegionalAttentionQueryMaskProjector):
         self.query_grids.append(
             (query_geometry.query_height, query_geometry.query_width)
         )
+        self.modes.append(mode)
         return super().project(
             bank=bank,
             query_geometry=query_geometry,
@@ -113,7 +115,7 @@ def test_dynamic_resolver_projects_each_resolution_once_and_emits_diagnostics() 
     state = _state()
     contexts = _contexts()
     handler = _RecordHandler()
-    logger = logging.Logger("tests.standard_unet_diagnostics", level=logging.INFO)
+    logger = logging.Logger("tests.standard_unet_diagnostics", level=logging.DEBUG)
     logger.addHandler(handler)
     query_masks = _CountingQueryMaskProjector()
     resolver = StandardUnetAttn2ExecutionResolver(
@@ -147,9 +149,19 @@ def test_dynamic_resolver_projects_each_resolution_once_and_emits_diagnostics() 
         assert state.resolution_cache.size == 2
 
     assert first.query_masks.shape == (1, 2, 24)
+    assert first.query_masks[0, 0].count_nonzero() == 0
+    assert first.query_masks[0, 1].count_nonzero() > 0
+    assert [segment.source_indices.tolist() for segment in first.branches.segments] == [
+        [0, 1],
+        [1],
+    ]
     assert reduced.query_masks.shape == (1, 2, 6)
     assert first.contexts is contexts
     assert query_masks.query_grids == [(4, 6), (2, 3)]
+    assert query_masks.modes == [
+        RegionalMaskProjectionMode.NEAREST,
+        RegionalMaskProjectionMode.NEAREST,
+    ]
     assert len(handler.records) == 2
     first_layer = handler.records[0].__dict__.get("unet_layer")
     first_snapshot = handler.records[0].__dict__.get("regional_diagnostics")
@@ -228,7 +240,7 @@ def _state() -> StandardUnetAttentionState:
         ),
         ProcessedRegionalAttentionBranch(
             _processed_context(0, None, -1.0),
-            (_processed_context(1, 0, -2.0),),
+            (),
         ),
         mask_bank,
         EMPTY_REGIONAL_LORA_PLAN,

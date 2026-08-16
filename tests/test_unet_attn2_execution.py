@@ -16,11 +16,11 @@ from simple_syrup.domain.regional_attention_batch import (
     BatchedRegionalAttentionRegion,
     RegionalAttentionChunkBatch,
 )
-from simple_syrup.domain.regional_attention_weights import (
-    RegionalAttentionWeightingPolicy,
-)
 from simple_syrup.domain.regional_conditioning_output import (
     REGIONAL_CONDITIONING_OUTPUT_COMBINER,
+)
+from simple_syrup.runtime.attention_coupling.standard_unet_attention_weighting import (
+    StandardUnetAttentionWeightingPolicy,
 )
 from simple_syrup.runtime.attention_coupling.unet_attn2_execution import (
     UnetAttn2Execution,
@@ -59,11 +59,11 @@ def test_unet_attn2_execution_matches_explicit_multi_entry_reference() -> None:
                 strengths=tuple(entry.strengths for entry in region.entries),
             )
         )
-    weights = RegionalAttentionWeightingPolicy().weights(
+    weights = StandardUnetAttentionWeightingPolicy().weights(
         masks,
         region_strengths=(1.0, 1.0),
     )
-    expected = RegionalAttentionWeightingPolicy().blend(
+    expected = StandardUnetAttentionWeightingPolicy().blend(
         weights=weights,
         base_output=base_output,
         regional_outputs=torch.stack(region_outputs),
@@ -72,7 +72,7 @@ def test_unet_attn2_execution_matches_explicit_multi_entry_reference() -> None:
     assert torch.allclose(actual, expected)
     assert torch.equal(query, query_before)
     assert torch.equal(base_context, context_before)
-    assert execution.branches.packed_batch_size == 6
+    assert execution.branches.packed_batch_size == 5
 
 
 def test_unet_attn2_execution_prunes_zero_strength_and_zero_coverage_rows() -> None:
@@ -99,7 +99,7 @@ def test_unet_attn2_execution_prunes_zero_strength_and_zero_coverage_rows() -> N
     [
         (torch.tensor([[[0.0]], [[0.0]]]), (1.0, 1.0), 10.0),
         (torch.tensor([[[1.0]], [[0.0]]]), (1.0, 1.0), 30.0),
-        (torch.tensor([[[0.25]], [[0.0]]]), (1.0, 1.0), 15.0),
+        (torch.tensor([[[0.25]], [[0.0]]]), (1.0, 1.0), 30.0),
         (torch.tensor([[[0.75]], [[0.75]]]), (1.0, 1.0), 50.0),
         (torch.tensor([[[1.0]], [[1.0]]]), (0.0, 0.0), 10.0),
     ],
@@ -120,6 +120,25 @@ def test_unet_attn2_execution_matches_base_region_and_overlap_closed_forms(
     actual = execution.blend(packed_output)
 
     assert torch.allclose(actual, torch.tensor([[[expected]]]))
+
+
+def test_unet_attn2_prunes_zero_global_rows_at_regional_endpoint() -> None:
+    """Pack only regional contexts when a covered row has zero global weight."""
+
+    contexts = _single_entry_contexts()
+    execution = UnetAttn2Execution(
+        contexts,
+        torch.tensor([[[0.25]], [[0.0]]]),
+        (1.0, 1.0),
+        1,
+        1,
+    )
+    query = torch.zeros(1, 1, 1)
+
+    expanded = execution.expand(query, contexts.base_context, contexts.base_context)
+
+    assert execution.branches.packed_batch_size == 1
+    assert tuple(float(value) for value in expanded.context[:, 0, 0]) == (30.0,)
 
 
 @pytest.mark.parametrize(

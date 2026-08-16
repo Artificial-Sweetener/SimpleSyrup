@@ -91,21 +91,21 @@ class RegionalLoraDeltaExecutor:
         rank_values = functional.linear(inputs, weights.down)
         return functional.linear(rank_values, weights.up) * float(strength)
 
-    def compatible_batch(
+    def compatible_deltas(
         self,
         inputs: torch.Tensor,
         *,
         preparation: RegionalLoraCompatibleBatchPreparation,
         multipliers: tuple[torch.Tensor, ...],
-    ) -> torch.Tensor:
-        """Return masked full-rank group deltas with masks applied before B."""
+    ) -> tuple[torch.Tensor, ...]:
+        """Return contiguous group deltas with masks applied before B."""
 
         projection = self.prepare_compatible_rank_projection(
             inputs,
             preparation=preparation,
             multipliers=multipliers,
         )
-        return self._compatible_projection.deltas(projection)
+        return self._compatible_projection.materialize_deltas(projection)
 
     def prepare_compatible_rank_projection(
         self,

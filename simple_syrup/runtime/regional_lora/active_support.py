@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import torch
 
 _MAX_CACHED_SIGNATURES = 32
+_MAX_SPARSE_ACTIVE_FRACTION = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,7 +107,9 @@ class RegionalLoraActiveSupportResolver:
         union = torch.stack(flattened).ne(0).any(dim=0)
         indices = torch.nonzero(union, as_tuple=False).flatten()
         active_count = int(indices.shape[0])
-        if active_count == element_count:
+        if active_count and (
+            active_count / element_count >= _MAX_SPARSE_ACTIVE_FRACTION
+        ):
             cache[signature] = _RegionalLoraActiveSupportCacheEntry(
                 multipliers,
                 None,

@@ -10,27 +10,32 @@ from tools.anima_attention_coupling_conditioning import BuiltAnimaConditioning
 from tools.anima_attention_coupling_prompts import (
     GLOBAL_PROMPT,
     NEGATIVE_PROMPT,
-    PINNED_ADAPTER_A,
+    PINNED_PRIMARY_ADAPTER,
     REGIONAL_PROMPTS,
 )
 from tools.anima_workflow_graph import AnimaWorkflowGraph, NodeReference
 
-from .fixture import PINNED_TEXT_ENCODER_LORA_FIXTURE
+from .fixture import TextEncoderLoraFixtureIdentity
 from .matrix import TextEncoderLoraCase
 
 TEXT_ENCODER_STRENGTH = 0.75
-ADAPTER_A_MODEL_STRENGTH = 0.8
+PRIMARY_ADAPTER_MODEL_STRENGTH = 0.8
 
 
 class TextEncoderLoraConditioningWorkflow:
     """Encode one P9.4 case through public Comfy and Prompt Control nodes."""
 
-    def __init__(self, case: TextEncoderLoraCase) -> None:
+    def __init__(
+        self,
+        case: TextEncoderLoraCase,
+        fixture: TextEncoderLoraFixtureIdentity,
+    ) -> None:
         """Retain one immutable matrix case."""
 
         if not isinstance(case, TextEncoderLoraCase):
             raise TypeError("P9.4 conditioning requires a matrix case.")
         self._case = case
+        self._fixture = fixture
 
     def add(
         self,
@@ -46,7 +51,7 @@ class TextEncoderLoraConditioningWorkflow:
                 "LoraLoader",
                 model=model,
                 clip=clip,
-                lora_name=PINNED_TEXT_ENCODER_LORA_FIXTURE.lora_name,
+                lora_name=self._fixture.lora_name,
                 strength_model=0.0,
                 strength_clip=TEXT_ENCODER_STRENGTH,
             )
@@ -67,10 +72,11 @@ class TextEncoderLoraConditioningWorkflow:
         left_tags: list[str] = []
         if self._case.regional_text_lora:
             left_tags.append(
-                f"<lora:{PINNED_TEXT_ENCODER_LORA_FIXTURE.lora_name}:"
-                f"0:{TEXT_ENCODER_STRENGTH:g}>"
+                f"<lora:{self._fixture.lora_name}:0:{TEXT_ENCODER_STRENGTH:g}>"
             )
         if self._case.regional_model_lora:
-            left_tags.append(f"<lora:{PINNED_ADAPTER_A}:{ADAPTER_A_MODEL_STRENGTH:g}:0>")
+            left_tags.append(
+                f"<lora:{PINNED_PRIMARY_ADAPTER}:{PRIMARY_ADAPTER_MODEL_STRENGTH:g}:0>"
+            )
         left = " ".join((REGIONAL_PROMPTS[0], *left_tags))
         return "[SEP]".join((GLOBAL_PROMPT, left, REGIONAL_PROMPTS[1]))

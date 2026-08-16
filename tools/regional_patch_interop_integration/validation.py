@@ -133,7 +133,7 @@ def _validate_success(
     workflow: BuiltRegionalPatchInteropWorkflow,
     observed: RegionalPatchInteropSuccess,
 ) -> ValidatedRegionalPatchInterop:
-    """Require one exact single-trajectory regional ADAPTER_A execution."""
+    """Require one exact single-trajectory regional PRIMARY_ADAPTER execution."""
 
     metrics = observed.metrics
     if metrics.get("run_id") != workflow.metrics_run_id:
@@ -167,27 +167,31 @@ def _validate_success(
         uses = _array(snapshot.get("adapter_uses"), "adapter uses")
         if len(uses) != 2:
             raise ValueError(
-                "P9.7 accepted cases require paired positive/negative ADAPTER_A uses."
+                "P9.7 accepted cases require paired positive/negative adapter uses."
             )
         normalized_uses = tuple(_object(use, "adapter use") for use in uses)
         if {
             (_string(use.get("branch"), "adapter branch"), use.get("composition_index"))
             for use in normalized_uses
         } != {("positive", 0), ("negative", 1)}:
-            raise ValueError("P9.7 paired regional ADAPTER_A branch ownership changed.")
+            raise ValueError(
+                "P9.7 paired regional PRIMARY_ADAPTER branch ownership changed."
+            )
         for use in normalized_uses:
             if (
                 use.get("active") is not True
                 or use.get("region_index") != 0
                 or use.get("target_count") != 448
             ):
-                raise ValueError("P9.7 exact regional ADAPTER_A execution changed.")
+                raise ValueError(
+                    "P9.7 exact regional PRIMARY_ADAPTER execution changed."
+                )
             if not math.isclose(
                 _number(use.get("effective_strength"), "effective strength"),
                 0.75,
                 abs_tol=1e-8,
             ):
-                raise ValueError("P9.7 regional ADAPTER_A strength changed.")
+                raise ValueError("P9.7 regional PRIMARY_ADAPTER strength changed.")
             adapter_tokens.add(_string(use.get("adapter_token"), "adapter token"))
         work = _object(snapshot.get("estimated_work"), "estimated work")
         if (
@@ -210,7 +214,9 @@ def _validate_success(
     if not expected_modes <= spatial_modes:
         raise ValueError("P9.7 spatial diagnostics are incomplete.")
     if len(adapter_tokens) != 1:
-        raise ValueError("P9.7 regional ADAPTER_A identity changed during sampling.")
+        raise ValueError(
+            "P9.7 regional PRIMARY_ADAPTER identity changed during sampling."
+        )
     return ValidatedRegionalPatchInterop(
         "accepted",
         model_calls,

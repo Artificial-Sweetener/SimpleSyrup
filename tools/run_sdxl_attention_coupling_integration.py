@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import time
 from collections.abc import Sequence
@@ -22,13 +23,7 @@ from tools.sdxl_attention_coupling_integration.checkpoint_link import (
 )
 from tools.sdxl_attention_coupling_integration.history import decode_sdxl_history
 from tools.sdxl_attention_coupling_integration.masks import ManagedSdxlSplitMasks
-from tools.sdxl_attention_coupling_integration.matrix import (
-    CHECKPOINT_SHA256,
-    CHECKPOINT_SIZE,
-    CHECKPOINT_SOURCE_NAME,
-    CHECKPOINT_STABLE_NAME,
-    MODES,
-)
+from tools.sdxl_attention_coupling_integration.matrix import MODES
 from tools.sdxl_attention_coupling_integration.results import (
     SdxlIntegrationResultRecorder,
 )
@@ -48,25 +43,27 @@ def execute_sdxl_matrix(
     *,
     comfy_root: Path,
     checkpoint_path: Path,
+    checkpoint_name: str,
     readiness_timeout: float,
     prompt_timeout: float,
 ) -> Path:
     """Execute, validate, persist, and clean one complete managed SDXL run."""
 
+    checkpoint_identity = CheckpointArtifactIdentity(
+        checkpoint_path.name,
+        checkpoint_path.stat().st_size,
+        _sha256(checkpoint_path),
+    )
     checkpoint = ManagedCheckpointLink(
         source=checkpoint_path,
-        source_checkpoint_name=CHECKPOINT_SOURCE_NAME,
-        identity=CheckpointArtifactIdentity(
-            CHECKPOINT_STABLE_NAME,
-            CHECKPOINT_SIZE,
-            CHECKPOINT_SHA256,
-        ),
+        source_checkpoint_name=checkpoint_name,
+        identity=checkpoint_identity,
     )
     masks = ManagedSdxlSplitMasks(
         input_root=comfy_root / "input",
         run_id=artifacts.run_id,
     )
-    recorder = SdxlIntegrationResultRecorder(artifacts.root)
+    recorder = SdxlIntegrationResultRecorder(artifacts.root, checkpoint_identity)
     server_cleanup = False
     system_stats: JsonObject = {}
     with checkpoint:
@@ -127,6 +124,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint-path", type=Path, required=True)
+    parser.add_argument("--checkpoint-name", required=True)
     parser.add_argument("--comfy-root", type=Path, default=DEFAULT_COMFY_ROOT)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--readiness-timeout", type=float, default=240.0)
@@ -139,6 +137,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             artifacts,
             comfy_root=args.comfy_root,
             checkpoint_path=args.checkpoint_path,
+            checkpoint_name=args.checkpoint_name,
             readiness_timeout=args.readiness_timeout,
             prompt_timeout=args.prompt_timeout,
         )
@@ -148,6 +147,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     LOGGER.info("Managed SDXL matrix completed: %s", result)
     return 0
+
+
+def _sha256(path: Path) -> str:
+    """Hash one externally selected checkpoint with bounded memory."""
+
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 if __name__ == "__main__":

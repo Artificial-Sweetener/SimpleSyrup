@@ -6,6 +6,9 @@
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+
 from tools.anima_attention_coupling_integration.matrix import (
     PUBLIC_NODE_ID as FULL_NODE_ID,
 )
@@ -17,7 +20,7 @@ from tools.anima_tiled_attention_coupling_integration.matrix import (
 )
 from tools.comfy_api import JsonObject
 from tools.text_encoder_lora_integration.fixture import (
-    PINNED_TEXT_ENCODER_LORA_FIXTURE,
+    TextEncoderLoraFixtureIdentity,
 )
 from tools.text_encoder_lora_integration.matrix import cases
 from tools.text_encoder_lora_integration.workflow import (
@@ -25,27 +28,30 @@ from tools.text_encoder_lora_integration.workflow import (
 )
 
 
-def test_workflows_use_explicit_global_and_regional_clip_strengths() -> None:
-    """Keep TEXT_ADAPTER model strength zero on both supported encoding paths."""
+def test_workflows_use_explicit_global_and_regional_clip_strengths(
+    tmp_path: Path,
+) -> None:
+    """Keep encoder adapter model strength zero on both supported encoding paths."""
 
     definitions = {case.case_id: case for case in cases()}
-    builder = TextEncoderLoraWorkflowBuilder()
+    fixture = _fixture(tmp_path)
+    builder = TextEncoderLoraWorkflowBuilder(fixture)
     global_workflow = builder.build(
-        definitions["full-global-text_adapter-text"],
+        definitions["full-global-encoder_adapter-text"],
         run_id="global",
         mask_names=("left.png", "right.png"),
     )
     regional_workflow = builder.build(
-        definitions["full-regional-text_adapter-text"],
+        definitions["full-regional-encoder_adapter-text"],
         run_id="regional",
         mask_names=("left.png", "right.png"),
     )
     mixed_workflow = builder.build(
-        definitions["full-regional-text_adapter-text-adapter_a-model"],
+        definitions["full-regional-encoder_adapter-text-primary_adapter-model"],
         run_id="mixed",
         mask_names=("left.png", "right.png"),
     )
-    lora_name = PINNED_TEXT_ENCODER_LORA_FIXTURE.lora_name
+    lora_name = fixture.lora_name
 
     global_loader = _single_node(global_workflow.prompt, "LoraLoader")
     assert global_loader["inputs"] == {
@@ -67,14 +73,14 @@ def test_workflows_use_explicit_global_and_regional_clip_strengths() -> None:
     assert "<lora:Anima\\style\\adapter-a.safetensors:0.8:0>" in mixed_prompt
 
 
-def test_workflows_bind_each_case_to_its_public_spatial_sampler() -> None:
+def test_workflows_bind_each_case_to_its_public_spatial_sampler(tmp_path: Path) -> None:
     """Use full 1024 generation and accepted 1024-to-1536 refinement graphs."""
 
-    builder = TextEncoderLoraWorkflowBuilder()
+    builder = TextEncoderLoraWorkflowBuilder(_fixture(tmp_path))
     expected_nodes = {
         "full-baseline": FULL_NODE_ID,
-        "tiled-regional-adapter_a-model": TILED_NODE_ID,
-        "contextual-regional-adapter_a-model": CONTEXTUAL_NODE_ID,
+        "tiled-regional-primary_adapter-model": TILED_NODE_ID,
+        "contextual-regional-primary_adapter-model": CONTEXTUAL_NODE_ID,
     }
     definitions = {case.case_id: case for case in cases()}
 
@@ -95,13 +101,15 @@ def test_workflows_bind_each_case_to_its_public_spatial_sampler() -> None:
         assert sampler_inputs["diffusion_mode"] == "multidiffusion"
 
 
-def test_workflows_snapshot_the_exact_public_conditioning_batches() -> None:
+def test_workflows_snapshot_the_exact_public_conditioning_batches(
+    tmp_path: Path,
+) -> None:
     """Bind one output-only snapshot to the unique Schedule-and-Encode outputs."""
 
     case = next(
-        item for item in cases() if item.case_id == "full-regional-text_adapter-text"
+        item for item in cases() if item.case_id == "full-regional-encoder_adapter-text"
     )
-    workflow = TextEncoderLoraWorkflowBuilder().build(
+    workflow = TextEncoderLoraWorkflowBuilder(_fixture(tmp_path)).build(
         case,
         run_id="snapshot-run",
         mask_names=("left.png", "right.png"),
@@ -119,7 +127,7 @@ def test_workflows_snapshot_the_exact_public_conditioning_batches() -> None:
 
     assert workflow.conditioning_batch_snapshot_node_id is not None
     assert workflow.conditioning_batch_snapshot_run_id == (
-        "snapshot-run:full-regional-text_adapter-text:conditioning-batch"
+        "snapshot-run:full-regional-encoder_adapter-text:conditioning-batch"
     )
     assert snapshot["inputs"] == {
         "positive": [encoder_id, 1],
@@ -172,3 +180,17 @@ def _positive_prompt(prompt: dict[str, JsonObject]) -> str:
     value = inputs["positive_prompt"]
     assert isinstance(value, str)
     return value
+
+
+def _fixture(root: Path) -> TextEncoderLoraFixtureIdentity:
+    """Build an anonymous external adapter identity for graph tests."""
+
+    return TextEncoderLoraFixtureIdentity(
+        lora_name=r"evidence\text-adapter.safetensors",
+        path=(root / "text-adapter.safetensors").resolve(),
+        sha256=hashlib.sha256(b"adapter").hexdigest(),
+        size_bytes=7,
+        tensor_count=1,
+        source_sha256=hashlib.sha256(b"source").hexdigest(),
+        transformation="test fixture",
+    )

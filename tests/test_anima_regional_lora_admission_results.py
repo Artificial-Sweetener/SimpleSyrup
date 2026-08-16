@@ -70,8 +70,8 @@ def test_recorder_publishes_one_image_and_six_exact_rejections(tmp_path: Path) -
         "rejected",
         "rejected",
     ]
-    assert (tmp_path / "supported-adapter_a.png").is_file()
-    assert list(tmp_path.glob("*.png")) == [tmp_path / "supported-adapter_a.png"]
+    assert (tmp_path / "supported-primary_adapter.png").is_file()
+    assert list(tmp_path.glob("*.png")) == [tmp_path / "supported-primary_adapter.png"]
 
 
 def test_recorder_rejects_images_on_failure_cases(tmp_path: Path) -> None:

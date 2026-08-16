@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass
 
 import torch
 
@@ -19,14 +19,17 @@ from ..masking.regional_mask_projection import (
 )
 from .regional_attention_diagnostic_values import RegionalAttentionQueryGeometry
 
+_VALIDATED_QUERY_MASK_VALUES = object()
+
 
 @dataclass(frozen=True, slots=True)
 class RegionalAttentionQueryMaskBatch:
     """Retain canonical R/B/H/W and flattened R/B/Q query masks."""
 
     masks: torch.Tensor
+    _value_authority: InitVar[object | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, _value_authority: object | None) -> None:
         """Require non-empty finite floating query masks."""
 
         if not isinstance(self.masks, torch.Tensor):
@@ -35,7 +38,9 @@ class RegionalAttentionQueryMaskBatch:
             raise ValueError("Regional query masks must use non-empty R/B/H/W layout.")
         if not self.masks.is_floating_point():
             raise TypeError("Regional query masks must use a floating dtype.")
-        if not bool(torch.isfinite(self.masks).all()):
+        if _value_authority is not _VALIDATED_QUERY_MASK_VALUES and not bool(
+            torch.isfinite(self.masks).all()
+        ):
             raise ValueError("Regional query masks must contain finite values.")
 
     @property
@@ -43,6 +48,45 @@ class RegionalAttentionQueryMaskBatch:
         """Return the same masks in R/B/Q attention-token layout."""
 
         return self.masks.flatten(start_dim=2)
+
+    def to_execution_type(
+        self,
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> RegionalAttentionQueryMaskBatch:
+        """Transfer validated normalized masks without rereading device values."""
+
+        if not isinstance(device, torch.device):
+            raise TypeError("Regional query mask device must be a torch.device.")
+        if not isinstance(dtype, torch.dtype) or not dtype.is_floating_point:
+            raise TypeError("Regional query mask dtype must be floating point.")
+        return RegionalAttentionQueryMaskBatch(
+            self.masks.to(device=device, dtype=dtype),
+            _VALIDATED_QUERY_MASK_VALUES,
+        )
+
+    def apply_row_activity(
+        self,
+        activity: torch.Tensor,
+    ) -> RegionalAttentionQueryMaskBatch:
+        """Apply validated boolean R/B ownership without rereading mask values."""
+
+        if (
+            not isinstance(activity, torch.Tensor)
+            or activity.dtype is not torch.bool
+            or activity.ndim != 2
+            or tuple(activity.shape) != tuple(self.masks.shape[:2])
+        ):
+            raise ValueError(
+                "Regional query row activity must use matching R/B layout."
+            )
+        if activity.device != self.masks.device:
+            raise ValueError("Regional query row activity must share the mask device.")
+        return RegionalAttentionQueryMaskBatch(
+            self.masks * activity[:, :, None, None],
+            _VALIDATED_QUERY_MASK_VALUES,
+        )
 
 
 class RegionalAttentionQueryMaskProjector:
@@ -125,7 +169,10 @@ class RegionalAttentionQueryMaskProjector:
             raise ValueError(
                 "Regional query mask batch must match query geometry batch."
             )
-        return RegionalAttentionQueryMaskBatch(batched.to(device=device, dtype=dtype))
+        return RegionalAttentionQueryMaskBatch(batched).to_execution_type(
+            device=device,
+            dtype=dtype,
+        )
 
 
 REGIONAL_ATTENTION_QUERY_MASK_PROJECTOR = RegionalAttentionQueryMaskProjector()

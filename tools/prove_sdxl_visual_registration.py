@@ -15,16 +15,23 @@ from tools.comfy_api import JsonObject
 from tools.comfy_integration.artifacts import IntegrationArtifacts
 from tools.comfy_integration.loopback_port import is_loopback_port_available
 from tools.comfy_integration.managed_server import ManagedComfyServer
-from tools.run_sdxl_regional_lora_visual_matrix import _model_links
+from tools.sdxl_attention_coupling_integration.visual_adapter_selections import (
+    CHECKPOINT_SELECTION,
+    LEFT_CHARACTER_SELECTION,
+    RIGHT_CHARACTER_SELECTION,
+    STYLE_SELECTION,
+)
 from tools.sdxl_attention_coupling_integration.visual_cases import (
-    character_b_NAME,
-    CHECKPOINT_NAME,
-    ELDEN_STYLE_NAME,
-    character_c_NAME,
     visual_cases,
+)
+from tools.sdxl_attention_coupling_integration.visual_inventory import (
+    SdxlVisualInventory,
 )
 from tools.sdxl_attention_coupling_integration.visual_launch import (
     sdxl_visual_registration_launch_arguments,
+)
+from tools.sdxl_attention_coupling_integration.visual_matrix_execution import (
+    build_sdxl_visual_model_links,
 )
 from tools.sdxl_attention_coupling_integration.visual_workflow import (
     build_sdxl_visual_workflow,
@@ -36,8 +43,8 @@ DEFAULT_OUTPUT_ROOT = Path(
 )
 _METADATA_NODE_IDS = (
     "CheckpointLoaderSimple",
-    "LoraLoaderModelOnly",
-    "CreateHookLoraModelOnly",
+    "LoraLoader",
+    "CreateHookLora",
     "SimpleSyrup.KSamplerAttentionCoupling",
     "SimpleSyrup.KSamplerAttentionCouplingTiled",
     "SimpleSyrup.KSamplerAttentionCouplingContextual",
@@ -47,16 +54,17 @@ _METADATA_NODE_IDS = (
 def execute_registration_probe(
     artifacts: IntegrationArtifacts,
     *,
+    inventory: SdxlVisualInventory,
     comfy_root: Path,
     readiness_timeout: float,
 ) -> Path:
     """Start CPU-only Comfy, validate live choices, and clean exact owners."""
 
-    model_links = _model_links(comfy_root)
+    model_links = build_sdxl_visual_model_links(comfy_root, inventory)
     server_cleanup = False
     metadata: dict[str, JsonObject] = {}
     system_stats: JsonObject = {}
-    required = _required_node_ids(artifacts.run_id)
+    required = _required_node_ids(artifacts.run_id, inventory)
     with model_links:
         with ManagedComfyServer(
             comfy_root=comfy_root,
@@ -70,10 +78,17 @@ def execute_registration_probe(
                 node_id: running.client.node_metadata(node_id)
                 for node_id in _METADATA_NODE_IDS
             }
-            _require_choice(metadata["CheckpointLoaderSimple"], CHECKPOINT_NAME)
-            for name in (character_b_NAME, character_c_NAME, ELDEN_STYLE_NAME):
-                _require_choice(metadata["LoraLoaderModelOnly"], name)
-                _require_choice(metadata["CreateHookLoraModelOnly"], name)
+            _require_choice(
+                metadata["CheckpointLoaderSimple"],
+                CHECKPOINT_SELECTION,
+            )
+            for name in (
+                LEFT_CHARACTER_SELECTION,
+                RIGHT_CHARACTER_SELECTION,
+                STYLE_SELECTION,
+            ):
+                _require_choice(metadata["LoraLoader"], name)
+                _require_choice(metadata["CreateHookLora"], name)
             port = running.port
             process = running.process
         server_cleanup = not process.is_running and is_loopback_port_available(port)
@@ -88,8 +103,12 @@ def execute_registration_probe(
         "launch_arguments": list(sdxl_visual_registration_launch_arguments()),
         "required_node_count": len(required),
         "required_node_ids": sorted(required),
-        "checkpoint_choice": CHECKPOINT_NAME,
-        "lora_choices": [character_b_NAME, character_c_NAME, ELDEN_STYLE_NAME],
+        "checkpoint_choice": CHECKPOINT_SELECTION,
+        "lora_choices": [
+            LEFT_CHARACTER_SELECTION,
+            RIGHT_CHARACTER_SELECTION,
+            STYLE_SELECTION,
+        ],
         "metadata": metadata,
         "system_stats": system_stats,
         "cleanup": {"server": True, "model_links": True},
@@ -99,15 +118,18 @@ def execute_registration_probe(
     return path
 
 
-def _required_node_ids(run_id: str) -> frozenset[str]:
+def _required_node_ids(
+    run_id: str,
+    inventory: SdxlVisualInventory,
+) -> frozenset[str]:
     """Return the union of exact live nodes required by all U11 workflows."""
 
     return frozenset(
         node_id
-        for case in visual_cases()
+        for case in visual_cases(inventory)
         for node_id in build_sdxl_visual_workflow(
             run_id=run_id,
-            checkpoint_name=CHECKPOINT_NAME,
+            checkpoint_name=CHECKPOINT_SELECTION,
             mask_names=("left.png", "right.png"),
             case=case,
         ).required_node_ids
@@ -154,12 +176,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--comfy-root", type=Path, default=DEFAULT_COMFY_ROOT)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
+    parser.add_argument("--inventory", type=Path, required=True)
     parser.add_argument("--readiness-timeout", type=float, default=300.0)
     arguments = parser.parse_args(argv)
     artifacts = IntegrationArtifacts(arguments.output_root)
     try:
         result = execute_registration_probe(
             artifacts,
+            inventory=SdxlVisualInventory.load(arguments.inventory),
             comfy_root=arguments.comfy_root,
             readiness_timeout=arguments.readiness_timeout,
         )

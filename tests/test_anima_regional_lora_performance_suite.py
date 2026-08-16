@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -36,7 +37,14 @@ def test_suite_assembles_one_resident_source_and_ordered_profiles(
 ) -> None:
     """Reuse exact artifact, fixture, activation, profile, and tensor owners."""
 
-    manifest = default_manifest()
+    manifest = default_manifest(
+        artifacts=(
+            PerformanceArtifact("anima_base", Path("model.safetensors"), 1, "a" * 64),
+            PerformanceArtifact(
+                "regional_lora", Path("adapter.safetensors"), 1, "b" * 64
+            ),
+        )
+    )
     source = SimpleNamespace(load_device="cpu")
     fixture = cast(
         AnimaPerformanceModelFixture,

@@ -18,6 +18,7 @@ from ...domain.regional_lora_plan import (
     RegionalLoraBranch,
 )
 from .execution_cache import ModelCloneLineage, RegionalLoraExecutionCache
+from .linear_mapped_projection_plan import RegionalLinearMappedProjectionPlan
 from .preparation import (
     RegionalLoraCompatibleBatchPreparation,
     RegionalLoraTargetPreparation,
@@ -105,6 +106,7 @@ class RegionalLinearExecutionPlan:
     rank_batches: tuple[
         tuple[tuple[int, ...], RegionalLoraCompatibleBatchPreparation], ...
     ] = field(init=False)
+    mapped_projection: RegionalLinearMappedProjectionPlan = field(init=False)
     _active_batches: dict[tuple[int, ...], RegionalLoraCompatibleBatchPreparation] = (
         field(default_factory=dict, init=False, repr=False)
     )
@@ -136,6 +138,13 @@ class RegionalLinearExecutionPlan:
             for indices in by_contract.values()
         )
         object.__setattr__(self, "rank_batches", batches)
+        object.__setattr__(
+            self,
+            "mapped_projection",
+            RegionalLinearMappedProjectionPlan(
+                tuple(group.preparation for group in groups)
+            ),
+        )
 
     def clear(self) -> None:
         """Release locally retained prepared weights and compatible batches."""
@@ -147,6 +156,7 @@ class RegionalLinearExecutionPlan:
         for preparation in self._active_batches.values():
             preparation.clear()
         self._active_batches.clear()
+        self.mapped_projection.clear()
 
     def preparation_for(
         self,

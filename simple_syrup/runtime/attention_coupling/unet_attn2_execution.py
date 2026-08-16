@@ -11,13 +11,14 @@ from dataclasses import dataclass, field
 import torch
 
 from ...domain.regional_attention_batch import BatchedRegionalAttentionContexts
-from ...domain.regional_attention_weights import (
-    RegionalAttentionWeightingPolicy,
-    RegionalAttentionWeights,
-)
 from ...domain.regional_conditioning_output import (
     REGIONAL_CONDITIONING_OUTPUT_COMBINER,
     RegionalConditioningOutputCombiner,
+)
+from ..regional_attention_query_masks import RegionalAttentionQueryMaskBatch
+from .standard_unet_attention_weighting import (
+    STANDARD_UNET_ATTENTION_WEIGHTING_POLICY,
+    StandardUnetAttentionWeights,
 )
 from .unet_branch_batch import (
     UNET_ATTENTION_BRANCH_BATCH_BUILDER,
@@ -41,35 +42,43 @@ class UnetAttn2Execution:
     """Bind aligned contexts to one exact BxQ projected regional mask bank."""
 
     contexts: BatchedRegionalAttentionContexts
-    query_masks: torch.Tensor
+    query_mask_source: torch.Tensor | RegionalAttentionQueryMaskBatch
     region_strengths: tuple[float, ...]
     query_height: int
     query_width: int
-    weights: RegionalAttentionWeights = field(init=False)
+    weights: StandardUnetAttentionWeights = field(init=False)
     branches: UnetAttentionBranchBatch = field(init=False)
+    _query_mask_batch: RegionalAttentionQueryMaskBatch = field(init=False)
 
     def __post_init__(self) -> None:
         """Validate one query contract and precompute its reusable branch plan."""
 
         if not isinstance(self.contexts, BatchedRegionalAttentionContexts):
             raise TypeError("UNet attn2 execution requires aligned contexts.")
-        if not isinstance(self.query_masks, torch.Tensor):
-            raise TypeError("UNet attn2 query masks must be a tensor.")
+        if isinstance(self.query_mask_source, RegionalAttentionQueryMaskBatch):
+            query_mask_batch = self.query_mask_source
+        elif isinstance(self.query_mask_source, torch.Tensor):
+            if self.query_mask_source.ndim != 3:
+                raise ValueError("UNet attn2 query masks must use R/B/Q layout.")
+            query_mask_batch = RegionalAttentionQueryMaskBatch(
+                self.query_mask_source.unsqueeze(2)
+            )
+        else:
+            raise TypeError("UNet attn2 query masks must be a tensor or mask batch.")
+        query_masks = query_mask_batch.flattened
         if (
-            self.query_masks.ndim != 3
-            or int(self.query_masks.shape[0]) < 1
-            or any(int(size) < 1 for size in self.query_masks.shape[1:])
+            query_masks.ndim != 3
+            or int(query_masks.shape[0]) < 1
+            or any(int(size) < 1 for size in query_masks.shape[1:])
         ):
             raise ValueError("UNet attn2 query masks must use non-empty R/B/Q layout.")
-        if not self.query_masks.is_floating_point():
+        if not query_masks.is_floating_point():
             raise TypeError("UNet attn2 query masks must use a floating dtype.")
-        if not bool(torch.isfinite(self.query_masks).all()):
-            raise ValueError("UNet attn2 query masks must contain finite values.")
-        if int(self.query_masks.shape[0]) != len(self.contexts.regions):
+        if int(query_masks.shape[0]) != len(self.contexts.regions):
             raise ValueError(
                 "UNet attn2 query-mask region count must match aligned contexts."
             )
-        if int(self.query_masks.shape[1]) != int(self.contexts.base_context.shape[0]):
+        if int(query_masks.shape[1]) != int(self.contexts.base_context.shape[0]):
             raise ValueError("UNet attn2 query-mask batch must match aligned contexts.")
         if (
             isinstance(self.query_height, bool)
@@ -80,17 +89,23 @@ class UnetAttn2Execution:
             or self.query_width < 1
         ):
             raise ValueError("UNet attn2 query H/W must be positive integers.")
-        if self.query_height * self.query_width != int(self.query_masks.shape[2]):
+        if self.query_height * self.query_width != int(query_masks.shape[2]):
             raise ValueError("UNet attn2 query H/W must match the query-mask tokens.")
-        if self.query_masks.device != self.contexts.base_context.device:
+        if query_masks.device != self.contexts.base_context.device:
             raise ValueError("UNet attn2 masks and contexts must share one device.")
-        weighting = RegionalAttentionWeightingPolicy()
-        weights = weighting.weights(
-            self.query_masks,
+        weights = STANDARD_UNET_ATTENTION_WEIGHTING_POLICY.weights(
+            query_masks,
             region_strengths=self.region_strengths,
         )
         object.__setattr__(self, "weights", weights)
         object.__setattr__(self, "branches", self._build_branches(weights))
+        object.__setattr__(self, "_query_mask_batch", query_mask_batch)
+
+    @property
+    def query_masks(self) -> torch.Tensor:
+        """Return the validated masks in flattened R/B/Q execution layout."""
+
+        return self._query_mask_batch.flattened
 
     def expand(
         self,
@@ -136,7 +151,7 @@ class UnetAttn2Execution:
             )
             for region in self.contexts.regions
         )
-        return RegionalAttentionWeightingPolicy().blend(
+        return STANDARD_UNET_ATTENTION_WEIGHTING_POLICY.blend(
             weights=self.weights,
             base_output=base_output,
             regional_outputs=torch.stack(regional_outputs),
@@ -144,7 +159,7 @@ class UnetAttn2Execution:
 
     def _build_branches(
         self,
-        weights: RegionalAttentionWeights,
+        weights: StandardUnetAttentionWeights,
     ) -> UnetAttentionBranchBatch:
         """Build exact row support from normalized spatial and entry strengths."""
 

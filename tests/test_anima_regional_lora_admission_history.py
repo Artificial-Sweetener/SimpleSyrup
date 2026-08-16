@@ -28,7 +28,7 @@ from tools.comfy_api import JsonObject
 
 
 def test_success_history_requires_full_surface_single_trajectory_evidence() -> None:
-    """Accept eight complete calls and all 448 ADAPTER_A targets."""
+    """Accept eight complete calls and all 448 PRIMARY_ADAPTER targets."""
 
     case = cases()[0]
     workflow = _workflow(case)
@@ -58,7 +58,7 @@ def test_error_history_requires_exact_public_sampler_classification() -> None:
 
 
 def test_mixed_case_requires_second_adapter_identity_and_atomic_failure() -> None:
-    """Reject a valid ADAPTER_A followed by one unsupported target without output."""
+    """Reject a valid adapter followed by an unsupported target without output."""
 
     case = cases()[-1]
     workflow = _workflow(case)

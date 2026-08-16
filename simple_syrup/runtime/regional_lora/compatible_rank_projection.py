@@ -162,31 +162,35 @@ class RegionalLoraCompatibleRankProjector:
             indices,
         )
 
-    def deltas(
+    def materialize_deltas(
         self,
         projection: RegionalLoraCompatibleRankProjection,
-    ) -> torch.Tensor:
-        """Materialize exact full-shaped target deltas for fallback consumers."""
+    ) -> tuple[torch.Tensor, ...]:
+        """Materialize individually contiguous deltas for fallback consumers."""
 
         active = self._project_active(projection)
         if projection.indices is None:
-            return active.reshape(
-                *projection.leading_shape,
-                projection.target_count,
-                projection.output_features,
+            return tuple(
+                active[target_index].reshape(
+                    *projection.leading_shape,
+                    projection.output_features,
+                )
+                for target_index in range(projection.target_count)
             )
         output_rows = 1
         for size in projection.leading_shape:
             output_rows *= size
         deltas = projection.rank_values.new_zeros(
-            (output_rows, projection.target_count, projection.output_features)
+            (projection.target_count, output_rows, projection.output_features)
         )
         if int(projection.indices.shape[0]) > 0:
-            deltas.index_copy_(0, projection.indices, active)
-        return deltas.reshape(
-            *projection.leading_shape,
-            projection.target_count,
-            projection.output_features,
+            deltas.index_copy_(1, projection.indices, active)
+        return tuple(
+            deltas[target_index].reshape(
+                *projection.leading_shape,
+                projection.output_features,
+            )
+            for target_index in range(projection.target_count)
         )
 
     def add_all(
@@ -217,7 +221,7 @@ class RegionalLoraCompatibleRankProjector:
         self._accumulator.accumulate(
             active_output,
             tuple(
-                projected[:, target_index]
+                projected[target_index]
                 for target_index in range(projection.target_count)
             ),
         )
@@ -268,11 +272,11 @@ class RegionalLoraCompatibleRankProjector:
     def _project_active(
         projection: RegionalLoraCompatibleRankProjection,
     ) -> torch.Tensor:
-        """Project active rank rows through every compatible B tensor."""
+        """Project active rank rows into contiguous target-major deltas."""
 
         if int(projection.rank_values.shape[0]) == 0:
             return projection.rank_values.new_zeros(
-                (0, projection.target_count, projection.output_features)
+                (projection.target_count, 0, projection.output_features)
             )
         weighted = projection.rank_values * torch.stack(
             projection.multiplier_values,
@@ -281,7 +285,7 @@ class RegionalLoraCompatibleRankProjector:
         return torch.bmm(
             weighted.permute(1, 0, 2),
             projection.up.transpose(1, 2),
-        ).permute(1, 0, 2)
+        )
 
     @staticmethod
     def _validated_output(
