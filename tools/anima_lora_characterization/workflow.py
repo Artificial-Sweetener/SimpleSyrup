@@ -2,17 +2,18 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Build ordinary global Comfy workflows for pinned Anima LoRA runs."""
+"""Build ordinary global Comfy workflows for a selected Anima LoRA."""
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from pathlib import Path
 
 from tools.attention_coupling_benchmark.manifest_types import SamplingSettings
 from tools.comfy_api import JsonObject
 
-from .matrix import PINNED_LORA_NAME, AdapterDefinition, LoraRun
+from .matrix import AdapterDefinition, LoraRun
 
 Workflow = dict[str, JsonObject]
 
@@ -28,6 +29,13 @@ class BuiltLoraWorkflow:
 
 class LoraWorkflowBuilder:
     """Translate one fixed profile into ordinary Comfy loader and hook nodes."""
+
+    def __init__(self, lora_name: str) -> None:
+        """Retain the externally selected ComfyUI-relative adapter name."""
+
+        if not lora_name or Path(lora_name).is_absolute():
+            raise ValueError("LoRA name must be non-empty and ComfyUI-relative.")
+        self._lora_name = lora_name
 
     def build(
         self,
@@ -53,7 +61,7 @@ class LoraWorkflowBuilder:
                 node_id = graph.add(
                     "LoraLoaderModelOnly",
                     model=model_link,
-                    lora_name=PINNED_LORA_NAME,
+                    lora_name=self._lora_name,
                     strength_model=adapter.strength,
                 )
                 model_link = [node_id, 0]
@@ -122,17 +130,16 @@ class LoraWorkflowBuilder:
         saved = graph.add(
             "SaveImage",
             images=[decoded, 0],
-            filename_prefix=f"simple_syrup_benchmark/adapter_a-global/{run.artifact_id}",
+            filename_prefix=f"simple_syrup_benchmark/primary_adapter-global/{run.artifact_id}",
         )
         return BuiltLoraWorkflow(graph.prompt, metrics, saved)
 
-    @staticmethod
-    def _scheduled_hook(graph: _Graph, adapter: AdapterDefinition) -> str:
+    def _scheduled_hook(self, graph: _Graph, adapter: AdapterDefinition) -> str:
         """Create one independently scheduled model-only WeightHook."""
 
         hook = graph.add(
             "CreateHookLoraModelOnly",
-            lora_name=PINNED_LORA_NAME,
+            lora_name=self._lora_name,
             strength_model=adapter.strength,
         )
         previous: object | None = None

@@ -38,7 +38,7 @@ def test_matrix_declares_the_four_exact_non_diffusion_rejections() -> None:
         "turbo-mixed-diffusion-llm",
         "llm-adapter-only",
         "text-encoder-vae-bundle",
-        "adapter_a-plus-nondiffusion-bundle",
+        "primary_adapter-plus-nondiffusion-bundle",
     ]
     assert [case.expected_issue_count for case in definitions] == [60, 1, 2, 2]
     assert [case.expected_issue_adapter_index for case in definitions] == [0, 0, 0, 1]
@@ -75,7 +75,7 @@ def test_real_turbo_graph_uses_one_public_lora_and_one_public_sampler() -> None:
     assert _inputs(sampler)["steps"] == STEPS
 
 
-def test_mixed_graph_preserves_adapter_a_then_nondiffusion_bundle_order() -> None:
+def test_mixed_graph_preserves_primary_adapter_then_nondiffusion_bundle_order() -> None:
     """Require adapter-one ownership without reinterpreting fixture payloads."""
 
     built = _build(cases()[-1])
@@ -88,7 +88,7 @@ def test_mixed_graph_preserves_adapter_a_then_nondiffusion_bundle_order() -> Non
     )
 
     assert json.loads(str(_inputs(label)["adapter_identities_json"])) == [
-        "supported-adapter_a",
+        "supported-primary_adapter",
         NON_DIFFUSION_OWNER_BUNDLE_FIXTURE,
     ]
     assert _link(_inputs(combined)["hooks_A"])[0] == _node_id(

@@ -220,6 +220,79 @@ def test_target_selection_reads_shared_rank_storage_without_slicing(
     assert up.untyped_storage().data_ptr() == up_pointer
 
 
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.parametrize("indexed", [False, True])
+def test_mapped_groups_reuse_unique_ranks_in_declared_order(
+    dtype: torch.dtype,
+    indexed: bool,
+) -> None:
+    """Map repeated A/B targets without combining their ordered multipliers."""
+
+    device = torch.device("cuda")
+    generator = torch.Generator(device=device).manual_seed(811 + int(indexed))
+    output_rows = 19
+    output_features = 67
+    unique_targets = 2
+    rank = 32
+    group_mapping = (0, 1, 0, 1)
+    indices = (
+        torch.tensor([0, 2, 4, 7, 8, 11, 14, 16, 18], device=device)
+        if indexed
+        else None
+    )
+    active_rows = output_rows if indices is None else int(indices.shape[0])
+    output = torch.randn(
+        (output_rows, output_features),
+        generator=generator,
+        device=device,
+        dtype=dtype,
+    )
+    rank_values = torch.randn(
+        (active_rows, unique_targets, rank),
+        generator=generator,
+        device=device,
+        dtype=dtype,
+    )
+    up = torch.randn(
+        (unique_targets, output_features, rank),
+        generator=generator,
+        device=device,
+        dtype=dtype,
+    )
+    multipliers = tuple(
+        torch.randn(
+            (active_rows,),
+            generator=generator,
+            device=device,
+            dtype=dtype,
+        )
+        for _index in group_mapping
+    )
+    expected = output.clone()
+    active = expected if indices is None else expected.index_select(0, indices)
+    for group_index, target_index in enumerate(group_mapping):
+        active.add_(
+            functional.linear(
+                rank_values[:, target_index] * multipliers[group_index].unsqueeze(1),
+                up[target_index],
+            )
+        )
+    if indices is not None:
+        expected.index_copy_(0, indices, active)
+
+    result = RegionalLoraFusedActiveAccumulator().add_mapped(
+        output,
+        rank_values=rank_values,
+        up=up,
+        multipliers=multipliers,
+        indices=indices,
+        target_indices=torch.tensor(group_mapping, device=device),
+    )
+
+    tolerance = 0.002 if dtype is torch.float16 else 0.02
+    torch.testing.assert_close(result, expected, rtol=tolerance, atol=tolerance)
+
+
 def _torch_reference(
     output: torch.Tensor,
     *,

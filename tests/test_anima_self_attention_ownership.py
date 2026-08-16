@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import torch
 
-from simple_syrup.runtime.regional_lora.anima_self_attention_ownership import (
-    AnimaSelfAttentionOwnershipPolicy,
+from simple_syrup.runtime.regional_self_attention_ownership import (
+    RegionalSelfAttentionOwnershipPolicy,
 )
 
 
@@ -23,7 +23,7 @@ def test_hard_regions_block_cross_region_image_attention() -> None:
         ]
     )
 
-    relation = AnimaSelfAttentionOwnershipPolicy().allowed_relation(masks)
+    relation = RegionalSelfAttentionOwnershipPolicy().allowed_relation(masks)
 
     assert torch.equal(
         relation,
@@ -50,7 +50,7 @@ def test_uncovered_tokens_are_shared_coherence_tokens() -> None:
         ]
     )
 
-    relation = AnimaSelfAttentionOwnershipPolicy().allowed_relation(masks)
+    relation = RegionalSelfAttentionOwnershipPolicy().allowed_relation(masks)
 
     assert bool(relation[0, 0, 2]) is False
     assert bool(relation[0, 0, 1]) is True
@@ -68,7 +68,7 @@ def test_overlap_uses_maximum_value_then_stable_region_order() -> None:
         ]
     )
 
-    owners = AnimaSelfAttentionOwnershipPolicy().token_owners(masks)
+    owners = RegionalSelfAttentionOwnershipPolicy().token_owners(masks)
 
     assert owners.tolist() == [[1, 0, 1]]
 
@@ -83,7 +83,7 @@ def test_cfg_batches_keep_independent_ownership_relations() -> None:
         ]
     )
 
-    relation = AnimaSelfAttentionOwnershipPolicy().allowed_relation(masks)
+    relation = RegionalSelfAttentionOwnershipPolicy().allowed_relation(masks)
 
     assert relation.shape == (2, 3, 3)
     assert bool(relation[0, 0, 2]) is False
@@ -94,7 +94,7 @@ def test_cfg_batches_keep_independent_ownership_relations() -> None:
 def test_invalid_mask_values_fail_closed() -> None:
     """Reject negative and non-finite masks before attention execution."""
 
-    policy = AnimaSelfAttentionOwnershipPolicy()
+    policy = RegionalSelfAttentionOwnershipPolicy()
 
     for masks in (
         torch.tensor([[[-0.1]]]),

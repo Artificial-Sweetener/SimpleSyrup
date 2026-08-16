@@ -20,14 +20,14 @@ from simple_syrup.domain.regional_features import (
     RegionalFeatureRequest,
 )
 from simple_syrup.domain.regional_mask_bank import RegionalMaskBank
-from simple_syrup.services.attention_coupling_model_preparation_service import (
-    PreparedAttentionCouplingModel,
-)
 from simple_syrup.services.contextual_attention_coupling_sampling_service import (
     ContextualAttentionCouplingSamplingService,
 )
 from simple_syrup.services.contextual_diffusion_sampling_service import (
     ContextualDiffusionSamplingResult,
+)
+from simple_syrup.services.prepared_attention_coupling_model import (
+    PreparedAttentionCouplingModel,
 )
 
 

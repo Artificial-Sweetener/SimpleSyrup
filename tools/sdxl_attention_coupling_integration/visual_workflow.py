@@ -16,7 +16,6 @@ from .matrix import (
     REFINEMENT_DENOISE,
     REFINEMENT_STEPS,
     SOURCE_HEIGHT,
-    SOURCE_STEPS,
     SOURCE_WIDTH,
     TARGET_HEIGHT,
     TARGET_WIDTH,
@@ -25,7 +24,8 @@ from .matrix import (
     TILE_SIZE,
 )
 from .sampler_branch import SdxlWorkflowOutputs, add_sampler_branch
-from .visual_cases import SdxlVisualCase, VisualMode
+from .sampling_controls import SDXL_VISUAL_SAMPLING
+from .visual_case_model import SdxlVisualCase, VisualMode
 from .visual_conditioning import SdxlVisualConditioningBuilder
 
 
@@ -94,8 +94,10 @@ def build_sdxl_visual_workflow(
         latent=[source_latent, 0],
         vae=[loader, 2],
         run_id=case_run_id,
-        steps=SOURCE_STEPS,
+        steps=SDXL_VISUAL_SAMPLING.steps,
         denoise=1.0,
+        regional_prompt_weight=case.regional_prompt_weight,
+        region_mask_feather=case.region_mask_feather,
         sampler_inputs={},
         filename_prefix=_filename_prefix(run_id, case.case_id, VisualMode.FULL),
     )
@@ -131,6 +133,8 @@ def build_sdxl_visual_workflow(
                 run_id=case_run_id,
                 steps=REFINEMENT_STEPS,
                 denoise=REFINEMENT_DENOISE,
+                regional_prompt_weight=case.regional_prompt_weight,
+                region_mask_feather=case.region_mask_feather,
                 sampler_inputs=_sampler_inputs(mode),
                 filename_prefix=_filename_prefix(run_id, case.case_id, mode),
             )

@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import pytest
 import torch
+from comfy.patcher_extension import WrappersMP
 
 from simple_syrup.domain.conditioning_schedule import ConditioningScheduleRange
 from simple_syrup.domain.processed_regional_attention import (
@@ -26,7 +27,11 @@ from simple_syrup.domain.regional_attention_batch import (
 from simple_syrup.domain.regional_lora_plan import EMPTY_REGIONAL_LORA_PLAN
 from simple_syrup.domain.regional_mask_bank import RegionalMaskBank
 from simple_syrup.runtime.attention_coupling.unet_attention_context_wrapper import (
+    UNET_ATTENTION_CONTEXT_WRAPPER_KEY,
     StandardUnetAttentionContextDiffusionWrapper,
+)
+from simple_syrup.runtime.attention_coupling.unet_attention_phase_session import (
+    STANDARD_UNET_ATTENTION_PHASE_SESSION,
 )
 from simple_syrup.runtime.attention_coupling.unet_attention_state import (
     StandardUnetAttentionState,
@@ -69,7 +74,10 @@ def test_unet_context_wrapper_publishes_reversed_cfg_and_restores_state() -> Non
 
     state = _state()
     model = _DiffusionModel()
-    wrapper = StandardUnetAttentionContextDiffusionWrapper(model, state)
+    wrapper = StandardUnetAttentionContextDiffusionWrapper(
+        state,
+        STANDARD_UNET_ATTENTION_PHASE_SESSION,
+    )
     executor = _Executor(model, state)
     negative = state.plan.negative.base_context.entries[0].cross_attention
     positive = state.plan.positive.base_context.entries[0].cross_attention
@@ -81,10 +89,7 @@ def test_unet_context_wrapper_publishes_reversed_cfg_and_restores_state() -> Non
         torch.cat((negative, positive)),
         None,
         None,
-        {
-            "cond_or_uncond": [1, 0],
-            "sigmas": torch.tensor([0.5, 0.5]),
-        },
+        _transformer_options(wrapper, [1, 0], torch.tensor([0.5, 0.5])),
     )
 
     assert isinstance(output, torch.Tensor)
@@ -111,7 +116,10 @@ def test_unet_context_wrapper_clears_state_after_nested_failure() -> None:
 
     state = _state()
     model = _DiffusionModel()
-    wrapper = StandardUnetAttentionContextDiffusionWrapper(model, state)
+    wrapper = StandardUnetAttentionContextDiffusionWrapper(
+        state,
+        STANDARD_UNET_ATTENTION_PHASE_SESSION,
+    )
     positive = state.plan.positive.base_context.entries[0].cross_attention
 
     executor = _Executor(model, state, fail=True)
@@ -123,10 +131,7 @@ def test_unet_context_wrapper_clears_state_after_nested_failure() -> None:
             positive,
             None,
             None,
-            {
-                "cond_or_uncond": [0],
-                "sigmas": torch.tensor([0.5]),
-            },
+            _transformer_options(wrapper, [0], torch.tensor([0.5])),
         )
 
     assert executor.observed is not None
@@ -138,26 +143,39 @@ def test_unet_context_wrapper_clears_state_after_nested_failure() -> None:
         _ = state.resolution_cache.size
 
 
-def test_unet_context_wrapper_rejects_model_identity_and_positional_drift() -> None:
-    """Fail before plan resolution when Comfy's bound UNet contract changes."""
+def test_unet_context_wrapper_accepts_comfy_delegate_model_identity() -> None:
+    """Accept Comfy's fresh non-dynamic delegate under the live wrapper key."""
+
+    state = _state()
+    wrapper = StandardUnetAttentionContextDiffusionWrapper(
+        state,
+        STANDARD_UNET_ATTENTION_PHASE_SESSION,
+    )
+    delegate = _DiffusionModel()
+
+    output = wrapper(
+        _Executor(delegate, state),
+        torch.zeros(1, 4, 2, 2),
+        torch.tensor([0.5]),
+        state.plan.positive.base_context.entries[0].cross_attention,
+        None,
+        None,
+        _transformer_options(wrapper, [0], torch.tensor([0.5])),
+    )
+
+    assert isinstance(output, torch.Tensor)
+
+
+def test_unet_context_wrapper_rejects_positional_drift() -> None:
+    """Fail before plan resolution when Comfy's UNet call contract changes."""
 
     state = _state()
     model = _DiffusionModel()
-    wrapper = StandardUnetAttentionContextDiffusionWrapper(model, state)
+    wrapper = StandardUnetAttentionContextDiffusionWrapper(
+        state,
+        STANDARD_UNET_ATTENTION_PHASE_SESSION,
+    )
 
-    with pytest.raises(ValueError, match="does not own"):
-        wrapper(
-            _Executor(_DiffusionModel(), state),
-            torch.zeros(1, 4, 2, 2),
-            torch.tensor([0.5]),
-            state.plan.positive.base_context.entries[0].cross_attention,
-            None,
-            None,
-            {
-                "cond_or_uncond": [0],
-                "sigmas": torch.tensor([0.5]),
-            },
-        )
     with pytest.raises(TypeError, match="third positional"):
         wrapper(
             _Executor(model, state),
@@ -165,10 +183,7 @@ def test_unet_context_wrapper_rejects_model_identity_and_positional_drift() -> N
             torch.tensor([0.5]),
             None,
             None,
-            {
-                "cond_or_uncond": [0],
-                "sigmas": torch.tensor([0.5]),
-            },
+            _transformer_options(wrapper, [0], torch.tensor([0.5])),
         )
     with pytest.raises(TypeError, match="sixth positional"):
         wrapper(
@@ -190,7 +205,11 @@ def test_unet_attention_state_rejects_strength_authority_mismatch() -> None:
 
     plan = _plan()
     with pytest.raises(ValueError, match="count must match"):
-        StandardUnetAttentionState(plan, (), _diagnostics(plan))
+        StandardUnetAttentionState(
+            plan,
+            (),
+            _diagnostics(plan),
+        )
 
 
 def test_unet_attention_state_rejects_foreign_diagnostic_mask_authority() -> None:
@@ -200,14 +219,39 @@ def test_unet_attention_state_rejects_foreign_diagnostic_mask_authority() -> Non
     foreign_plan = _plan()
 
     with pytest.raises(ValueError, match="mask-bank identity"):
-        StandardUnetAttentionState(plan, (1.0,), _diagnostics(foreign_plan))
+        StandardUnetAttentionState(
+            plan,
+            (1.0,),
+            _diagnostics(foreign_plan),
+        )
 
 
 def _state() -> StandardUnetAttentionState:
     """Return one standard-UNet plan with distinct branch contexts."""
 
     plan = _plan()
-    return StandardUnetAttentionState(plan, (1.0,), _diagnostics(plan))
+    return StandardUnetAttentionState(
+        plan,
+        (1.0,),
+        _diagnostics(plan),
+    )
+
+
+def _transformer_options(
+    wrapper: StandardUnetAttentionContextDiffusionWrapper,
+    cond_or_uncond: list[int],
+    sigmas: torch.Tensor,
+) -> dict[object, object]:
+    """Return one live keyed diffusion-wrapper invocation registry."""
+
+    return {
+        "cond_or_uncond": cond_or_uncond,
+        "sample_sigmas": torch.tensor([1.0, 0.0]),
+        "sigmas": sigmas,
+        "wrappers": {
+            WrappersMP.DIFFUSION_MODEL: {UNET_ATTENTION_CONTEXT_WRAPPER_KEY: [wrapper]}
+        },
+    }
 
 
 def _diagnostics(

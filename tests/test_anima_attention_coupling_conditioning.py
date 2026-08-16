@@ -32,7 +32,7 @@ def test_conditioning_preserves_global_and_regional_lora_ownership() -> None:
     )
     prompt = str(_inputs(encoded)["positive_prompt"])
     assert prompt.count("[SEP]") == 2
-    assert prompt.index("ADAPTER_A") < prompt.index("ADAPTER_B")
+    assert prompt.index("adapter-a.safetensors") < prompt.index("adapter-b.safetensors")
     assert _inputs(encoded)["model"] == [
         next(iter(_node_ids(workflow.prompt, global_loader))),
         0,

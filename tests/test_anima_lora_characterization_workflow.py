@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Verify ordinary global Comfy graphs for pinned ADAPTER_A characterization."""
+"""Verify ordinary global Comfy graphs for adapter characterization."""
 
 from __future__ import annotations
 
@@ -26,7 +26,9 @@ def test_static_four_adapter_graph_preserves_loader_order() -> None:
 
     profile = next(item for item in profiles() if item.profile_id == "static-4")
     run = LoraRun(profile, 1_029_384_756, capture_outputs=False)
-    built = LoraWorkflowBuilder().build(run, load_manifest().sampling, "test prompt")
+    built = LoraWorkflowBuilder("selected\\adapter.safetensors").build(
+        run, load_manifest().sampling, "test prompt"
+    )
     loaders = _nodes(built.prompt, "LoraLoaderModelOnly")
 
     assert [node["inputs"]["strength_model"] for node in loaders] == [
@@ -48,7 +50,9 @@ def test_scheduled_four_adapter_graph_keeps_independent_boundaries() -> None:
 
     profile = next(item for item in profiles() if item.profile_id == "scheduled-4")
     run = LoraRun(profile, 1_029_384_756, capture_outputs=True)
-    built = LoraWorkflowBuilder().build(run, load_manifest().sampling, "test prompt")
+    built = LoraWorkflowBuilder("selected\\adapter.safetensors").build(
+        run, load_manifest().sampling, "test prompt"
+    )
 
     assert len(_nodes(built.prompt, "CreateHookLoraModelOnly")) == 4
     assert len(_nodes(built.prompt, "CreateHookKeyframe")) == 16

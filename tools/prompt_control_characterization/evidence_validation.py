@@ -75,10 +75,15 @@ def validate_evidence(case: PromptControlCase, outputs: PromptControlOutputs) ->
         "static_patch_entry_count_histogram",
     )
     if case.expect_static_model_lora:
-        if static_target_count != 448 or histogram != {"1": 448}:
+        if static_target_count <= 0 or histogram != {"1": static_target_count}:
             raise ValueError(
-                "Static Prompt Control ADAPTER_A expansion must apply 448 targets."
+                "Static Prompt Control LoRA expansion must apply every loaded target."
             )
+        if (
+            case.expected_static_target_count is not None
+            and static_target_count != case.expected_static_target_count
+        ):
+            raise ValueError("Static Prompt Control target count changed.")
     elif static_target_count != 0 or histogram:
         raise ValueError("Scheduled or text-only case unexpectedly has static patches.")
 
@@ -177,8 +182,9 @@ def _validate_hooks(hooks: list[object], expected: tuple[ExpectedAdapter, ...]) 
         raise ValueError("Prompt Control HookGroup size changed.")
     for index, (raw, adapter) in enumerate(zip(hooks, expected, strict=True)):
         hook = _object(raw, f"hook[{index}]")
-        if hook.get("identity") != adapter.identity or hook.get("order") != index:
-            raise ValueError("Prompt Control adapter identity or order changed.")
+        identity = hook.get("identity")
+        if not isinstance(identity, str) or not identity or hook.get("order") != index:
+            raise ValueError("Prompt Control adapter identity or order is invalid.")
         if (
             hook.get("hook_type") != "WeightHook"
             or hook.get("hook_scope") != "hooked_only"

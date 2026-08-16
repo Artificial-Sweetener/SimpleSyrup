@@ -38,7 +38,7 @@ def test_load_uses_native_mask_loader_and_validated_path(
     """Static files are decoded through Comfy's LoadImageMask behavior."""
 
     path = tmp_path / "mask.png"
-    Image.new("RGB", (3, 2), color=(255, 0, 0)).save(path)
+    Image.new("RGB", (3, 2), color=(128, 0, 0)).save(path)
     _patch_path(monkeypatch, path)
     calls: list[tuple[str, str]] = []
 
@@ -100,6 +100,41 @@ def test_missing_alpha_returns_zero_coverage_at_source_dimensions(
 
     assert result.shape == (1, 2, 3)
     assert torch.count_nonzero(result) == 0
+
+
+def test_native_white_endpoint_is_restored_without_changing_lower_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Treat the current decoder's 255 endpoint as exact authored coverage."""
+
+    path = tmp_path / "hard-mask.png"
+    image = Image.new("RGB", (3, 1))
+    image.putdata(((0, 0, 0), (254, 254, 254), (255, 255, 255)))
+    image.save(path)
+    _patch_path(monkeypatch, path)
+
+    class FakeNativeLoader:
+        """Expose the installed decoder's endpoint and two lower values."""
+
+        @classmethod
+        def VALIDATE_INPUTS(cls, value: str) -> bool:
+            """Accept the annotated path through the native contract."""
+
+            del cls, value
+            return True
+
+        def load_image_mask(self, value: str, channel: str) -> tuple[torch.Tensor]:
+            """Return current-host normalized channel values."""
+
+            del self, value, channel
+            return (torch.tensor([[[0.0, 0.9922, 0.996108949]]]),)
+
+    monkeypatch.setattr(import_module("nodes"), "LoadImageMask", FakeNativeLoader)
+
+    result = MaskFileLoader().load("hard-mask.png", "red")
+
+    assert torch.equal(result, torch.tensor([[[0.0, 0.9922, 1.0]]]))
 
 
 def test_available_files_uses_native_mask_loader_choices(

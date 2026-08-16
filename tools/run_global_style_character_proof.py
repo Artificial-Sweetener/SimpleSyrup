@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Run global ADAPTER_A style with a right-region CHARACTER_A character LoRA."""
+"""Run global PRIMARY_ADAPTER style with a right-region Character character LoRA."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from tools.comfy_integration.history_output import extract_saved_image
 from tools.comfy_integration.loopback_port import is_loopback_port_available
 from tools.comfy_integration.managed_server import ManagedComfyServer
 from tools.global_style_character_proof.matrix import (
-    ADAPTER_A_NAME,
+    PRIMARY_ADAPTER_NAME,
     GlobalStyleCharacterCase,
     cases,
 )
@@ -40,7 +40,7 @@ SOURCE_RUN = (
     COMFY_ROOT
     / "benchmark_artifacts"
     / "anima-regional-prompting-v1"
-    / "user-prompt-character_a-ownership-proof"
+    / "user-prompt-character-ownership-proof"
     / "20260812T191525Z-6a2f4a67"
     / "run.json"
 )
@@ -137,11 +137,11 @@ def main() -> int:
 
 
 def _source_workflow() -> dict[str, JsonObject]:
-    """Load the exact selected CHARACTER_A proof workflow."""
+    """Load the exact selected Character proof workflow."""
 
     decoded = json.loads(SOURCE_RUN.read_text(encoding="utf-8"))
     if not isinstance(decoded, dict) or not isinstance(decoded.get("workflow"), dict):
-        raise TypeError("Selected CHARACTER_A run lacks its workflow object.")
+        raise TypeError("Selected Character run lacks its workflow object.")
     return cast(dict[str, JsonObject], decoded["workflow"])
 
 
@@ -151,18 +151,18 @@ def _workflow(
     run_id: str,
     masks: tuple[Path, ...],
 ) -> dict[str, JsonObject]:
-    """Add optional whole-image ADAPTER_A without changing regional CHARACTER_A hooks."""
+    """Add optional whole-image style without changing regional character hooks."""
 
     prompt = copy.deepcopy(source)
     encoder_inputs = prompt["2"]["inputs"]
     if not isinstance(encoder_inputs, dict):
-        raise TypeError("Selected CHARACTER_A encoder inputs must be an object.")
+        raise TypeError("Selected Character encoder inputs must be an object.")
     if case.global_style_strength is not None:
         prompt["12"] = {
             "class_type": "LoraLoaderModelOnly",
             "inputs": {
                 "model": ["1", 0],
-                "lora_name": ADAPTER_A_NAME,
+                "lora_name": PRIMARY_ADAPTER_NAME,
                 "strength_model": case.global_style_strength,
             },
         }

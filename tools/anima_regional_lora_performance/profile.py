@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Translate one pinned P5.7 definition into repeated ADAPTER_A adapter uses."""
+"""Translate one pinned P5.7 definition into repeated PRIMARY_ADAPTER adapter uses."""
 
 from __future__ import annotations
 

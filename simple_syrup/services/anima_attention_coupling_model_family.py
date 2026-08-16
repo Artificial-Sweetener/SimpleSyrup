@@ -11,6 +11,7 @@ from typing import ClassVar
 import torch
 
 from ..domain.processed_regional_attention import ProcessedRegionalAttentionPlan
+from ..domain.raw_regional_attention import RawRegionalAttentionPlan
 from ..runtime.attention_coupling.anima_context import (
     ANIMA_REGIONAL_CONTEXT_VALIDATOR,
 )
@@ -22,6 +23,11 @@ from ..runtime.regional_lora.anima_full_context_backend import (
     FullContextAnimaAttentionBackend,
 )
 from ..runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
+from ..runtime.regional_model_patch_interop import RegionalModelPatchInteropReport
+from .attention_coupling_model_family import (
+    AttentionCouplingPreparedModelReuse,
+    AttentionCouplingSamplerConditioning,
+)
 
 
 class AnimaAttentionCouplingModelFamily:
@@ -30,6 +36,12 @@ class AnimaAttentionCouplingModelFamily:
     backend_class: ClassVar[type[FullContextAnimaAttentionBackend]] = (
         FullContextAnimaAttentionBackend
     )
+
+    @property
+    def prepared_model_reuse(self) -> AttentionCouplingPreparedModelReuse:
+        """Preserve specialized Anima derivation and lifecycle on every request."""
+
+        return AttentionCouplingPreparedModelReuse.DISABLED
 
     @property
     def context_validator(self) -> RegionalContextValidator:
@@ -59,16 +71,35 @@ class AnimaAttentionCouplingModelFamily:
             raise TypeError("Anima Attention Coupling requires regional adaptation.")
         return AttentionCouplingFamilyAdmission(adaptation)
 
+    def prepare_sampler_conditioning(
+        self,
+        plan: RawRegionalAttentionPlan,
+        region_strengths: tuple[float, ...],
+    ) -> AttentionCouplingSamplerConditioning:
+        """Preserve the existing Anima base-only sampler conditioning."""
+
+        if not isinstance(plan, RawRegionalAttentionPlan):
+            raise TypeError("Anima sampler conditioning requires a raw plan.")
+        del region_strengths
+        return AttentionCouplingSamplerConditioning(
+            plan.positive.base_conditioning,
+            plan.negative.base_conditioning,
+        )
+
     def derive(
         self,
         *,
         model: object,
         processed_plan: ProcessedRegionalAttentionPlan,
         admission: AttentionCouplingFamilyAdmission,
+        interop_report: RegionalModelPatchInteropReport,
         region_strengths: tuple[float, ...],
         latent_batch_size: int,
     ) -> object:
         """Derive the existing full-surface Anima attention and LoRA backend."""
+
+        if not isinstance(interop_report, RegionalModelPatchInteropReport):
+            raise TypeError("Anima derivation requires model interop evidence.")
 
         built = self.backend_class().derive(
             model=model,

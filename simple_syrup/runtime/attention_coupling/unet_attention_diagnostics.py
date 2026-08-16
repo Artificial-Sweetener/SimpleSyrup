@@ -12,7 +12,7 @@ from ...shared.logging import get_logger
 from ..regional_attention_diagnostic_values import (
     RegionalAttentionExecutionDiagnostics,
 )
-from .unet_attn2_geometry import StandardUnetAttn2Geometry
+from .unet_attention_geometry import StandardUnetAttentionGeometry
 
 LOGGER = get_logger("runtime.attention_coupling.unet_diagnostics")
 
@@ -30,17 +30,17 @@ class StandardUnetAttentionDiagnosticsEmitter:
     def emit(
         self,
         snapshot: RegionalAttentionExecutionDiagnostics,
-        geometry: StandardUnetAttn2Geometry,
+        geometry: StandardUnetAttentionGeometry,
     ) -> None:
         """Emit one resolution snapshot without model inputs or tensor values."""
 
         if not isinstance(snapshot, RegionalAttentionExecutionDiagnostics):
             raise TypeError("Standard UNet diagnostics require a shared snapshot.")
-        if not isinstance(geometry, StandardUnetAttn2Geometry):
+        if not isinstance(geometry, StandardUnetAttentionGeometry):
             raise TypeError("Standard UNet diagnostics require validated geometry.")
-        if not self._logger.isEnabledFor(logging.INFO):
+        if not self._logger.isEnabledFor(logging.DEBUG):
             return
-        self._logger.info(
+        self._logger.debug(
             "Standard UNet regional Attention Coupling resolution",
             extra={
                 "operation": "unet_attention_coupling.resolve",

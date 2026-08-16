@@ -6,57 +6,60 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 import torch
-from safetensors.torch import load_file
 
 from simple_syrup.runtime.regional_lora.anima_targets import (
+    ANIMA_BLOCK_COUNT,
     ANIMA_LORA_TARGET_CLASSIFIER,
     AnimaLoraAdmissionError,
     AnimaLoraTargetFamily,
+    anima_lora_target_name,
+    expected_anima_lora_features,
 )
 from simple_syrup.runtime.regional_lora.standard_adapter import (
     STANDARD_LORA_ADAPTER_DECODER,
 )
 
-PINNED_ADAPTER_A_PATH = Path(r"<MODEL_ROOT>\Loras\Anima\style\adapter-a.safetensors")
-PINNED_TURBO_PATH = Path(
-    r"<MODEL_ROOT>\Loras\Anima\anima-turbo-lora-v0.2.safetensors"
-)
-PINNED_character_a_PATH = Path(
-    r"<MODEL_ROOT>\Loras\Anima\character"
-    r"\Sakura Kyouko anima v2.safetensors"
-)
 
+def test_generated_full_surface_admits_every_block_and_family() -> None:
+    """Require complete classification of the architecture-owned target surface."""
 
-def test_pinned_adapter_a_admits_all_448_targets_and_16_families() -> None:
-    """Require complete full-surface classification of the acceptance fixture."""
-
-    weights = load_file(PINNED_ADAPTER_A_PATH, device="cpu")
+    weights = _complete_anima_weights(rank=1)
     source_ids = {key: id(value) for key, value in weights.items()}
 
     admission = ANIMA_LORA_TARGET_CLASSIFIER.admit(weights)
 
-    assert len(admission.targets) == 448
-    assert {target.block_index for target in admission.targets} == set(range(28))
+    assert len(admission.targets) == ANIMA_BLOCK_COUNT * len(AnimaLoraTargetFamily)
+    assert {target.block_index for target in admission.targets} == set(
+        range(ANIMA_BLOCK_COUNT)
+    )
     assert {target.family for target in admission.targets} == set(AnimaLoraTargetFamily)
-    assert all(target.adapter.rank == 32 for target in admission.targets)
+    assert all(target.adapter.rank == 1 for target in admission.targets)
     assert all(target.adapter.down.device.type == "cpu" for target in admission.targets)
     assert all(target.adapter.up.device.type == "cpu" for target in admission.targets)
     assert {key: id(value) for key, value in weights.items()} == source_ids
 
 
-def test_pinned_turbo_rejects_all_60_llm_adapter_targets_atomically() -> None:
-    """Reject the mixed diffusion/LLM payload without returning 448 partial targets."""
+def test_generated_mixed_payload_rejects_every_non_diffusion_target_atomically() -> (
+    None
+):
+    """Reject mixed diffusion and LLM targets without returning partial admission."""
 
-    weights = load_file(PINNED_TURBO_PATH, device="cpu")
+    valid_target = anima_lora_target_name(0, AnimaLoraTargetFamily.SELF_ATTN_Q)
+    valid_input, valid_output = expected_anima_lora_features(
+        AnimaLoraTargetFamily.SELF_ATTN_Q
+    )
+    weights = _canonical_pair(valid_target, 1, valid_input, valid_output)
+    rejected_target_count = 3
+    for block_index in range(rejected_target_count):
+        target = f"diffusion_model.llm_adapter.blocks.{block_index}.q_proj"
+        weights.update(_canonical_pair(target, 1, 2, 2))
 
     with pytest.raises(AnimaLoraAdmissionError) as captured:
         ANIMA_LORA_TARGET_CLASSIFIER.admit(weights)
 
-    assert len(captured.value.issues) == 60
+    assert len(captured.value.issues) == rejected_target_count
     assert all(
         issue.key.startswith("diffusion_model.llm_adapter.blocks.")
         for issue in captured.value.issues
@@ -67,26 +70,30 @@ def test_pinned_turbo_rejects_all_60_llm_adapter_targets_atomically() -> None:
     }
 
 
-def test_pinned_character_a_admits_sd_scripts_layout_and_intrinsic_alpha_scale() -> None:
-    """Admit the native Anima character fixture without losing alpha/rank scale."""
+def test_generated_sd_scripts_layout_preserves_intrinsic_alpha_scale() -> None:
+    """Admit a supported alias while preserving its alpha-to-rank scale."""
 
-    weights = load_file(PINNED_character_a_PATH, device="cpu")
+    input_features, output_features = expected_anima_lora_features(
+        AnimaLoraTargetFamily.SELF_ATTN_Q
+    )
+    weights = {
+        "lora_unet_blocks_0_self_attn_q_proj.lora_down.weight": torch.zeros(
+            (8, input_features), dtype=torch.bfloat16
+        ),
+        "lora_unet_blocks_0_self_attn_q_proj.lora_up.weight": torch.zeros(
+            (output_features, 8), dtype=torch.bfloat16
+        ),
+        "lora_unet_blocks_0_self_attn_q_proj.alpha": torch.tensor(
+            4.0, dtype=torch.bfloat16
+        ),
+    }
 
     admission = ANIMA_LORA_TARGET_CLASSIFIER.admit(weights)
 
-    assert len(admission.targets) == 280
-    assert {target.block_index for target in admission.targets} == set(range(28))
+    assert len(admission.targets) == 1
+    assert {target.block_index for target in admission.targets} == {0}
     assert {target.family for target in admission.targets} == {
         AnimaLoraTargetFamily.SELF_ATTN_Q,
-        AnimaLoraTargetFamily.SELF_ATTN_K,
-        AnimaLoraTargetFamily.SELF_ATTN_V,
-        AnimaLoraTargetFamily.SELF_ATTN_OUTPUT,
-        AnimaLoraTargetFamily.CROSS_ATTN_Q,
-        AnimaLoraTargetFamily.CROSS_ATTN_K,
-        AnimaLoraTargetFamily.CROSS_ATTN_V,
-        AnimaLoraTargetFamily.CROSS_ATTN_OUTPUT,
-        AnimaLoraTargetFamily.MLP_LAYER1,
-        AnimaLoraTargetFamily.MLP_LAYER2,
     }
     assert all(target.adapter.rank == 8 for target in admission.targets)
     assert all(target.adapter.intrinsic_scale == 0.5 for target in admission.targets)
@@ -228,3 +235,31 @@ def test_standard_decoder_preserves_sd_scripts_alpha_as_intrinsic_scale() -> Non
     assert decoded.targets[0].up is up
     assert decoded.targets[0].rank == 8
     assert decoded.targets[0].intrinsic_scale == 0.5
+
+
+def _complete_anima_weights(*, rank: int) -> dict[str, torch.Tensor]:
+    """Build every admitted target from architecture dimensions alone."""
+
+    weights: dict[str, torch.Tensor] = {}
+    for block_index in range(ANIMA_BLOCK_COUNT):
+        for family in AnimaLoraTargetFamily:
+            target = anima_lora_target_name(block_index, family)
+            input_features, output_features = expected_anima_lora_features(family)
+            weights.update(
+                _canonical_pair(target, rank, input_features, output_features)
+            )
+    return weights
+
+
+def _canonical_pair(
+    target: str,
+    rank: int,
+    input_features: int,
+    output_features: int,
+) -> dict[str, torch.Tensor]:
+    """Build one standard adapter pair from explicit dimensions."""
+
+    return {
+        f"{target}.lora_A.weight": torch.zeros((rank, input_features)),
+        f"{target}.lora_B.weight": torch.zeros((output_features, rank)),
+    }

@@ -42,7 +42,9 @@ def validate_history(
 
     if case.expect_success:
         if not isinstance(observed, RegionalLoraAdmissionSuccess):
-            raise ValueError("P9.5 supported ADAPTER_A case did not complete successfully.")
+            raise ValueError(
+                "P9.5 supported PRIMARY_ADAPTER case did not complete successfully."
+            )
         return _validate_success(workflow, observed)
     if not isinstance(observed, RegionalLoraAdmissionError):
         raise ValueError("P9.5 rejection case unexpectedly completed sampling.")
@@ -53,13 +55,15 @@ def _validate_success(
     workflow: BuiltRegionalLoraAdmissionWorkflow,
     observed: RegionalLoraAdmissionSuccess,
 ) -> ValidatedRegionalLoraAdmission:
-    """Require one exact full-surface, single-trajectory ADAPTER_A execution."""
+    """Require one exact full-surface, single-trajectory PRIMARY_ADAPTER execution."""
 
     metrics = observed.metrics
     if metrics.get("run_id") != workflow.workflow.metrics_run_id:
         raise ValueError("P9.5 metrics identity changed.")
     if metrics.get("model_call_count") != STEPS:
-        raise ValueError("P9.5 supported ADAPTER_A must use one model call per step.")
+        raise ValueError(
+            "P9.5 supported PRIMARY_ADAPTER must use one model call per step."
+        )
     if _number(metrics.get("runtime_ms"), "runtime_ms") <= 0.0:
         raise ValueError("P9.5 instrumented runtime must be positive.")
     peak = metrics.get("peak_vram_bytes")
@@ -83,7 +87,9 @@ def _validate_success(
             raise ValueError("P9.5 diagnostic backend or strategy changed.")
         uses = _array(snapshot.get("adapter_uses"), "adapter_uses")
         if len(uses) != 1:
-            raise ValueError("P9.5 supported ADAPTER_A must expose one regional use.")
+            raise ValueError(
+                "P9.5 supported PRIMARY_ADAPTER must expose one regional use."
+            )
         use = _object(uses[0], "adapter use")
         if (
             use.get("active") is not True
@@ -92,11 +98,11 @@ def _validate_success(
             or use.get("region_index") != 0
             or use.get("target_count") != 448
         ):
-            raise ValueError("P9.5 supported ADAPTER_A adapter surface changed.")
+            raise ValueError("P9.5 supported PRIMARY_ADAPTER adapter surface changed.")
         _same_number(use.get("effective_strength"), 0.75, "adapter strength")
         token = use.get("adapter_token")
         if not isinstance(token, str) or not token:
-            raise ValueError("P9.5 supported ADAPTER_A adapter token is missing.")
+            raise ValueError("P9.5 supported PRIMARY_ADAPTER adapter token is missing.")
         adapter_tokens.add(token)
         work = _object(snapshot.get("estimated_work"), "estimated_work")
         if work.get("active_target_count") != 448:

@@ -32,7 +32,7 @@ def test_adapter_expectations_preserve_order_and_native_keyframes() -> None:
 
     by_id = {case.case_id: case for case in cases()}
     stacked = by_id["lora-stacked-overlap"].expected_adapters
-    assert [adapter.identity for adapter in stacked] == ["adapter_a-0.4", "adapter_b-0.6"]
+    assert [adapter.slot for adapter in stacked] == ["adapter-0", "adapter-1"]
     assert stacked[0].keyframes == (
         (0.0, 1.0),
         (0.25, 0.0),

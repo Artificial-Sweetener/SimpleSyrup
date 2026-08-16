@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -17,6 +18,7 @@ from simple_syrup.runtime.regional_lora.anima_attention_execution import (
     AnimaRegionalAttentionExecution,
 )
 from tools.anima_regional_lora_performance import matrix_suite as suite_module
+from tools.anima_regional_lora_performance.manifest import PerformanceArtifact
 from tools.anima_regional_lora_performance.matrix_manifest import (
     ScalingPerformanceManifest,
     default_scaling_manifest,
@@ -34,7 +36,14 @@ def test_scaling_suite_derives_every_profile_with_aligned_context(
 ) -> None:
     """Coordinate existing artifact, fixture, runtime, and tensor owners once."""
 
-    manifest = default_scaling_manifest()
+    manifest = default_scaling_manifest(
+        artifacts=(
+            PerformanceArtifact("anima_base", Path("model.safetensors"), 1, "a" * 64),
+            PerformanceArtifact(
+                "regional_lora", Path("adapter.safetensors"), 1, "b" * 64
+            ),
+        )
+    )
     source = SimpleNamespace(load_device="cpu")
     fixture = cast(
         AnimaPerformanceModelFixture,

@@ -39,6 +39,7 @@ class RegionalPreservedModelModifier(StrEnum):
     DIFFUSION_MODEL_WRAPPER = "diffusion_model_wrapper"
     OPTIMIZED_ATTENTION_OVERRIDE = "optimized_attention_override"
     OBJECT_PATCH = "object_patch"
+    MODEL_WEIGHT_PATCH = "model_weight_patch"
     EASYCACHE = "easycache"
 
 
@@ -95,6 +96,7 @@ class RegionalModelPatchInteropValidator:
         )
         wrappers = _require_wrapper_state(model)
         object_patches = _require_dictionary_attribute(model, "object_patches")
+        model_weight_patches = _require_dictionary_attribute(model, "patches")
         patches = _require_optional_patch_state(transformer_options)
 
         self._reject_negpip(model_options, wrappers)
@@ -125,6 +127,8 @@ class RegionalModelPatchInteropValidator:
             )
         if object_patches:
             modifiers.append(RegionalPreservedModelModifier.OBJECT_PATCH)
+        if model_weight_patches:
+            modifiers.append(RegionalPreservedModelModifier.MODEL_WEIGHT_PATCH)
         if cache_modifier is not None:
             modifiers.append(cache_modifier)
 

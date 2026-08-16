@@ -13,6 +13,9 @@ from pathlib import Path
 from PIL import Image
 
 from tools.comfy_api import JsonObject
+from tools.sdxl_attention_coupling_integration.checkpoint_link import (
+    CheckpointArtifactIdentity,
+)
 from tools.sdxl_attention_coupling_integration.history import decode_sdxl_history
 from tools.sdxl_attention_coupling_integration.matrix import MODES
 from tools.sdxl_attention_coupling_integration.results import (
@@ -40,7 +43,10 @@ def test_result_requires_exact_calls_diagnostics_dimensions_and_cleanup(
         mode.mode_id: _png(mode.width, mode.height, index)
         for index, mode in enumerate(MODES, 1)
     }
-    recorder = SdxlIntegrationResultRecorder(tmp_path)
+    recorder = SdxlIntegrationResultRecorder(
+        tmp_path,
+        CheckpointArtifactIdentity("checkpoint.safetensors", 10, "a" * 64),
+    )
 
     recorder.record_workflow(
         workflow,

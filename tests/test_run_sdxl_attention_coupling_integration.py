@@ -137,9 +137,10 @@ class _FakeManagedServer:
 class _FakeRecorder:
     """Assert finalization occurs only after every external owner cleans up."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, checkpoint: object) -> None:
         """Retain the managed artifact root."""
 
+        del checkpoint
         self._root = root
         self._recorded = False
 
@@ -196,11 +197,14 @@ def test_execute_sdxl_matrix_records_only_after_all_owned_cleanup(
     monkeypatch.setattr(runner, "decode_sdxl_history", _decode_evidence)
     monkeypatch.setattr(runner, "is_loopback_port_available", lambda port: port == 8299)
     artifacts = IntegrationArtifacts(tmp_path)
+    checkpoint_path = tmp_path / "checkpoint.safetensors"
+    checkpoint_path.write_bytes(b"checkpoint")
 
     result = runner.execute_sdxl_matrix(
         artifacts,
         comfy_root=Path("<COMFY_ROOT>"),
-        checkpoint_path=Path("E:/models/checkpoint.safetensors"),
+        checkpoint_path=checkpoint_path,
+        checkpoint_name="selected\\checkpoint.safetensors",
         readiness_timeout=10.0,
         prompt_timeout=12.0,
     )

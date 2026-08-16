@@ -2,11 +2,12 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Pin and validate the external P9.4 Anima text-encoder LoRA fixture."""
+"""Load and validate an external P9.4 text-encoder LoRA fixture."""
 
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -61,26 +62,32 @@ class TextEncoderLoraFixtureIdentity:
         }
 
 
-PINNED_TEXT_ENCODER_LORA_FIXTURE = TextEncoderLoraFixtureIdentity(
-    lora_name=(
-        "SimpleSyrup Evidence\\P9.4\\text_adapter_yoshiyuki_anima_qwen3_06b_te.safetensors"
-    ),
-    path=(
-        Path(r"<MODEL_ROOT>\Loras\SimpleSyrup Evidence\P9.4")
-        / "text_adapter_yoshiyuki_anima_qwen3_06b_te.safetensors"
-    ),
-    sha256="a1132f426fd7d29dfa70348ea68d10a1d3e882d859b76c951d664749ed212a79",
-    size_bytes=10_202_136,
-    tensor_count=588,
-    source_sha256=("57040de66329a481a37d64fc23e63b304e1939c48863ab1fe60db14e8e78661d"),
-    transformation="retain lora_te1 tensors and rename prefix to lora_te",
-)
+def load_text_encoder_lora_fixture(path: Path) -> TextEncoderLoraFixtureIdentity:
+    """Load one artifact identity from an explicit untracked JSON inventory."""
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise TypeError("P9.4 fixture inventory must be a JSON object.")
+    try:
+        return TextEncoderLoraFixtureIdentity(
+            lora_name=str(payload["lora_name"]),
+            path=Path(str(payload["path"])),
+            sha256=str(payload["sha256"]),
+            size_bytes=int(payload["size_bytes"]),
+            tensor_count=int(payload["tensor_count"]),
+            source_sha256=str(payload["source_sha256"]),
+            transformation=str(payload["transformation"]),
+        )
+    except KeyError as error:
+        raise ValueError(
+            f"P9.4 fixture inventory is missing {error.args[0]!r}."
+        ) from error
 
 
 def validate_text_encoder_lora_fixture(
     identity: TextEncoderLoraFixtureIdentity,
 ) -> TextEncoderLoraFixtureIdentity:
-    """Verify the exact pinned bytes without deserializing model tensors."""
+    """Verify the inventoried bytes without deserializing model tensors."""
 
     if not isinstance(identity, TextEncoderLoraFixtureIdentity):
         raise TypeError("P9.4 fixture preflight requires a fixture identity.")

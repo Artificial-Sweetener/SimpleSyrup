@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import time
 from collections.abc import Sequence
@@ -14,12 +15,8 @@ from dataclasses import asdict
 from pathlib import Path
 
 from tools.anima_lora_characterization.artifact_inventory import (
+    AdapterInventory,
     inspect_adapter,
-    validate_pinned_inventory,
-)
-from tools.anima_lora_characterization.matrix import (
-    PINNED_LORA_SHA256,
-    PINNED_LORA_SIZE,
 )
 from tools.attention_coupling_benchmark.manifest import load_manifest
 from tools.attention_coupling_benchmark.manifest_types import ModelArtifact
@@ -58,21 +55,10 @@ from tools.sdxl_attention_coupling_integration.checkpoint_link import (
     CheckpointArtifactIdentity,
     ManagedCheckpointLink,
 )
-from tools.sdxl_attention_coupling_integration.matrix import (
-    CHECKPOINT_SHA256,
-    CHECKPOINT_SIZE,
-    CHECKPOINT_SOURCE_NAME,
-    CHECKPOINT_STABLE_NAME,
-)
 
 LOGGER = logging.getLogger(__name__)
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_COMFY_ROOT = Path(r"<COMFY_ROOT>")
-DEFAULT_LORA_PATH = Path(r"<MODEL_ROOT>\Loras\Anima\style\adapter-a.safetensors")
-DEFAULT_SDXL_CHECKPOINT_PATH = (
-    Path(r"<MODEL_ROOT>\checkpoints\SDXL")
-    / "juggernautXL_juggXIByRundiffusion.safetensors"
-)
 DEFAULT_OUTPUT_ROOT = Path(
     r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1\p9.7"
 )
@@ -94,13 +80,13 @@ def execute_matrix(
     comfy_root: Path,
     lora_path: Path,
     sdxl_checkpoint_path: Path,
+    sdxl_checkpoint_name: str,
     readiness_timeout: float,
     prompt_timeout: float,
 ) -> Path:
     """Execute, validate, persist, and clean the complete ordered matrix."""
 
     lora_inventory = inspect_adapter(lora_path)
-    validate_pinned_inventory(lora_inventory)
     manifest = load_manifest()
     definitions = cases()
     repositories = (
@@ -110,7 +96,11 @@ def execute_matrix(
     recorder = RegionalPatchInteropResultRecorder(
         artifacts.root,
         repositories=repositories,
-        model_inventory=_model_inventory(manifest.models),
+        model_inventory=_model_inventory(
+            manifest.models,
+            lora_inventory=lora_inventory,
+            sdxl_checkpoint_path=sdxl_checkpoint_path,
+        ),
     )
     manifest_case = next(
         case for case in manifest.cases if case.case_id == MASK_CASE_ID
@@ -126,14 +116,15 @@ def execute_matrix(
     ).write_case(manifest_case, width=TARGET_WIDTH, height=TARGET_HEIGHT)
     mask_groups = {"full-1024": full_masks, "spatial-1536": spatial_masks}
     recorder.record_masks(mask_groups, input_root=input_root)
+    checkpoint_identity = CheckpointArtifactIdentity(
+        sdxl_checkpoint_path.name,
+        sdxl_checkpoint_path.stat().st_size,
+        _sha256(sdxl_checkpoint_path),
+    )
     checkpoint = ManagedCheckpointLink(
         source=sdxl_checkpoint_path,
-        source_checkpoint_name=CHECKPOINT_SOURCE_NAME,
-        identity=CheckpointArtifactIdentity(
-            CHECKPOINT_STABLE_NAME,
-            CHECKPOINT_SIZE,
-            CHECKPOINT_SHA256,
-        ),
+        source_checkpoint_name=sdxl_checkpoint_name,
+        identity=checkpoint_identity,
     )
     builder = RegionalPatchInteropWorkflowBuilder()
     system_stats: JsonObject = {}
@@ -224,27 +215,32 @@ def execute_matrix(
     )
 
 
-def _model_inventory(models: tuple[ModelArtifact, ...]) -> tuple[JsonObject, ...]:
-    """Return pinned Anima, ADAPTER_A, and SDXL identities without local paths."""
+def _model_inventory(
+    models: tuple[ModelArtifact, ...],
+    *,
+    lora_inventory: AdapterInventory,
+    sdxl_checkpoint_path: Path,
+) -> tuple[JsonObject, ...]:
+    """Return selected model and adapter identities without private paths."""
 
     values = tuple(asdict(model) for model in models)
     return (
         *values,
         {
-            "artifact_id": "adapter_a-anima",
+            "artifact_id": "regional-adapter",
             "role": "regional_lora",
-            "filename": "adapter-a.safetensors",
-            "size_bytes": PINNED_LORA_SIZE,
-            "sha256": PINNED_LORA_SHA256,
-            "target_count": 448,
-            "rank": 32,
+            "filename": "selected-adapter.safetensors",
+            "size_bytes": lora_inventory.size_bytes,
+            "sha256": lora_inventory.sha256,
+            "target_count": len(lora_inventory.pairs),
+            "ranks": sorted({pair.rank for pair in lora_inventory.pairs}),
         },
         {
-            "artifact_id": "juggernaut-xl-jugg-xi",
+            "artifact_id": "sdxl-checkpoint",
             "role": "sdxl_checkpoint",
-            "filename": CHECKPOINT_STABLE_NAME,
-            "size_bytes": CHECKPOINT_SIZE,
-            "sha256": CHECKPOINT_SHA256,
+            "filename": sdxl_checkpoint_path.name,
+            "size_bytes": sdxl_checkpoint_path.stat().st_size,
+            "sha256": _sha256(sdxl_checkpoint_path),
         },
     )
 
@@ -260,17 +256,28 @@ def _remove_owned_masks(input_root: Path, names: tuple[str, ...]) -> None:
         path.unlink(missing_ok=True)
 
 
+def _sha256(path: Path) -> str:
+    """Hash one selected checkpoint with bounded memory."""
+
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse explicit boundaries and return one process exit status."""
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--comfy-root", type=Path, default=DEFAULT_COMFY_ROOT)
-    parser.add_argument("--lora-path", type=Path, default=DEFAULT_LORA_PATH)
+    parser.add_argument("--lora-path", type=Path, required=True)
     parser.add_argument(
         "--sdxl-checkpoint-path",
         type=Path,
-        default=DEFAULT_SDXL_CHECKPOINT_PATH,
+        required=True,
     )
+    parser.add_argument("--sdxl-checkpoint-name", required=True)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--readiness-timeout", type=float, default=300.0)
     parser.add_argument("--prompt-timeout", type=float, default=1800.0)
@@ -286,6 +293,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             comfy_root=args.comfy_root,
             lora_path=args.lora_path,
             sdxl_checkpoint_path=args.sdxl_checkpoint_path,
+            sdxl_checkpoint_name=args.sdxl_checkpoint_name,
             readiness_timeout=args.readiness_timeout,
             prompt_timeout=args.prompt_timeout,
         )

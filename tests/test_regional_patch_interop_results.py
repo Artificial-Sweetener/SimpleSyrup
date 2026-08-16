@@ -119,7 +119,7 @@ def _workflow(case_id: str) -> BuiltRegionalPatchInteropWorkflow:
 def _success(
     workflow: BuiltRegionalPatchInteropWorkflow,
 ) -> RegionalPatchInteropSuccess:
-    """Return one valid full static-ADAPTER_A success value."""
+    """Return one valid full static-PRIMARY_ADAPTER success value."""
 
     return RegionalPatchInteropSuccess(
         _snapshot(workflow, cache=False),
@@ -189,7 +189,7 @@ def _snapshot(
 
 
 def _diagnostic_snapshot() -> JsonObject:
-    """Return one exact full-context regional ADAPTER_A record."""
+    """Return one exact full-context regional PRIMARY_ADAPTER record."""
 
     return {
         "strategy": "attention_coupling",
@@ -203,7 +203,7 @@ def _diagnostic_snapshot() -> JsonObject:
                 "branch": "positive",
                 "target_count": 448,
                 "effective_strength": 0.75,
-                "adapter_token": "adapter_a-token",
+                "adapter_token": "primary_adapter-token",
             },
             {
                 "active": True,
@@ -212,7 +212,7 @@ def _diagnostic_snapshot() -> JsonObject:
                 "branch": "negative",
                 "target_count": 448,
                 "effective_strength": 0.75,
-                "adapter_token": "adapter_a-token",
+                "adapter_token": "primary_adapter-token",
             },
         ],
         "estimated_work": {

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
 
 from .manifest import PerformanceArtifact
 
@@ -172,7 +171,11 @@ _PROFILE_IDS = (
 )
 
 
-def default_scaling_manifest(*, repeats: int = 3) -> ScalingPerformanceManifest:
+def default_scaling_manifest(
+    *,
+    repeats: int = 3,
+    artifacts: tuple[PerformanceArtifact, ...] = (),
+) -> ScalingPerformanceManifest:
     """Return the authoritative RTX 5090 P10.1 scaling definition."""
 
     pytorch = PerformanceAttentionBackend.PYTORCH
@@ -323,7 +326,7 @@ def default_scaling_manifest(*, repeats: int = 3) -> ScalingPerformanceManifest:
         warmup_calls=2,
         repeats=repeats,
         seed=1_029_384_756,
-        artifacts=_artifacts(),
+        artifacts=artifacts,
         profiles=profiles,
     )
 
@@ -370,24 +373,4 @@ def _profile(
         comparison,
         maximum_overhead_percent,
         trace,
-    )
-
-
-def _artifacts() -> tuple[PerformanceArtifact, ...]:
-    """Declare exact model and ADAPTER_A identities without runtime discovery."""
-
-    return (
-        PerformanceArtifact(
-            "anima_base",
-            Path(r"<MODEL_ROOT>\diffusion_models\Anima")
-            / "diffusion-model.safetensors",
-            4_182_218_328,
-            "bd43b7cffe1ed1153d9c41e7beb2f18cb1273eafbaa3af3edd6a173dc90a006e",
-        ),
-        PerformanceArtifact(
-            "regional_lora",
-            Path(r"<MODEL_ROOT>\Loras\Anima\style\adapter-a.safetensors"),
-            138_663_768,
-            "0c915b59f464fd3d72c49a241440f8a41582ec76b597b0029e18b657b600c7d8",
-        ),
     )

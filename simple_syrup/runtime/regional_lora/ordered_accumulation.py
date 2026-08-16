@@ -143,7 +143,11 @@ class OrderedTensorAccumulator:
                 or not delta.is_contiguous()
             ):
                 raise ValueError(
-                    "Ordered accumulation deltas must match the contiguous base."
+                    "Ordered accumulation deltas must match the contiguous base; "
+                    f"base(shape={tuple(base.shape)!r}, device={base.device!s}, "
+                    f"dtype={base.dtype!s}, contiguous={base.is_contiguous()}) "
+                    f"delta(shape={tuple(delta.shape)!r}, device={delta.device!s}, "
+                    f"dtype={delta.dtype!s}, contiguous={delta.is_contiguous()})."
                 )
 
 

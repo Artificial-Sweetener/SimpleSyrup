@@ -50,9 +50,9 @@ class PromptControlAttentionCase:
         """Return stable probe labels for regional model hooks."""
 
         if self.characterization.expect_static_model_lora:
-            return ("adapter_a-static-0.75",)
+            return ("primary_adapter-static-0.75",)
         return tuple(
-            adapter.identity for adapter in self.characterization.expected_adapters
+            adapter.slot for adapter in self.characterization.expected_adapters
         )
 
     @property

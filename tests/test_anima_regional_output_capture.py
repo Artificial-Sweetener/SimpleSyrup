@@ -115,7 +115,10 @@ def test_visual_result_recorder_persists_exact_labels_and_hashes(
         profile.profile_id for profile in definitions
     ]
     split = observations[-1]
-    assert split["label"] == "Global GLOBAL_ADAPTER with left ADAPTER_A and right ADAPTER_B"
+    assert (
+        split["label"]
+        == "Global adapter with distinct left and right regional adapters"
+    )
     assert (tmp_path / cast(str, split["image_file"])).read_bytes() == b"png-3"
     assert len(cast(str, split["image_sha256"])) == 64
 

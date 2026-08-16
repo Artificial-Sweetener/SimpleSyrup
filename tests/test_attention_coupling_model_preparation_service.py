@@ -29,12 +29,18 @@ from simple_syrup.runtime.attention_coupling.family_admission import (
     AttentionCouplingFamilyAdmission,
 )
 from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
+from simple_syrup.services.attention_coupling_model_family import (
+    AttentionCouplingPreparedModelReuse,
+    AttentionCouplingSamplerConditioning,
+)
 from simple_syrup.services.attention_coupling_model_preparation_service import (
     AttentionCouplingModelPreparationService,
 )
 from simple_syrup.services.attention_coupling_preparation_service import (
     AttentionCouplingPreparation,
 )
+
+_PREPARATION_EVENTS: list[str] = []
 
 
 class _CapabilityService:
@@ -76,6 +82,7 @@ class _LoraAdapter:
     def adapt(self, plan: object, *, model: object) -> RegionalLoraPlanAdaptation:
         """Record the raw plan and model owner."""
 
+        _PREPARATION_EVENTS.append("adapt")
         type(self).calls.append((plan, model))
         return RegionalLoraPlanAdaptation(EMPTY_REGIONAL_LORA_PLAN, ())
 
@@ -125,6 +132,7 @@ class _ModelLoader:
     def load(self, model: object) -> None:
         """Record one official model-load boundary call."""
 
+        _PREPARATION_EVENTS.append("load")
         type(self).calls.append(model)
 
 
@@ -134,9 +142,16 @@ class _ModelFamily:
     validator = object()
     latent_calls: ClassVar[list[torch.Tensor]] = []
     adaptation_calls: ClassVar[list[RegionalLoraPlanAdaptation]] = []
+    sampler_conditioning_calls: ClassVar[list[object]] = []
     derive_calls: ClassVar[list[dict[str, object]]] = []
     latent_error: ClassVar[Exception | None] = None
     adaptation_error: ClassVar[Exception | None] = None
+
+    @property
+    def prepared_model_reuse(self) -> AttentionCouplingPreparedModelReuse:
+        """Keep orchestration characterization independent of request caching."""
+
+        return AttentionCouplingPreparedModelReuse.DISABLED
 
     @property
     def context_validator(self) -> object:
@@ -158,6 +173,7 @@ class _ModelFamily:
     ) -> AttentionCouplingFamilyAdmission:
         """Record regional model-adapter admission."""
 
+        _PREPARATION_EVENTS.append("admit_adaptation")
         del model
         type(self).adaptation_calls.append(adaptation)
         if self.adaptation_error is not None:
@@ -169,6 +185,19 @@ class _ModelFamily:
 
         type(self).derive_calls.append(kwargs)
         return "derived-model"
+
+    def prepare_sampler_conditioning(
+        self,
+        plan: Any,
+        region_strengths: tuple[float, ...],
+    ) -> AttentionCouplingSamplerConditioning:
+        """Return the raw base pair while recording the family boundary."""
+
+        type(self).sampler_conditioning_calls.append((plan, region_strengths))
+        return AttentionCouplingSamplerConditioning(
+            plan.positive.base_conditioning,
+            plan.negative.base_conditioning,
+        )
 
 
 class _ModelFamilySelector:
@@ -221,12 +250,37 @@ def test_model_preparation_runs_each_shared_owner_once() -> None:
     assert _ModelFamily.latent_calls == [samples]
     assert _LoraAdapter.calls[0][1] is model_owner
     assert len(_ModelFamily.adaptation_calls) == 1
+    assert len(_ModelFamily.sampler_conditioning_calls) == 1
     assert _ModelLoader.calls == [model]
     assert (
         _ConditioningProcessor.calls[0]["context_validator"] is _ModelFamily.validator
     )
     assert _ModelFamily.derive_calls[0]["region_strengths"] == (0.75,)
     assert _ModelFamily.derive_calls[0]["latent_batch_size"] == 2
+    assert _ModelFamily.derive_calls[0]["interop_report"] is _InteropValidator.report
+
+
+def test_source_model_is_restored_before_adapter_graph_discovery() -> None:
+    """Load the source patcher before inspecting adapter target ownership."""
+
+    service = AttentionCouplingModelPreparationService()
+    originals = _install_fakes()
+    _reset_calls()
+    try:
+        service.prepare(
+            model=SimpleNamespace(model=object(), load_device="cpu"),
+            positive=ConditioningBatch((_conditioning(1.0), _conditioning(2.0))),
+            negative=ConditioningBatch((_conditioning(-1.0), _conditioning(-2.0))),
+            region_masks=torch.ones((1, 2, 2)),
+            regional_prompt_weight=1.0,
+            region_mask_feather=0,
+            latent_image={"samples": torch.zeros((1, 4, 2, 2))},
+            execution_mode=RegionalAttentionExecutionMode.FULL,
+        )
+    finally:
+        _restore_fakes(originals)
+
+    assert _PREPARATION_EVENTS == ["load", "adapt", "admit_adaptation"]
 
 
 def test_model_family_latent_rejection_precedes_plan_and_model_work() -> None:
@@ -257,8 +311,8 @@ def test_model_family_latent_rejection_precedes_plan_and_model_work() -> None:
     assert _ModelFamily.derive_calls == []
 
 
-def test_model_family_adapter_rejection_precedes_loading_and_processing() -> None:
-    """Fail unsupported regional model hooks before device or backend work."""
+def test_model_family_adapter_rejection_follows_source_model_restoration() -> None:
+    """Restore the source graph before rejecting unsupported regional adapters."""
 
     originals = _install_fakes()
     _reset_calls()
@@ -281,7 +335,7 @@ def test_model_family_adapter_rejection_precedes_loading_and_processing() -> Non
     assert len(_LoraAdapter.calls) == 1
     assert len(_ModelFamily.adaptation_calls) == 1
     assert _PreparationService.calls == []
-    assert _ModelLoader.calls == []
+    assert len(_ModelLoader.calls) == 1
     assert _ConditioningProcessor.calls == []
     assert _ModelFamily.derive_calls == []
 
@@ -371,6 +425,8 @@ def _reset_calls() -> None:
     _ModelFamilySelector.calls = []
     _ModelFamily.latent_calls = []
     _ModelFamily.adaptation_calls = []
+    _ModelFamily.sampler_conditioning_calls = []
     _ModelFamily.derive_calls = []
     _ModelFamily.latent_error = None
     _ModelFamily.adaptation_error = None
+    _PREPARATION_EVENTS.clear()

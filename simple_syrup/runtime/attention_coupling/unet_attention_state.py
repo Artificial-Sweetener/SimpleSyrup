@@ -9,9 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ...domain.processed_regional_attention import ProcessedRegionalAttentionPlan
-from ...domain.regional_attention_weights import RegionalAttentionWeightingPolicy
 from ..regional_attention_diagnostics import RegionalAttentionDiagnosticsBuilder
 from ..regional_attention_execution_context import RegionalAttentionExecutionContext
+from .standard_unet_attention_weighting import (
+    STANDARD_UNET_ATTENTION_WEIGHTING_POLICY,
+)
 from .unet_attn2_resolution_cache import StandardUnetAttn2ResolutionCache
 
 
@@ -50,7 +52,7 @@ class StandardUnetAttentionState:
             raise TypeError(
                 "Standard UNet attention state requires a resolution cache."
             )
-        RegionalAttentionWeightingPolicy().weights(
+        STANDARD_UNET_ATTENTION_WEIGHTING_POLICY.weights(
             self.plan.mask_bank.conditioning_masks.reshape(
                 self.plan.mask_bank.region_count,
                 -1,

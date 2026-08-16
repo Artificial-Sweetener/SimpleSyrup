@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Inspect and validate the pinned ADAPTER_A safetensors target surface."""
+"""Inspect and validate a selected safetensors adapter target surface."""
 
 from __future__ import annotations
 
@@ -14,8 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from safetensors import safe_open
-
-from .matrix import PINNED_LORA_SHA256, PINNED_LORA_SIZE
 
 _TARGET_PATTERN = re.compile(r"^diffusion_model\.blocks\.(\d+)\.(.+)$")
 _A_SUFFIX = ".lora_A.weight"
@@ -74,7 +72,7 @@ def inspect_adapter(path: Path) -> AdapterInventory:
             elif key.endswith(_B_SUFFIX):
                 grouped[key.removesuffix(_B_SUFFIX)]["B"] = key
             else:
-                raise ValueError(f"Unsupported pinned LoRA tensor key: {key!r}.")
+                raise ValueError(f"Unsupported LoRA tensor key: {key!r}.")
         for target, pair_keys in sorted(grouped.items()):
             if set(pair_keys) != {"A", "B"}:
                 raise ValueError(f"LoRA target has an incomplete A/B pair: {target!r}.")
@@ -100,29 +98,6 @@ def inspect_adapter(path: Path) -> AdapterInventory:
                 )
             )
     return AdapterInventory(size_bytes, sha256, metadata, tuple(pairs))
-
-
-def validate_pinned_inventory(inventory: AdapterInventory) -> None:
-    """Require the exact pinned identity and complete 28-by-16 target surface."""
-
-    if inventory.size_bytes != PINNED_LORA_SIZE:
-        raise ValueError("Pinned ADAPTER_A LoRA size does not match the recorded fixture.")
-    if inventory.sha256 != PINNED_LORA_SHA256:
-        raise ValueError(
-            "Pinned ADAPTER_A LoRA SHA-256 does not match the recorded fixture."
-        )
-    if len(inventory.pairs) != 448:
-        raise ValueError("Pinned ADAPTER_A LoRA must contain exactly 448 adapter pairs.")
-    families_by_block: dict[int, set[str]] = defaultdict(set)
-    for pair in inventory.pairs:
-        if pair.rank != 32:
-            raise ValueError(f"Pinned ADAPTER_A target is not rank 32: {pair.target!r}.")
-        families_by_block[pair.block_index].add(pair.family)
-    if set(families_by_block) != set(range(28)):
-        raise ValueError("Pinned ADAPTER_A LoRA must cover Anima blocks 0 through 27.")
-    family_sets = {frozenset(families) for families in families_by_block.values()}
-    if len(family_sets) != 1 or len(next(iter(family_sets))) != 16:
-        raise ValueError("Every pinned ADAPTER_A block must contain the same 16 families.")
 
 
 def _sha256(path: Path) -> str:

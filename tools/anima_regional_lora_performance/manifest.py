@@ -69,8 +69,12 @@ class PerformanceManifest:
             )
 
 
-def default_manifest(*, repeats: int = 3) -> PerformanceManifest:
-    """Return the authoritative local RTX 5090 benchmark definition."""
+def default_manifest(
+    *,
+    repeats: int = 3,
+    artifacts: tuple[PerformanceArtifact, ...] = (),
+) -> PerformanceManifest:
+    """Return model-neutral benchmark policy with optional external artifacts."""
 
     return PerformanceManifest(
         benchmark_id="anima-regional-lora-p5.7-v1",
@@ -83,27 +87,7 @@ def default_manifest(*, repeats: int = 3) -> PerformanceManifest:
         warmup_calls=2,
         repeats=repeats,
         seed=1_029_384_756,
-        artifacts=(
-            PerformanceArtifact(
-                role="anima_base",
-                path=Path(r"<MODEL_ROOT>\diffusion_models\Anima")
-                / "diffusion-model.safetensors",
-                size_bytes=4_182_218_328,
-                sha256=(
-                    "bd43b7cffe1ed1153d9c41e7beb2f18cb1273eafbaa3af3edd6a173dc90a006e"
-                ),
-            ),
-            PerformanceArtifact(
-                role="regional_lora",
-                path=Path(
-                    r"<MODEL_ROOT>\Loras\Anima\style\adapter-a.safetensors"
-                ),
-                size_bytes=138_663_768,
-                sha256=(
-                    "0c915b59f464fd3d72c49a241440f8a41582ec76b597b0029e18b657b600c7d8"
-                ),
-            ),
-        ),
+        artifacts=artifacts,
         profiles=(
             PerformanceProfile("attention-only", 0, 0.0),
             PerformanceProfile("regional-lora-1", 1, 15.0),

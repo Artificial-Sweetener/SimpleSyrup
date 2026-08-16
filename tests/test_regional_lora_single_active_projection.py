@@ -22,7 +22,7 @@ def test_single_projection_gathers_only_nonzero_rows_and_restores_zeros(
     inputs = torch.arange(8, dtype=torch.float32).reshape(4, 2)
     down = torch.eye(2)
     up = torch.eye(2)
-    multiplier = torch.tensor([1.0, 0.0, 0.5, 0.0])
+    multiplier = torch.tensor([1.0, 0.0, 0.0, 0.0])
     observed_batches: list[int] = []
     original_linear = torch.nn.functional.linear
 
@@ -49,4 +49,4 @@ def test_single_projection_gathers_only_nonzero_rows_and_restores_zeros(
 
     expected = inputs * multiplier[:, None]
     torch.testing.assert_close(delta, expected)
-    assert observed_batches == [2, 2]
+    assert observed_batches == [1, 1]

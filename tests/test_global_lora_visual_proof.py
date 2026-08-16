@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Verify the fixed global and regional ADAPTER_A visual proof matrix."""
+"""Verify the fixed global and regional PRIMARY_ADAPTER visual proof matrix."""
 
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ def test_matrix_covers_global_strength_regional_and_duplicate_placement() -> Non
 
     assert [case.case_id for case in definitions] == [
         "no-lora",
-        "global-adapter_a-050",
-        "global-adapter_a-100",
-        "regional-adapter_a-100-left",
-        "duplicate-global-regional-adapter_a-100",
+        "global-primary_adapter-050",
+        "global-primary_adapter-100",
+        "regional-primary_adapter-100-left",
+        "duplicate-global-regional-primary_adapter-100",
     ]
     assert [case.global_strength for case in definitions] == [None, 0.5, 1.0, None, 1.0]
     assert [case.regional_strength for case in definitions] == [
@@ -38,7 +38,7 @@ def test_matrix_covers_global_strength_regional_and_duplicate_placement() -> Non
     ]
 
 
-def test_prompt_renderer_places_adapter_a_only_in_declared_segments() -> None:
+def test_prompt_renderer_places_primary_adapter_only_in_declared_segments() -> None:
     """Remove prior tags before rendering exact global and left-region uses."""
 
     source = (

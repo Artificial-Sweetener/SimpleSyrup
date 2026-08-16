@@ -189,7 +189,9 @@ class TextEncoderLoraResultRecorder:
                 f"P9.4 model-LoRA case {case.case_id!r} has no adapter uses."
             )
         if any(use.get("target_count") != 448 for use in uses):
-            raise ValueError("P9.4 ADAPTER_A model execution must retain all 448 targets.")
+            raise ValueError(
+                "P9.4 PRIMARY_ADAPTER model execution must retain all 448 targets."
+            )
 
     def _validate_call_counts(
         self,

@@ -69,13 +69,15 @@ def default_manifest(repo_root: Path) -> AnimaRegressionManifest:
     ruff = str((repo_root / ".." / ".." / "venv" / "Scripts" / "ruff.exe").resolve())
     mypy = str((repo_root / ".." / ".." / "venv" / "Scripts" / "mypy.exe").resolve())
     evidence_root = Path(r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1")
-    character_a_root = (
+    character_root = (
         evidence_root
-        / "user-prompt-character_a-ownership-proof"
+        / "user-prompt-character-ownership-proof"
         / "20260812T192527Z-28deb131"
     )
-    adapter_a_root = (
-        evidence_root / "user-prompt-adapter_a-ownership-proof" / "20260812T192754Z-89ebd7cb"
+    primary_adapter_root = (
+        evidence_root
+        / "user-prompt-primary_adapter-ownership-proof"
+        / "20260812T192754Z-89ebd7cb"
     )
     style_character_root = (
         evidence_root / "global-style-character-proof" / "20260812T224908Z-892f5d8f"
@@ -117,36 +119,36 @@ def default_manifest(repo_root: Path) -> AnimaRegressionManifest:
     return AnimaRegressionManifest(
         images=(
             AcceptedImage(
-                "character_a-phased-composition",
-                character_a_root / "baseline.png",
+                "character-phased-composition",
+                character_root / "baseline.png",
                 "66b4851bc48f9fcafa9965209f34c1bb8add3ff675e73c1ff32e85ed89aea7a0",
             ),
             AcceptedImage(
-                "adapter_a-one-side-phased-composition",
-                adapter_a_root / "baseline.png",
+                "primary_adapter-one-side-phased-composition",
+                primary_adapter_root / "baseline.png",
                 "3783e8ec83c3088ddb00e4d4d60af44499a3fb73c0cbb3f39e10c38d68a03499",
             ),
             AcceptedImage(
                 "global-style-character-control",
-                style_character_root / "character_a-right-only.png",
+                style_character_root / "character-right-only.png",
                 "a5521ded7595322c1ccc39732fb4f30e9b6e29d5a454811ffb1e26d7916c9c17",
             ),
             AcceptedImage(
-                "global-adapter_a-050-regional-character_a",
-                style_character_root / "global-adapter_a-050-character_a-right.png",
+                "global-primary_adapter-050-regional-character",
+                style_character_root / "global-primary_adapter-050-character-right.png",
                 "631d206299f3754891f968f01052678f25e22a1b7a3d6188f3081d237a2999a5",
             ),
             AcceptedImage(
-                "global-adapter_a-100-regional-character_a",
-                style_character_root / "global-adapter_a-100-character_a-right.png",
+                "global-primary_adapter-100-regional-character",
+                style_character_root / "global-primary_adapter-100-character-right.png",
                 "beb9deb0c37547bcd0691d783be9ec37fa41e1360c0abf7203a814e550915d8f",
             ),
         ),
         managed_results=(
             CompletedJsonEvidence(
-                "character_a-phased-composition",
-                character_a_root / "run.json",
-                detail_paths=(character_a_root / "history.json",),
+                "character-phased-composition",
+                character_root / "run.json",
+                detail_paths=(character_root / "history.json",),
                 required_integer_occurrences=(
                     ("model_call_count", 30, 1),
                     ("target_count", 280, 1),
@@ -156,9 +158,9 @@ def default_manifest(repo_root: Path) -> AnimaRegressionManifest:
                 ),
             ),
             CompletedJsonEvidence(
-                "adapter_a-one-side-phased-composition",
-                adapter_a_root / "run.json",
-                detail_paths=(adapter_a_root / "history.json",),
+                "primary_adapter-one-side-phased-composition",
+                primary_adapter_root / "run.json",
+                detail_paths=(primary_adapter_root / "history.json",),
                 required_integer_occurrences=(
                     ("model_call_count", 30, 1),
                     ("target_count", 448, 1),
@@ -171,9 +173,11 @@ def default_manifest(repo_root: Path) -> AnimaRegressionManifest:
                 "global-style-regional-character",
                 style_character_root / "global-style-character-proof.json",
                 detail_paths=(
-                    style_character_root / "character_a-right-only.history.json",
-                    style_character_root / "global-adapter_a-050-character_a-right.history.json",
-                    style_character_root / "global-adapter_a-100-character_a-right.history.json",
+                    style_character_root / "character-right-only.history.json",
+                    style_character_root
+                    / "global-primary_adapter-050-character-right.history.json",
+                    style_character_root
+                    / "global-primary_adapter-100-character-right.history.json",
                 ),
                 observation_count=3,
                 required_integer_occurrences=(
@@ -242,12 +246,12 @@ def default_manifest(repo_root: Path) -> AnimaRegressionManifest:
         ),
         managed_rerun_commands=(
             OracleCommand(
-                "character_a-managed-proof",
-                (python, "-m", "tools.run_character_a_ownership_proof"),
+                "character-managed-proof",
+                (python, "-m", "tools.run_character_ownership_proof"),
             ),
             OracleCommand(
-                "adapter_a-managed-proof",
-                (python, "-m", "tools.run_adapter_a_ownership_proof"),
+                "primary_adapter-managed-proof",
+                (python, "-m", "tools.run_primary_adapter_ownership_proof"),
             ),
             OracleCommand(
                 "global-style-character-proof",

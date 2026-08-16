@@ -26,7 +26,7 @@ from tools.anima_regional_lora_performance.runtime_profile import (
 def test_p57_profile_builds_ordered_shared_cache_adapter_uses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Keep repeated-ADAPTER_A identity, strength, schedule, and cache policy local."""
+    """Keep repeated-adapter strength, schedule, and cache policy local."""
 
     fixture = single_target_execution(
         AnimaLoraTargetFamily.SELF_ATTN_Q,

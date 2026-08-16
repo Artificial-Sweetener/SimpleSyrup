@@ -76,7 +76,7 @@ def test_recorder_rejects_text_only_hook_in_model_diagnostics(tmp_path: Path) ->
     """Fail if a zero-model-strength text LoRA reaches diffusion execution."""
 
     case = next(
-        item for item in cases() if item.case_id == "full-regional-text_adapter-text"
+        item for item in cases() if item.case_id == "full-regional-encoder_adapter-text"
     )
     workflow = _workflow(case.case_id)
     history = _history(case, workflow, force_adapter=True)

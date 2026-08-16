@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tools.anima_attention_coupling_prompts import PINNED_ADAPTER_A
+from tools.anima_attention_coupling_prompts import PINNED_PRIMARY_ADAPTER
 
 from .graph_contract import (
     CFG,
@@ -16,11 +16,11 @@ from .graph_contract import (
     RegionalLoraAdmissionGraphCase,
 )
 
-PINNED_ADAPTER_A_IDENTITY = "supported-adapter_a"
-PINNED_ADAPTER_A_HOOK = PublicRegionalLoraHook(
-    PINNED_ADAPTER_A,
+PINNED_PRIMARY_ADAPTER_IDENTITY = "supported-primary_adapter"
+PINNED_PRIMARY_ADAPTER_HOOK = PublicRegionalLoraHook(
+    PINNED_PRIMARY_ADAPTER,
     0.75,
-    PINNED_ADAPTER_A_IDENTITY,
+    PINNED_PRIMARY_ADAPTER_IDENTITY,
 )
 
 
@@ -48,9 +48,9 @@ def cases() -> tuple[RegionalLoraAdmissionCase, ...]:
     unsupported_anima_target = "unsupported-anima-target"
     return (
         RegionalLoraAdmissionCase(
-            "supported-adapter_a",
-            "Supported full-surface regional ADAPTER_A WeightHook",
-            (PINNED_ADAPTER_A_HOOK,),
+            "supported-primary_adapter",
+            "Supported full-surface regional PRIMARY_ADAPTER WeightHook",
+            (PINNED_PRIMARY_ADAPTER_HOOK,),
             None,
             None,
             CFG,
@@ -123,8 +123,8 @@ def cases() -> tuple[RegionalLoraAdmissionCase, ...]:
         ),
         RegionalLoraAdmissionCase(
             "mixed-supported-unsupported-target",
-            "Reject complete ADAPTER_A plus unsupported target atomically",
-            (PINNED_ADAPTER_A_HOOK,),
+            "Reject complete PRIMARY_ADAPTER plus unsupported target atomically",
+            (PINNED_PRIMARY_ADAPTER_HOOK,),
             unsupported_anima_target,
             unsupported_anima_target,
             CFG,

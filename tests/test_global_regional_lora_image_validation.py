@@ -71,9 +71,9 @@ def _images(
     """Write one complete transition fixture and return its labeled paths."""
 
     colors = {
-        "global-global_adapter-regional-adapter_a-before": before,
-        "global-global_adapter-regional-adapter_a-after": after,
-        "regional-adapter_a-only": regional,
+        "global-global_adapter-regional-primary_adapter-before": before,
+        "global-global_adapter-regional-primary_adapter-after": after,
+        "regional-primary_adapter-only": regional,
     }
     paths: dict[str, Path] = {}
     for case_id, color in colors.items():

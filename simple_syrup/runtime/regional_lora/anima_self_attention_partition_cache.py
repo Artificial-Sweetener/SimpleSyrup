@@ -13,15 +13,15 @@ import torch
 from comfy.patcher_extension import CallbacksMP
 
 from ..model_patcher_mutations import ModelKeyedCallbackMutation
-from .anima_self_attention_coherence import (
-    ANIMA_SELF_ATTENTION_COHERENCE_POLICY,
-    AnimaSelfAttentionCoherencePolicy,
+from ..regional_self_attention_coherence import (
+    REGIONAL_SELF_ATTENTION_COHERENCE_POLICY,
+    RegionalSelfAttentionCoherencePolicy,
 )
-from .anima_self_attention_ownership import (
-    ANIMA_SELF_ATTENTION_OWNERSHIP_POLICY,
-    AnimaSelfAttentionOwnershipPolicy,
+from ..regional_self_attention_ownership import (
+    REGIONAL_SELF_ATTENTION_OWNERSHIP_POLICY,
+    RegionalSelfAttentionOwnershipPolicy,
 )
-from .anima_self_attention_partition import AnimaSelfAttentionPartitionPlan
+from ..regional_self_attention_partition import RegionalSelfAttentionPartitionPlan
 
 _CACHE_CALLBACK_KEY = "simple_syrup.anima_self_attention_partition_cache"
 
@@ -33,7 +33,7 @@ class _PartitionPlanSlot:
     masks: torch.Tensor
     height: int
     width: int
-    plan: AnimaSelfAttentionPartitionPlan
+    plan: RegionalSelfAttentionPartitionPlan
 
 
 class AnimaSelfAttentionPartitionCache:
@@ -41,18 +41,18 @@ class AnimaSelfAttentionPartitionCache:
 
     def __init__(
         self,
-        ownership: AnimaSelfAttentionOwnershipPolicy = (
-            ANIMA_SELF_ATTENTION_OWNERSHIP_POLICY
+        ownership: RegionalSelfAttentionOwnershipPolicy = (
+            REGIONAL_SELF_ATTENTION_OWNERSHIP_POLICY
         ),
-        coherence: AnimaSelfAttentionCoherencePolicy = (
-            ANIMA_SELF_ATTENTION_COHERENCE_POLICY
+        coherence: RegionalSelfAttentionCoherencePolicy = (
+            REGIONAL_SELF_ATTENTION_COHERENCE_POLICY
         ),
     ) -> None:
         """Retain focused policies and initialize an empty task-local slot."""
 
-        if not isinstance(ownership, AnimaSelfAttentionOwnershipPolicy):
+        if not isinstance(ownership, RegionalSelfAttentionOwnershipPolicy):
             raise TypeError("Anima partition cache requires an ownership policy.")
-        if not isinstance(coherence, AnimaSelfAttentionCoherencePolicy):
+        if not isinstance(coherence, RegionalSelfAttentionCoherencePolicy):
             raise TypeError("Anima partition cache requires a coherence policy.")
         self._ownership = ownership
         self._coherence = coherence
@@ -66,7 +66,7 @@ class AnimaSelfAttentionPartitionCache:
         *,
         height: int,
         width: int,
-    ) -> AnimaSelfAttentionPartitionPlan:
+    ) -> RegionalSelfAttentionPartitionPlan:
         """Return the exact cached plan for one projected mask batch and grid."""
 
         slot = self._slot.get()
@@ -82,7 +82,7 @@ class AnimaSelfAttentionPartitionCache:
             height=height,
             width=width,
         )
-        plan = AnimaSelfAttentionPartitionPlan.build(profile)
+        plan = RegionalSelfAttentionPartitionPlan.build(profile)
         self._slot.set(_PartitionPlanSlot(masks, height, width, plan))
         return plan
 

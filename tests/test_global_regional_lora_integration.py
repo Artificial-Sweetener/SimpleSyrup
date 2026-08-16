@@ -29,11 +29,11 @@ def test_p9_3_matrix_covers_global_regional_distinct_and_duplicate_cases() -> No
     definitions = cases()
 
     assert [case.case_id for case in definitions] == [
-        "global-global_adapter-regional-adapter_a-before",
-        "regional-adapter_a-only",
-        "global-global_adapter-regional-adapter_a-after",
-        "global-adapter_a-only",
-        "duplicate-global-regional-adapter_a",
+        "global-global_adapter-regional-primary_adapter-before",
+        "regional-primary_adapter-only",
+        "global-global_adapter-regional-primary_adapter-after",
+        "global-primary_adapter-only",
+        "duplicate-global-regional-primary_adapter",
     ]
     assert [len(case.integration.global_loras) for case in definitions] == [
         1,
@@ -82,7 +82,7 @@ def test_p9_3_result_requires_success_outputs_and_exact_overlap_rejection(
             (240, 10, 10)
             if "global-global_adapter-regional" in case.case_id
             else (10, 10, 240)
-            if case.case_id == "regional-adapter_a-only"
+            if case.case_id == "regional-primary_adapter-only"
             else (10, 240, 10)
         )
         recorder.record_success(

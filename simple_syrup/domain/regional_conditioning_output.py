@@ -31,9 +31,24 @@ class RegionalConditioningOutputCombiner:
         authority = outputs[0]
         if not isinstance(authority, torch.Tensor) or authority.ndim < 1:
             raise TypeError("Regional conditioning output must be a tensor batch.")
+        if len(outputs) == 1:
+            entry_strengths = strengths[0]
+            self._validate_entry(
+                authority,
+                entry_strengths,
+                authority=authority,
+                entry_index=0,
+            )
+            if all(strength == 1.0 for strength in entry_strengths):
+                return authority
         weighted = torch.zeros_like(authority)
         counts = torch.ones_like(authority) * 1e-37
         weight_shape = (int(authority.shape[0]),) + (1,) * (authority.ndim - 1)
+        active_rows = torch.zeros(
+            weight_shape,
+            dtype=torch.bool,
+            device=authority.device,
+        )
         for entry_index, (output, entry_strengths) in enumerate(
             zip(outputs, strengths, strict=True)
         ):
@@ -46,7 +61,9 @@ class RegionalConditioningOutputCombiner:
             weights = authority.new_tensor(entry_strengths).reshape(weight_shape)
             weighted += output * weights
             counts += weights
-        return weighted / counts
+            active_rows |= weights.ne(0)
+        denominator = torch.where(active_rows, counts, torch.ones_like(counts))
+        return weighted / denominator
 
     @staticmethod
     def _validate_entry(

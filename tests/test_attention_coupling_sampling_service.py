@@ -14,11 +14,11 @@ from simple_syrup.domain.regional_attention_execution import (
     RegionalAttentionExecutionMode,
 )
 from simple_syrup.domain.regional_mask_bank import RegionalMaskBank
-from simple_syrup.services.attention_coupling_model_preparation_service import (
-    PreparedAttentionCouplingModel,
-)
 from simple_syrup.services.attention_coupling_sampling_service import (
     AttentionCouplingSamplingService,
+)
+from simple_syrup.services.prepared_attention_coupling_model import (
+    PreparedAttentionCouplingModel,
 )
 
 

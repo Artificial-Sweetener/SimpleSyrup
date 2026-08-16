@@ -28,7 +28,7 @@ def test_matrix_wraps_all_p0_8_cases_without_redefining_schedule_values() -> Non
     assert {case.cfg for case in definitions} == {CFG}
     assert {case.feather for case in definitions} == {0}
     assert (WIDTH, HEIGHT, STEPS) == (512, 512, 8)
-    assert definitions[4].adapter_identities == ("adapter_a-static-0.75",)
+    assert definitions[4].adapter_identities == ("primary_adapter-static-0.75",)
     assert definitions[-1].adapter_identities == ()
 
 

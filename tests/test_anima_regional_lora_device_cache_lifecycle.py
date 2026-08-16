@@ -180,10 +180,10 @@ def test_projection_and_task_local_resolvers_release_retained_tensors() -> None:
     torch.testing.assert_close(second_multiplier, first_multiplier)
 
     support_resolver = RegionalLoraActiveSupportResolver()
-    multiplier = torch.tensor([1.0, 0.0])
-    first_support = support_resolver.resolve((multiplier,), leading_shape=(2,))
+    multiplier = torch.tensor([1.0, 0.0, 0.0, 0.0])
+    first_support = support_resolver.resolve((multiplier,), leading_shape=(4,))
     support_resolver.clear()
-    second_support = support_resolver.resolve((multiplier,), leading_shape=(2,))
+    second_support = support_resolver.resolve((multiplier,), leading_shape=(4,))
     assert first_support is not None
     assert second_support is not None
     assert second_support is not first_support

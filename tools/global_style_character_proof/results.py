@@ -121,7 +121,7 @@ class GlobalStyleCharacterProofRecorder:
             left = index * panel
             canvas.paste(image, (left, header))
             draw.text((left + 18, 32), case.label, fill="white", font=font)
-        path = self._root / "global-style-character_a-region__labeled-comparison.png"
+        path = self._root / "global-style-character-region__labeled-comparison.png"
         canvas.save(path, format="PNG")
         return path
 

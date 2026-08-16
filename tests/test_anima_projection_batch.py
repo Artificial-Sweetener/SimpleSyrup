@@ -7,12 +7,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
 import torch
-from safetensors.torch import load_file
 
 from simple_syrup.domain.regional_lora_plan import RegionalLoraAdapterIdentity
 from simple_syrup.runtime.regional_lora.anima_projection_batch import (
@@ -20,7 +18,8 @@ from simple_syrup.runtime.regional_lora.anima_projection_batch import (
     AnimaProjectionBatchRequest,
 )
 from simple_syrup.runtime.regional_lora.anima_targets import (
-    ANIMA_LORA_TARGET_CLASSIFIER,
+    AnimaLoraTargetFamily,
+    expected_anima_lora_features,
 )
 from simple_syrup.runtime.regional_lora.delta_execution import (
     RegionalLoraDeltaExecutor,
@@ -61,13 +60,13 @@ class _Participant:
 class _NoMaterializedDeltaExecutor(RegionalLoraDeltaExecutor):
     """Fail if coordinated execution recreates complete output deltas."""
 
-    def compatible_batch(
+    def compatible_deltas(
         self,
         inputs: torch.Tensor,
         *,
         preparation: RegionalLoraCompatibleBatchPreparation,
         multipliers: tuple[torch.Tensor, ...],
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, ...]:
         """Reject the superseded full-delta coordination path."""
 
         del inputs, preparation, multipliers
@@ -154,17 +153,19 @@ def test_registry_declines_whole_group_when_one_member_is_inactive() -> None:
         ),
     ),
 )
-def test_pinned_bf16_projection_batch_retains_reference_lora_output_quality(
+def test_bf16_projection_batch_retains_reference_lora_output_quality(
     families: tuple[str, str, str],
 ) -> None:
-    """Bound real rank-32 batching error against independent pinned projections."""
+    """Bound rank-32 batching error against independent generated projections."""
 
     if not torch.cuda.is_available():
-        pytest.skip("CUDA is required for the pinned BF16 projection comparison.")
-    fixture = Path(r"<MODEL_ROOT>\Loras\Anima\style\adapter-a.safetensors")
-    admission = ANIMA_LORA_TARGET_CLASSIFIER.admit(load_file(fixture, device="cpu"))
-    names = tuple(f"diffusion_model.blocks.0.{family}" for family in families)
-    by_name = {target.adapter.target: target.adapter for target in admission.targets}
+        pytest.skip("CUDA is required for the BF16 projection comparison.")
+    selected_families = tuple(AnimaLoraTargetFamily(family) for family in families)
+    generator_cpu = torch.Generator().manual_seed(9157)
+    adapters = tuple(
+        _generated_adapter(family, generator=generator_cpu)
+        for family in selected_families
+    )
     device = torch.device("cuda")
     generator = torch.Generator(device=device).manual_seed(9157)
     inputs = torch.randn(
@@ -177,32 +178,32 @@ def test_pinned_bf16_projection_batch_retains_reference_lora_output_quality(
     multiplier[:, :129] = 1.0
     participants = tuple(
         _participant(
-            by_name[name].down,
-            by_name[name].up,
+            adapter.down,
+            adapter.up,
             multiplier,
         )
-        for name in names
+        for adapter in adapters
     )
     registry = AnimaProjectionBatchRegistry()
     registry.register("pinned-qkv", participants)
     resolution = RegionalLoraScheduleResolution((1.0,), (1.0,))
 
     observed_values: list[torch.Tensor] = []
-    for participant, name in zip(participants, names, strict=True):
+    for participant, adapter in zip(participants, adapters, strict=True):
         execution = registry.resolve_execution(participant, inputs, resolution)
         if execution is not None:
             original_output = inputs.new_zeros(
-                (*inputs.shape[:-1], by_name[name].output_features)
+                (*inputs.shape[:-1], adapter.output_features)
             )
             observed_values.append(registry.accumulate(original_output, execution))
     observed = tuple(observed_values)
     expected = tuple(
         (
-            (inputs @ by_name[name].down.to(device=device, dtype=inputs.dtype).T)
+            (inputs @ adapter.down.to(device=device, dtype=inputs.dtype).T)
             * multiplier.unsqueeze(-1)
         )
-        @ by_name[name].up.to(device=device, dtype=inputs.dtype).T
-        for name in names
+        @ adapter.up.to(device=device, dtype=inputs.dtype).T
+        for adapter in adapters
     )
     torch.cuda.synchronize(device)
 
@@ -219,6 +220,25 @@ def test_pinned_bf16_projection_batch_retains_reference_lora_output_quality(
         )
         assert float(relative_l2.item()) <= 0.005
         assert float(cosine.item()) >= 0.99999
+
+
+def _generated_adapter(
+    family: AnimaLoraTargetFamily,
+    *,
+    generator: torch.Generator,
+) -> StandardLoraTarget:
+    """Build one deterministic rank-32 adapter for an architecture-owned family."""
+
+    input_features, output_features = expected_anima_lora_features(family)
+    rank = 32
+    return StandardLoraTarget(
+        f"diffusion_model.blocks.0.{family.value}",
+        torch.randn((rank, input_features), generator=generator) * 0.01,
+        torch.randn((output_features, rank), generator=generator) * 0.01,
+        rank,
+        input_features,
+        output_features,
+    )
 
 
 def _participant(

@@ -42,9 +42,13 @@ class GlobalRegionalLoraImageValidator:
     ) -> GlobalRegionalLoraTransitionEvidence:
         """Require repeatability and a visible distinct global-LoRA effect."""
 
-        before = _required_image(images, "global-global_adapter-regional-adapter_a-before")
-        after = _required_image(images, "global-global_adapter-regional-adapter_a-after")
-        regional = _required_image(images, "regional-adapter_a-only")
+        before = _required_image(
+            images, "global-global_adapter-regional-primary_adapter-before"
+        )
+        after = _required_image(
+            images, "global-global_adapter-regional-primary_adapter-after"
+        )
+        regional = _required_image(images, "regional-primary_adapter-only")
         repeated = compare_decoded_rgb_images(before, after)
         if repeated.changed_pixels != 0:
             raise ValueError(

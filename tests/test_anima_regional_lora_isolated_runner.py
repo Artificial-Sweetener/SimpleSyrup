@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -16,6 +18,7 @@ from tools.anima_regional_lora_performance.isolated_measurement import (
 from tools.anima_regional_lora_performance.isolated_suite import (
     ValidatedScalingArtifacts,
 )
+from tools.anima_regional_lora_performance.manifest import PerformanceArtifact
 from tools.anima_regional_lora_performance.matrix_manifest import (
     ScalingPerformanceManifest,
     ScalingPerformanceProfile,
@@ -31,7 +34,7 @@ def test_isolated_runner_verifies_once_and_cleans_before_readback(
 ) -> None:
     """Visit every profile once with release before both allocation reads."""
 
-    manifest = default_scaling_manifest()
+    manifest = default_scaling_manifest(artifacts=_artifacts())
     artifacts = ValidatedScalingArtifacts(*manifest.artifacts)
     events: list[str] = []
     allocations = iter(value for _ in manifest.profiles for value in (0, 0))
@@ -121,7 +124,7 @@ def test_isolated_runner_releases_after_measurement_failure(
 ) -> None:
     """Release the selected profile when execution raises before publication."""
 
-    manifest = default_scaling_manifest()
+    manifest = default_scaling_manifest(artifacts=_artifacts())
     runner = runner_module.AnimaRegionalLoraIsolatedVramRunner()
     released: list[bool] = []
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
@@ -152,3 +155,12 @@ def test_isolated_runner_releases_after_measurement_failure(
         runner.run(manifest)
 
     assert released == [True, True]
+
+
+def _artifacts() -> tuple[PerformanceArtifact, ...]:
+    """Return anonymous artifact identities for runner coordination tests."""
+
+    return (
+        PerformanceArtifact("anima_base", Path("model.safetensors"), 1, "a" * 64),
+        PerformanceArtifact("regional_lora", Path("adapter.safetensors"), 1, "b" * 64),
+    )

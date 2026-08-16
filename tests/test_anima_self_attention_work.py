@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import torch
 
-from simple_syrup.runtime.regional_lora.anima_self_attention_coherence import (
-    AnimaSelfAttentionCoherencePolicy,
+from simple_syrup.runtime.regional_self_attention_coherence import (
+    RegionalSelfAttentionCoherencePolicy,
 )
-from simple_syrup.runtime.regional_lora.anima_self_attention_partition import (
-    AnimaSelfAttentionPartitionPlan,
+from simple_syrup.runtime.regional_self_attention_partition import (
+    RegionalSelfAttentionPartitionPlan,
 )
 
 
@@ -27,12 +27,12 @@ def test_hard_split_specialization_retains_global_composition_work() -> None:
         ),
         dim=1,
     ).reshape(1, -1)
-    profile = AnimaSelfAttentionCoherencePolicy().resolve(
+    profile = RegionalSelfAttentionCoherencePolicy().resolve(
         owners,
         height=height,
         width=width,
     )
-    plan = AnimaSelfAttentionPartitionPlan.build(profile)
+    plan = RegionalSelfAttentionPartitionPlan.build(profile)
 
     compact_pairs = sum(
         group.call_count * group.query_count * group.key_count

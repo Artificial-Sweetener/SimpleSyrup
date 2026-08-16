@@ -216,6 +216,98 @@ def test_central_admission_preserves_anima_family_route() -> None:
     assert _AnimaBackend.calls[0]["region_strengths"] == (0.5,)
 
 
+def test_standard_unet_exact_request_reuses_complete_preparation() -> None:
+    """Avoid model loading and derivation when only a later sampler seed changes."""
+
+    source = _patcher(
+        base_type=comfy.model_base.SDXL,
+        diffusion_type=UNetModel,
+        latent_format=comfy.latent_formats.SDXL(),
+    )
+    positive = ConditioningBatch((_conditioning(1.0), _conditioning(2.0)))
+    negative = ConditioningBatch((_conditioning(-1.0), _conditioning(-2.0)))
+    masks = torch.ones(1, 8, 8)
+    latent = {"samples": torch.zeros(1, 4, 8, 8)}
+    originals = _install_fakes()
+    _reset_calls(context_dimension=2048)
+    cache = AttentionCouplingModelPreparationService.prepared_model_cache
+    cache.clear()
+    service = AttentionCouplingModelPreparationService()
+    try:
+        first = service.prepare(
+            model=source,
+            positive=positive,
+            negative=negative,
+            region_masks=masks,
+            regional_prompt_weight=1.0,
+            region_mask_feather=0,
+            latent_image=latent,
+            execution_mode=RegionalAttentionExecutionMode.FULL,
+        )
+        second = service.prepare(
+            model=source,
+            positive=positive,
+            negative=negative,
+            region_masks=masks,
+            regional_prompt_weight=1.0,
+            region_mask_feather=0,
+            latent_image=latent,
+            execution_mode=RegionalAttentionExecutionMode.FULL,
+        )
+    finally:
+        cache.clear()
+        _restore_fakes(originals)
+
+    assert second is first
+    assert _ModelLoader.calls == [source]
+    assert len(_ConditioningProcessor.calls) == 1
+
+
+def test_anima_exact_inputs_still_prepare_every_request() -> None:
+    """Keep specialized Anima loading, processing, and derivation uncached."""
+
+    source = _patcher(
+        base_type=comfy.model_base.Anima,
+        diffusion_type=AnimaDiffusionModel,
+        latent_format=comfy.latent_formats.Wan21(),
+    )
+    positive = ConditioningBatch((_conditioning(1.0), _conditioning(2.0)))
+    negative = ConditioningBatch((_conditioning(-1.0), _conditioning(-2.0)))
+    masks = torch.ones(1, 8, 8)
+    latent = {"samples": torch.zeros(1, 16, 1, 8, 8)}
+    originals = _install_fakes()
+    _reset_calls(context_dimension=1024)
+    service = AttentionCouplingModelPreparationService()
+    try:
+        first = service.prepare(
+            model=source,
+            positive=positive,
+            negative=negative,
+            region_masks=masks,
+            regional_prompt_weight=1.0,
+            region_mask_feather=0,
+            latent_image=latent,
+            execution_mode=RegionalAttentionExecutionMode.FULL,
+        )
+        second = service.prepare(
+            model=source,
+            positive=positive,
+            negative=negative,
+            region_masks=masks,
+            regional_prompt_weight=1.0,
+            region_mask_feather=0,
+            latent_image=latent,
+            execution_mode=RegionalAttentionExecutionMode.FULL,
+        )
+    finally:
+        _restore_fakes(originals)
+
+    assert first is not second
+    assert _ModelLoader.calls == [source, source]
+    assert len(_ConditioningProcessor.calls) == 2
+    assert len(_AnimaBackend.calls) == 2
+
+
 def test_cross_family_model_rejection_precedes_loading_and_mutation() -> None:
     """Reject an SD wrapper with SDXL latent state before lower-layer work."""
 

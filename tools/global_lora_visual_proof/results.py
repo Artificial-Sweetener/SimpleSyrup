@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Validate and label global/regional ADAPTER_A visual proof artifacts."""
+"""Validate and label global/regional PRIMARY_ADAPTER visual proof artifacts."""
 
 from __future__ import annotations
 
@@ -167,7 +167,7 @@ class GlobalLoraVisualProofRecorder:
             )
             lines = (
                 "REJECTED BEFORE SAMPLING",
-                "The same ADAPTER_A weights were already",
+                "The same PRIMARY_ADAPTER weights were already",
                 "installed globally on the input model.",
                 "Current policy prevents double application.",
             )

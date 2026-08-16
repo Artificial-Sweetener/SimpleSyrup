@@ -19,7 +19,7 @@ from simple_syrup.domain.regional_features import (
     RegionalFeatureRequest,
 )
 from simple_syrup.domain.regional_mask_bank import RegionalMaskBank
-from simple_syrup.services.attention_coupling_model_preparation_service import (
+from simple_syrup.services.prepared_attention_coupling_model import (
     PreparedAttentionCouplingModel,
 )
 from simple_syrup.services.tiled_attention_coupling_sampling_service import (

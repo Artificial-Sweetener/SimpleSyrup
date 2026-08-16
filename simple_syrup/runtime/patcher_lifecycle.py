@@ -38,10 +38,40 @@ class ComfyPatcherLifecycle:
         mutations: Iterable[ModelMutation],
         *,
         operation: str,
+        disable_dynamic: bool = False,
     ) -> PatcherValue:
-        """Clone one MODEL, verify its lineage, and apply all mutations."""
+        """Clone one MODEL in the requested host mode and apply all mutations."""
 
-        derived = self._clone(source, operation=operation)
+        derived = self._clone(
+            source,
+            operation=operation,
+            disable_dynamic=disable_dynamic,
+        )
+        self._require_direct_parent(source, derived, operation=operation)
+        for mutation in mutations:
+            mutation.apply(derived)
+        return derived
+
+    def derive_model_with_override(
+        self,
+        source: PatcherValue,
+        model_override_source: object,
+        mutations: Iterable[ModelMutation],
+        *,
+        operation: str,
+        disable_dynamic: bool = False,
+    ) -> PatcherValue:
+        """Clone current request state over another patcher's model allocation."""
+
+        getter = getattr(model_override_source, "get_clone_model_override", None)
+        if not callable(getter):
+            raise TypeError(f"{operation} requires a model-override source.")
+        derived = self._clone(
+            source,
+            operation=operation,
+            disable_dynamic=disable_dynamic,
+            model_override=getter(),
+        )
         self._require_direct_parent(source, derived, operation=operation)
         for mutation in mutations:
             mutation.apply(derived)
@@ -108,13 +138,31 @@ class ComfyPatcherLifecycle:
         return derived
 
     @staticmethod
-    def _clone(source: PatcherValue, *, operation: str) -> PatcherValue:
-        """Clone one MODEL through its ComfyUI boundary."""
+    def _clone(
+        source: PatcherValue,
+        *,
+        operation: str,
+        disable_dynamic: bool,
+        model_override: object | None = None,
+    ) -> PatcherValue:
+        """Clone one MODEL through Comfy's native dynamic-mode boundary."""
 
         clone = getattr(source, "clone", None)
         if not callable(clone):
             raise TypeError(f"{operation} requires a cloneable MODEL value.")
-        derived = cast(PatcherValue, clone())
+        if model_override is not None:
+            derived = cast(
+                PatcherValue,
+                clone(
+                    disable_dynamic=disable_dynamic,
+                    model_override=model_override,
+                ),
+            )
+        else:
+            derived = cast(
+                PatcherValue,
+                clone(disable_dynamic=True) if disable_dynamic else clone(),
+            )
         if derived is source:
             raise RuntimeError(f"{operation} returned the source MODEL from clone().")
         return derived

@@ -33,7 +33,7 @@ def test_matrix_declares_one_success_and_six_exact_rejections() -> None:
 
     assert len(definitions) == 7
     assert [case.case_id for case in definitions] == [
-        "supported-adapter_a",
+        "supported-primary_adapter",
         "non-weight-hook",
         "model-as-lora-format",
         "unsupported-suffix-format",
@@ -52,7 +52,9 @@ def test_matrix_declares_one_success_and_six_exact_rejections() -> None:
     ]
 
 
-def test_supported_graph_uses_public_adapter_a_hook_and_one_public_sampler() -> None:
+def test_supported_graph_uses_public_primary_adapter_hook_and_one_public_sampler() -> (
+    None
+):
     """Route the real adapter through public Comfy and SimpleSyrup nodes."""
 
     built = _build(cases()[0])
@@ -67,7 +69,7 @@ def test_supported_graph_uses_public_adapter_a_hook_and_one_public_sampler() -> 
     assert _inputs(sampler)["steps"] == STEPS
     label = _only_node(built.workflow.prompt, "SimpleSyrup.LabelRegionalLoraHooks")
     assert json.loads(str(_inputs(label)["adapter_identities_json"])) == [
-        "supported-adapter_a"
+        "supported-primary_adapter"
     ]
 
 
@@ -108,7 +110,7 @@ def test_mixed_graph_preserves_supported_then_unsupported_weight_order() -> None
     assert _classes(prompt).count("CombineHooks2") == 1
     label = _only_node(prompt, "SimpleSyrup.LabelRegionalLoraHooks")
     assert json.loads(str(_inputs(label)["adapter_identities_json"])) == [
-        "supported-adapter_a",
+        "supported-primary_adapter",
         "unsupported-anima-target",
     ]
     combined = _only_node(prompt, "CombineHooks2")

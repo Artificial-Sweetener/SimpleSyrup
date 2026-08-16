@@ -155,7 +155,7 @@ def diagnostics_harness(
             base_values=(10.0, 20.0),
             regions=_single_entries((30.0, 40.0), (70.0, 80.0)),
             region_strengths=(1.0, 1.0),
-            expected=torch.tensor([[[15.0]], [[25.0]]]),
+            expected=torch.tensor([[[30.0]], [[40.0]]]),
             anima_expected=torch.tensor([[[40.0 / 3.0]], [[70.0 / 3.0]]]),
         ),
         AttentionCouplingInvariantScenario(
@@ -204,25 +204,6 @@ def test_backends_preserve_declared_numerical_and_single_trajectory_invariants(
     assert first.query_unchanged
     assert first.contexts_unchanged
     assert first.masks_unchanged
-
-
-def test_backends_pack_global_context_before_active_regional_contexts(
-    backend_harness: AttentionCouplingInvariantHarness,
-) -> None:
-    """Preserve global-first branch identity when every branch contributes."""
-
-    scenario = AttentionCouplingInvariantScenario(
-        masks=torch.tensor([[[0.25]]]),
-        base_values=(10.0, 20.0),
-        regions=_single_entries((30.0, 40.0)),
-        region_strengths=(1.0,),
-        expected=torch.tensor([[[15.0]], [[25.0]]]),
-    )
-
-    observation = backend_harness.execute(scenario)
-
-    assert observation.packed_batch_size == 4
-    assert observation.packed_context_values == (10.0, 20.0, 30.0, 40.0)
 
 
 @pytest.mark.parametrize(

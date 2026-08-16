@@ -17,8 +17,8 @@ from simple_syrup.domain.spatial_views import (
 from simple_syrup.runtime.attention_coupling.unet_attention_diagnostics import (
     StandardUnetAttentionDiagnosticsEmitter,
 )
-from simple_syrup.runtime.attention_coupling.unet_attn2_geometry import (
-    StandardUnetAttn2Geometry,
+from simple_syrup.runtime.attention_coupling.unet_attention_geometry import (
+    StandardUnetAttentionGeometry,
 )
 from simple_syrup.runtime.regional_attention_diagnostic_values import (
     RegionalAttentionChunkDiagnostics,
@@ -48,7 +48,7 @@ def test_unet_diagnostics_emit_exact_json_safe_resolution_fields() -> None:
     """Publish the shared snapshot beside exact installed layer geometry."""
 
     handler = _RecordHandler()
-    logger = logging.Logger("tests.unet.emitter", level=logging.INFO)
+    logger = logging.Logger("tests.unet.emitter", level=logging.DEBUG)
     logger.addHandler(handler)
 
     StandardUnetAttentionDiagnosticsEmitter(logger).emit(_snapshot(), _geometry())
@@ -75,11 +75,11 @@ def test_unet_diagnostics_emit_exact_json_safe_resolution_fields() -> None:
     json.dumps(fields)
 
 
-def test_unet_diagnostics_skip_record_construction_when_info_is_disabled() -> None:
-    """Avoid structured serialization work when INFO diagnostics are disabled."""
+def test_unet_diagnostics_skip_record_construction_when_debug_is_disabled() -> None:
+    """Avoid structured serialization work when DEBUG diagnostics are disabled."""
 
     handler = _RecordHandler()
-    logger = logging.Logger("tests.unet.disabled", level=logging.WARNING)
+    logger = logging.Logger("tests.unet.disabled", level=logging.INFO)
     logger.addHandler(handler)
 
     StandardUnetAttentionDiagnosticsEmitter(logger).emit(_snapshot(), _geometry())
@@ -87,11 +87,11 @@ def test_unet_diagnostics_skip_record_construction_when_info_is_disabled() -> No
     assert handler.records == []
 
 
-def _geometry() -> StandardUnetAttn2Geometry:
+def _geometry() -> StandardUnetAttentionGeometry:
     """Return one exact rectangular middle-block geometry."""
 
     layout = _layout()
-    return StandardUnetAttn2Geometry(
+    return StandardUnetAttentionGeometry(
         RegionalAttentionQueryGeometry(1, 1, 2, 3, layout),
         layout,
         4,

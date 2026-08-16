@@ -17,11 +17,11 @@ def test_resolver_returns_union_indices_and_exact_fractional_values() -> None:
     """Retain every nonzero value across overlapping broadcast multipliers."""
 
     resolver = RegionalLoraActiveSupportResolver()
-    first = torch.tensor([[0.0, 0.25, 0.0, 0.0]])
-    second = torch.tensor([[0.0, 0.0, -0.5, 0.0]])
+    first = torch.tensor([[0.0, 0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
+    second = torch.tensor([[0.0, 0.0, -0.5, 0.0, 0.0, 0.0, 0.0, 0.0]])
 
-    support = resolver.resolve((first, second), leading_shape=(1, 4))
-    repeated = resolver.resolve((first, second), leading_shape=(1, 4))
+    support = resolver.resolve((first, second), leading_shape=(1, 8))
+    repeated = resolver.resolve((first, second), leading_shape=(1, 8))
 
     assert support is not None
     assert repeated is support
@@ -30,10 +30,10 @@ def test_resolver_returns_union_indices_and_exact_fractional_values() -> None:
     assert torch.equal(support.multiplier_values[1], torch.tensor([0.0, -0.5]))
 
 
-def test_resolver_retains_sparse_support_until_every_position_is_active() -> None:
-    """Never execute a zero-coverage tile row through a regional adapter."""
+def test_resolver_retains_support_only_when_sparse_projection_saves_rows() -> None:
+    """Compact low-coverage rows and use dense projection at half coverage."""
 
-    multiplier = torch.tensor([[1.0, 1.0, 1.0, 0.0]])
+    multiplier = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
 
     support = RegionalLoraActiveSupportResolver().resolve(
         (multiplier,),
@@ -41,7 +41,14 @@ def test_resolver_retains_sparse_support_until_every_position_is_active() -> Non
     )
 
     assert support is not None
-    assert torch.equal(support.indices, torch.tensor([0, 1, 2]))
+    assert torch.equal(support.indices, torch.tensor([0]))
+    assert (
+        RegionalLoraActiveSupportResolver().resolve(
+            (torch.tensor([[1.0, 1.0, 0.0, 0.0]]),),
+            leading_shape=(1, 4),
+        )
+        is None
+    )
     assert (
         RegionalLoraActiveSupportResolver().resolve(
             (torch.ones((1, 4)),),

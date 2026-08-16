@@ -117,6 +117,38 @@ def test_clip_alignment_precedes_mutations_after_dynamic_to_static_clone() -> No
     assert observed == [(reloaded_encoder, reloaded_encoder)]
 
 
+def test_model_lifecycle_requests_static_clone_explicitly() -> None:
+    """Preserve direct lineage across Comfy's dynamic-to-static MODEL boundary."""
+
+    class CloneableModel:
+        """Record the requested Comfy clone mode."""
+
+        def __init__(self) -> None:
+            """Create one root MODEL value."""
+
+            self.parent: object | None = None
+            self.disable_dynamic: bool | None = None
+
+        def clone(self, disable_dynamic: bool = False) -> CloneableModel:
+            """Return one direct child and record the mode on the source."""
+
+            self.disable_dynamic = disable_dynamic
+            derived = CloneableModel()
+            derived.parent = self
+            return derived
+
+    source = CloneableModel()
+    derived = ComfyPatcherLifecycle().derive_model(
+        source,
+        (),
+        operation="static MODEL characterization",
+        disable_dynamic=True,
+    )
+
+    assert source.disable_dynamic is True
+    assert derived.parent is source
+
+
 def _assert_comfy_marks_rootless_anima_patcher_dead() -> None:
     """Capture the exact condition behind ComfyUI's memory-leak warning."""
 

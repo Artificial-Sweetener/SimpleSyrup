@@ -10,6 +10,7 @@ import argparse
 from datetime import UTC, datetime
 from pathlib import Path
 
+from tools.anima_regional_lora_performance.artifacts import load_performance_artifacts
 from tools.anima_regional_lora_performance.manifest import default_manifest
 from tools.anima_regional_lora_performance.results import evaluate, write_result
 from tools.anima_regional_lora_performance.runner import (
@@ -21,7 +22,10 @@ def main() -> int:
     """Execute the complete benchmark and return failure when a gate misses."""
 
     arguments = _arguments()
-    manifest = default_manifest(repeats=arguments.repeats)
+    manifest = default_manifest(
+        repeats=arguments.repeats,
+        artifacts=load_performance_artifacts(arguments.artifact_inventory),
+    )
     observations, environment = ANIMA_REGIONAL_LORA_PERFORMANCE_RUNNER.run(manifest)
     result = evaluate(manifest, observations)
     output_directory = arguments.output_root / _timestamp()
@@ -47,6 +51,7 @@ def _arguments() -> argparse.Namespace:
     """Parse explicit repeat and external evidence-directory controls."""
 
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--artifact-inventory", type=Path, required=True)
     parser.add_argument("--repeats", type=_at_least_three, default=3)
     parser.add_argument(
         "--output-root",

@@ -33,11 +33,7 @@ def test_manifest_pins_full_resolution_calls_artifacts_and_limits() -> None:
         15.0,
         35.0,
     ]
-    assert [artifact.size_bytes for artifact in manifest.artifacts] == [
-        4_182_218_328,
-        138_663_768,
-    ]
-    assert all(len(artifact.sha256) == 64 for artifact in manifest.artifacts)
+    assert manifest.artifacts == ()
 
 
 @pytest.mark.parametrize(

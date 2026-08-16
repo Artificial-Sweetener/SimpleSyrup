@@ -47,7 +47,11 @@ def test_artifact_verification_requires_exact_bytes(tmp_path: Path) -> None:
 def test_artifact_roles_are_unique_and_required() -> None:
     """Prevent ambiguous model or adapter selection before loading."""
 
-    manifest = default_manifest()
+    first = PerformanceArtifact("model", Path("model.safetensors"), 1, "0" * 64)
+    second = PerformanceArtifact(
+        "regional_lora", Path("adapter.safetensors"), 1, "1" * 64
+    )
+    manifest = default_manifest(artifacts=(first, second))
 
     assert require_artifact(manifest, "regional_lora").role == "regional_lora"
     with pytest.raises(ValueError, match="exactly one 'missing'"):

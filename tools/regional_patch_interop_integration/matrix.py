@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from tools.anima_attention_coupling_prompts import PINNED_ADAPTER_A, RegionalLora
+from tools.anima_attention_coupling_prompts import PINNED_PRIMARY_ADAPTER, RegionalLora
 
 STEPS = 8
 CFG = 4.0
@@ -92,10 +92,10 @@ class RegionalPatchInteropCase:
 
     @property
     def regional_loras(self) -> tuple[RegionalLora, ...]:
-        """Return the exact static or scheduled regional ADAPTER_A declaration."""
+        """Return the exact static or scheduled regional PRIMARY_ADAPTER declaration."""
 
         schedule = (0.25, 0.75) if self.scheduled_regional_lora else None
-        return (RegionalLora(0, PINNED_ADAPTER_A, 0.75, schedule),)
+        return (RegionalLora(0, PINNED_PRIMARY_ADAPTER, 0.75, schedule),)
 
     @property
     def image_size(self) -> tuple[int, int]:
@@ -115,10 +115,10 @@ def cases() -> tuple[RegionalPatchInteropCase, ...]:
         "regional branch batch",
     )
     return (
-        _accepted("anima-full-baseline", "Anima full static ADAPTER_A baseline"),
+        _accepted("anima-full-baseline", "Anima full static PRIMARY_ADAPTER baseline"),
         _accepted(
             "anima-full-easycache",
-            "Anima full static ADAPTER_A with core EasyCache",
+            "Anima full static PRIMARY_ADAPTER with core EasyCache",
             modifier=PatchInteropModifier.EASYCACHE,
         ),
         RegionalPatchInteropCase(
@@ -137,7 +137,7 @@ def cases() -> tuple[RegionalPatchInteropCase, ...]:
         ),
         _accepted(
             "anima-full-optimized-attention",
-            "Anima full static ADAPTER_A with optimized attention override",
+            "Anima full static PRIMARY_ADAPTER with optimized attention override",
             modifier=PatchInteropModifier.OPTIMIZED_ATTENTION,
         ),
         _accepted(
@@ -154,7 +154,7 @@ def cases() -> tuple[RegionalPatchInteropCase, ...]:
         ),
         RegionalPatchInteropCase(
             "anima-full-scheduled-easycache-rejected",
-            "Reject EasyCache with scheduled regional ADAPTER_A",
+            "Reject EasyCache with scheduled regional PRIMARY_ADAPTER",
             PatchInteropModelFamily.ANIMA,
             PatchInteropSpatialMode.FULL,
             PatchInteropModifier.EASYCACHE,
@@ -212,7 +212,7 @@ def _accepted(
     modifier: PatchInteropModifier = PatchInteropModifier.NONE,
     spatial_mode: PatchInteropSpatialMode = PatchInteropSpatialMode.FULL,
 ) -> RegionalPatchInteropCase:
-    """Return one accepted Anima static-ADAPTER_A case."""
+    """Return one accepted Anima static-PRIMARY_ADAPTER case."""
 
     return RegionalPatchInteropCase(
         case_id,

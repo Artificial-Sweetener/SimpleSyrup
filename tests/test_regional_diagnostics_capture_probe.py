@@ -22,6 +22,10 @@ _ANIMA_ATTENTION_LOGGER_NAME = (
     "simple_syrup.runtime.attention_coupling.anima_diagnostics"
 )
 _UNET_LOGGER_NAME = "simple_syrup.runtime.attention_coupling.unet_diagnostics"
+_UNET_PHASE_LOGGER_NAME = "simple_syrup.runtime.attention_coupling.unet_attention_phase"
+_UNET_COMPOSITION_LOGGER_NAME = (
+    "simple_syrup.runtime.regional_lora.standard_unet_composition"
+)
 
 
 def test_capture_returns_unique_json_safe_snapshots_and_exact_record_count() -> None:
@@ -108,6 +112,66 @@ def test_capture_accepts_standard_unet_regional_diagnostics() -> None:
     assert capture["snapshots"][0]["denoiser_call_multiplier"] == 1.0
 
 
+def test_capture_leases_debug_level_and_restores_the_exact_previous_level() -> None:
+    """Capture detailed records without enabling normal runtime DEBUG logging."""
+
+    logger = logging.getLogger(_UNET_LOGGER_NAME)
+    previous_level = logger.level
+    logger.setLevel(logging.WARNING)
+    try:
+        CaptureRegionalDiagnosticsV3.execute(object(), "capture-debug-lease")
+        assert logger.level == logging.DEBUG
+        logger.debug(
+            "captured detailed UNet resolution",
+            extra={"regional_diagnostics": {"stage": "debug-evidence"}},
+        )
+        result = ReadRegionalDiagnosticsV3.execute({}, "capture-debug-lease")
+        assert logger.level == logging.WARNING
+    finally:
+        logger.setLevel(previous_level)
+
+    capture = result.ui["regional_diagnostics"][0]
+    assert capture["record_count"] == 1
+    assert capture["snapshots"] == [{"stage": "debug-evidence"}]
+
+
+def test_capture_keeps_standard_unet_attention_phases_separate() -> None:
+    """Retain call phases without changing regional resolution snapshots."""
+
+    logger = logging.getLogger(_UNET_PHASE_LOGGER_NAME)
+    previous_level = logger.level
+    logger.setLevel(logging.INFO)
+    try:
+        CaptureRegionalDiagnosticsV3.execute(object(), "capture-unet-phase")
+        logger.info(
+            "captured UNet phase",
+            extra={
+                "attention_phase_diagnostics": {
+                    "stage": "specialization",
+                    "denoising_progress": 0.25,
+                    "stage_progress": 0.27,
+                    "restrict_self_attention": True,
+                }
+            },
+        )
+        result = ReadRegionalDiagnosticsV3.execute({}, "capture-unet-phase")
+    finally:
+        logger.setLevel(previous_level)
+
+    capture = result.ui["regional_diagnostics"][0]
+    assert capture["record_count"] == 0
+    assert capture["snapshots"] == []
+    assert capture["attention_phase_record_count"] == 1
+    assert capture["attention_phases"] == [
+        {
+            "stage": "specialization",
+            "denoising_progress": 0.25,
+            "stage_progress": 0.27,
+            "restrict_self_attention": True,
+        }
+    ]
+
+
 def test_capture_accepts_attention_only_anima_diagnostics() -> None:
     """Capture common Anima evidence when no regional model LoRA is present."""
 
@@ -132,3 +196,37 @@ def test_capture_accepts_attention_only_anima_diagnostics() -> None:
     capture = result.ui["regional_diagnostics"][0]
     assert capture["record_count"] == 1
     assert capture["snapshots"][0]["model_call"]["sampling_sigma"] == 0.5
+
+
+def test_capture_keeps_persistent_variant_composition_separate() -> None:
+    """Capture model-active standard-UNet phase and schedule evidence."""
+
+    logger = logging.getLogger(_UNET_COMPOSITION_LOGGER_NAME)
+    previous_level = logger.level
+    logger.setLevel(logging.WARNING)
+    try:
+        CaptureRegionalDiagnosticsV3.execute(object(), "capture-composition")
+        logger.debug(
+            "captured composition",
+            extra={
+                "regional_composition": {
+                    "stage": "specialization",
+                    "denoising_progress": 0.5,
+                    "schedule_multipliers": [1.0, 1.0],
+                }
+            },
+        )
+        result = ReadRegionalDiagnosticsV3.execute({}, "capture-composition")
+    finally:
+        logger.setLevel(previous_level)
+
+    capture = result.ui["regional_diagnostics"][0]
+    assert capture["record_count"] == 0
+    assert capture["composition_record_count"] == 1
+    assert capture["composition"] == [
+        {
+            "stage": "specialization",
+            "denoising_progress": 0.5,
+            "schedule_multipliers": [1.0, 1.0],
+        }
+    ]

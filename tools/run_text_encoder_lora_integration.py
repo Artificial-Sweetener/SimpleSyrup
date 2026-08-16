@@ -42,7 +42,7 @@ from tools.comfy_integration.history_output import extract_saved_image
 from tools.comfy_integration.loopback_port import is_loopback_port_available
 from tools.comfy_integration.managed_server import ManagedComfyServer
 from tools.text_encoder_lora_integration.fixture import (
-    PINNED_TEXT_ENCODER_LORA_FIXTURE,
+    load_text_encoder_lora_fixture,
     validate_text_encoder_lora_fixture,
 )
 from tools.text_encoder_lora_integration.matrix import (
@@ -70,11 +70,12 @@ def execute_matrix(
     comfy_root: Path,
     readiness_timeout: float,
     prompt_timeout: float,
+    fixture_inventory: Path,
 ) -> Path:
     """Execute every full, tiled, and Contextual P9.4 workflow."""
 
     fixture_identity = validate_text_encoder_lora_fixture(
-        PINNED_TEXT_ENCODER_LORA_FIXTURE
+        load_text_encoder_lora_fixture(fixture_inventory)
     )
     definitions = cases()
     manifest_case = next(
@@ -95,7 +96,7 @@ def execute_matrix(
     mask_paths = tuple(
         (input_root / name).resolve() for name in (*full_masks, *upscale_masks)
     )
-    builder = TextEncoderLoraWorkflowBuilder()
+    builder = TextEncoderLoraWorkflowBuilder(fixture_identity)
     workflows = tuple(
         builder.build(
             case,
@@ -177,6 +178,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--comfy-root", type=Path, default=DEFAULT_COMFY_ROOT)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
+    parser.add_argument("--fixture-inventory", type=Path, required=True)
     parser.add_argument("--readiness-timeout", type=float, default=300.0)
     parser.add_argument("--prompt-timeout", type=float, default=1800.0)
     args = parser.parse_args(argv)
@@ -191,6 +193,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             comfy_root=args.comfy_root,
             readiness_timeout=args.readiness_timeout,
             prompt_timeout=args.prompt_timeout,
+            fixture_inventory=args.fixture_inventory,
         )
     except BaseException as error:
         artifacts.record_failure(error)

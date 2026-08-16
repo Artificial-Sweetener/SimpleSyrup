@@ -37,9 +37,12 @@ from simple_syrup.runtime.regional_lora.anima_schedule_context import (
     AnimaRegionalLoraScheduleContext,
 )
 from simple_syrup.runtime.regional_lora.anima_targets import (
+    ANIMA_BLOCK_COUNT,
     AnimaLoraAdmission,
     AnimaLoraTarget,
     AnimaLoraTargetFamily,
+    anima_lora_target_name,
+    expected_anima_lora_features,
 )
 from simple_syrup.runtime.regional_lora.execution_cache import (
     ModelCloneLineage,
@@ -112,6 +115,25 @@ def single_region_query_masks() -> AnimaQueryMaskBatch:
     """Return one feathered region repeated across both CFG chunks."""
 
     return AnimaQueryMaskBatch(torch.tensor([[[[[0.25, 0.75]]], [[[0.25, 0.75]]]]]))
+
+
+def complete_anima_admission(*, rank: int = 1) -> AnimaLoraAdmission:
+    """Build every architecture-owned Anima target without a real adapter file."""
+
+    targets: list[AnimaLoraTarget] = []
+    for block_index in range(ANIMA_BLOCK_COUNT):
+        for family in AnimaLoraTargetFamily:
+            input_features, output_features = expected_anima_lora_features(family)
+            adapter = StandardLoraTarget(
+                anima_lora_target_name(block_index, family),
+                torch.zeros((rank, input_features), dtype=torch.bfloat16),
+                torch.zeros((output_features, rank), dtype=torch.bfloat16),
+                rank,
+                input_features,
+                output_features,
+            )
+            targets.append(AnimaLoraTarget(block_index, family, adapter))
+    return AnimaLoraAdmission(tuple(targets))
 
 
 def _identity_target(family: AnimaLoraTargetFamily) -> AnimaLoraTarget:

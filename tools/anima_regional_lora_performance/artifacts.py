@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Protocol
 
@@ -21,6 +22,32 @@ class PerformanceArtifactManifest(Protocol):
         """Return exact benchmark artifacts in declared order."""
 
         ...
+
+
+def load_performance_artifacts(path: Path) -> tuple[PerformanceArtifact, ...]:
+    """Load anonymous benchmark artifacts from an external JSON inventory."""
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise TypeError("Performance artifact inventory must be a JSON array.")
+    artifacts: list[PerformanceArtifact] = []
+    for index, value in enumerate(payload):
+        if not isinstance(value, dict):
+            raise TypeError(f"Performance artifact {index} must be a JSON object.")
+        try:
+            artifacts.append(
+                PerformanceArtifact(
+                    role=str(value["role"]),
+                    path=Path(str(value["path"])),
+                    size_bytes=int(value["size_bytes"]),
+                    sha256=str(value["sha256"]),
+                )
+            )
+        except KeyError as error:
+            raise ValueError(
+                f"Performance artifact {index} is missing {error.args[0]!r}."
+            ) from error
+    return tuple(artifacts)
 
 
 def require_artifact(

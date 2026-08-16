@@ -14,12 +14,17 @@ from attention_coupling_invariant_contract import (
     AttentionCouplingCallObservation,
     AttentionCouplingCallScenario,
 )
+from comfy.patcher_extension import WrappersMP
 
 from simple_syrup.domain.regional_attention_batch import (
     BatchedRegionalAttentionContexts,
 )
 from simple_syrup.runtime.attention_coupling.unet_attention_context_wrapper import (
+    UNET_ATTENTION_CONTEXT_WRAPPER_KEY,
     StandardUnetAttentionContextDiffusionWrapper,
+)
+from simple_syrup.runtime.attention_coupling.unet_attention_phase_session import (
+    STANDARD_UNET_ATTENTION_PHASE_SESSION,
 )
 from simple_syrup.runtime.attention_coupling.unet_attention_state import (
     StandardUnetAttentionState,
@@ -69,7 +74,10 @@ class UnetAttentionCouplingCallHarness(AttentionCouplingCallHarness):
             ),
         )
         model = _UnetDiffusionModel()
-        wrapper = StandardUnetAttentionContextDiffusionWrapper(model, state)
+        wrapper = StandardUnetAttentionContextDiffusionWrapper(
+            state,
+            STANDARD_UNET_ATTENTION_PHASE_SESSION,
+        )
         executor = _UnetCallExecutor(model, state)
         base_context = _scheduled_base_context(scenario)
         base_before = base_context.clone()
@@ -82,10 +90,16 @@ class UnetAttentionCouplingCallHarness(AttentionCouplingCallHarness):
             None,
             {
                 "cond_or_uncond": list(scenario.selectors),
+                "sample_sigmas": torch.tensor([scenario.sigma, 0.0]),
                 "sigmas": torch.full(
                     (len(scenario.selectors),),
                     scenario.sigma,
                 ),
+                "wrappers": {
+                    WrappersMP.DIFFUSION_MODEL: {
+                        UNET_ATTENTION_CONTEXT_WRAPPER_KEY: [wrapper]
+                    }
+                },
             },
         )
         if executor.observed is None:

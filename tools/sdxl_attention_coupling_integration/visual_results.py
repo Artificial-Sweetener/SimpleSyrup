@@ -18,30 +18,26 @@ from .evidence_validation import (
     validate_sdxl_diagnostics,
     validate_sdxl_metrics,
 )
-from .matrix import MODES, SEED, SdxlIntegrationMode
-from .visual_cases import (
-    BASE_NEGATIVE_G,
-    BASE_NEGATIVE_L,
-    BASE_POSITIVE_G,
-    BASE_POSITIVE_L,
-    RegionalVisualAdapter,
-    SdxlVisualCase,
-    VisualMode,
-    visual_cases,
-)
+from .matrix import MODES, SdxlIntegrationMode
+from .sampling_controls import SDXL_VISUAL_SAMPLING
+from .visual_case_model import RegionalVisualAdapter, SdxlVisualCase, VisualMode
 from .visual_history import SdxlVisualHistoryEvidence
+from .visual_runtime_expectations import SDXL_VISUAL_RUNTIME_EXPECTATIONS
 from .visual_workflow import BuiltSdxlVisualWorkflow
 
 
 class SdxlVisualResultRecorder:
     """Own validated, durable, case-by-case U11 result persistence."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, cases: tuple[SdxlVisualCase, ...]) -> None:
         """Retain one existing collision-resistant managed-run directory."""
 
         self._root = root.resolve()
         if not self._root.is_dir():
             raise ValueError("U11 result root must already exist.")
+        if not isinstance(cases, tuple) or not cases:
+            raise ValueError("U11 result recorder requires declared cases.")
+        self._cases = cases
         self._observations: list[JsonObject] = []
         self._failures: list[JsonObject] = []
         self._persist("starting")
@@ -86,9 +82,12 @@ class SdxlVisualResultRecorder:
                 label=output.artifact_id,
                 expected_spatial_modes=mode.expected_spatial_modes,
             )
-            if metrics["model_call_count"] != mode.expected_model_calls:
+            expected_model_calls = (
+                SDXL_VISUAL_RUNTIME_EXPECTATIONS.expected_model_calls(case, mode)
+            )
+            if metrics["model_call_count"] != expected_model_calls:
                 raise ValueError(
-                    f"U11 {output.artifact_id} expected {mode.expected_model_calls} "
+                    f"U11 {output.artifact_id} expected {expected_model_calls} "
                     f"model calls, observed {metrics['model_call_count']}."
                 )
             image_path = case_root / f"{output.mode.value}.png"
@@ -99,17 +98,25 @@ class SdxlVisualResultRecorder:
                     "case_id": case.case_id,
                     "label": case.label,
                     "mode": output.mode.value,
-                    "seed": SEED,
+                    "seed": SDXL_VISUAL_SAMPLING.seed,
                     "mask_profile": case.mask_profile.value,
+                    "regional_prompt_start_percent": (
+                        case.regional_prompt_start_percent
+                    ),
+                    "regional_prompt_weight": case.regional_prompt_weight,
                     "prompts": {
-                        "base_positive_g": BASE_POSITIVE_G,
-                        "base_positive_l": BASE_POSITIVE_L,
-                        "base_negative_g": BASE_NEGATIVE_G,
-                        "base_negative_l": BASE_NEGATIVE_L,
+                        "base_positive_g": case.base_positive_g,
+                        "base_positive_l": case.base_positive_l,
+                        "base_negative_g": case.base_negative_g,
+                        "base_negative_l": case.base_negative_l,
                         "left_positive_g": case.left_g,
                         "left_positive_l": case.left_l,
+                        "left_negative_g": case.left_negative_g,
+                        "left_negative_l": case.left_negative_l,
                         "right_positive_g": case.right_g,
                         "right_positive_l": case.right_l,
+                        "right_negative_g": case.right_negative_g,
+                        "right_negative_l": case.right_negative_l,
                     },
                     "global_adapters": [
                         {"name": item.lora_name, "strength": item.strength}
@@ -155,11 +162,11 @@ class SdxlVisualResultRecorder:
         mask_cleanup: bool,
         mask_evidence: tuple[dict[str, object], ...],
     ) -> Path:
-        """Complete only after all 14 outputs and every external owner are clean."""
+        """Complete only after every declared output and external owner are clean."""
 
         expected = tuple(
             f"{case.case_id}--{mode.value}"
-            for case in visual_cases()
+            for case in self._cases
             for mode in case.modes
         )
         observed = tuple(cast(str, item["artifact_id"]) for item in self._observations)
@@ -201,7 +208,8 @@ def _regional_json(adapter: RegionalVisualAdapter) -> JsonObject:
     """Serialize one narrowed regional adapter declaration."""
     return {
         "name": adapter.lora_name,
-        "strength": adapter.strength,
+        "model_strength": adapter.model_strength,
+        "clip_strength": adapter.clip_strength,
         "schedule": [list(boundary) for boundary in adapter.schedule],
     }
 

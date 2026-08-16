@@ -12,6 +12,8 @@ from enum import Enum
 
 import torch
 
+from ..denoising_progress import DENOISING_PROGRESS_RESOLVER
+
 
 class AnimaCompositionStage(Enum):
     """Identify the active denoising responsibility."""
@@ -84,8 +86,7 @@ class AnimaCompositionPhaseSchedule:
     ) -> AnimaCompositionPhase:
         """Resolve one coordinated phase from the exact Comfy sigma schedule."""
 
-        values = self._validated_sigmas(sample_sigmas)
-        progress = self._progress(values, self._finite_scalar(current_sigma))
+        progress = DENOISING_PROGRESS_RESOLVER.resolve(sample_sigmas, current_sigma)
         if progress < self._composition_end:
             local = progress / self._composition_end
             return AnimaCompositionPhase(
@@ -120,58 +121,6 @@ class AnimaCompositionPhaseSchedule:
 
         bounded = min(1.0, max(0.0, value))
         return bounded * bounded * (3.0 - (2.0 * bounded))
-
-    @staticmethod
-    def _progress(values: tuple[float, ...], sigma: float) -> float:
-        """Interpolate denoising progress between adjacent schedule sigmas."""
-
-        steps = len(values) - 1
-        if sigma >= values[0]:
-            return 0.0
-        if sigma <= values[-1]:
-            return 1.0
-        for index, (start, end) in enumerate(zip(values, values[1:], strict=True)):
-            if start >= sigma >= end:
-                span = start - end
-                fraction = 0.0 if span == 0.0 else (start - sigma) / span
-                return (index + fraction) / steps
-        raise ValueError("Anima current sigma lies outside its sampling schedule.")
-
-    @staticmethod
-    def _validated_sigmas(sample_sigmas: torch.Tensor) -> tuple[float, ...]:
-        """Return one finite descending schedule with a terminal sample value."""
-
-        if (
-            not isinstance(sample_sigmas, torch.Tensor)
-            or not sample_sigmas.is_floating_point()
-            or sample_sigmas.ndim != 1
-            or sample_sigmas.numel() < 2
-        ):
-            raise ValueError(
-                "Anima composition sample_sigmas must be a floating vector with "
-                "at least two values."
-            )
-        values = tuple(float(value) for value in sample_sigmas.detach().cpu().tolist())
-        if any(not math.isfinite(value) for value in values):
-            raise ValueError("Anima composition sample_sigmas must be finite.")
-        if any(values[index] < values[index + 1] for index in range(len(values) - 1)):
-            raise ValueError("Anima composition sample_sigmas must be descending.")
-        return values
-
-    @staticmethod
-    def _finite_scalar(value: object) -> float:
-        """Normalize one scalar tensor or real current sigma."""
-
-        if isinstance(value, torch.Tensor):
-            if value.numel() != 1:
-                raise ValueError("Anima composition current sigma must be scalar.")
-            value = value.detach().cpu().item()
-        if isinstance(value, bool) or not isinstance(value, int | float):
-            raise TypeError("Anima composition current sigma must be a real number.")
-        sigma = float(value)
-        if not math.isfinite(sigma):
-            raise ValueError("Anima composition current sigma must be finite.")
-        return sigma
 
 
 ANIMA_COMPOSITION_PHASE_SCHEDULE = AnimaCompositionPhaseSchedule()

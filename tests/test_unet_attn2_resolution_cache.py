@@ -23,12 +23,14 @@ from simple_syrup.domain.spatial_views import (
     SpatialView,
     SpatialViewKind,
 )
+from simple_syrup.runtime.attention_coupling.unet_attention_resolution_key import (
+    StandardUnetAttentionResolutionKey,
+)
 from simple_syrup.runtime.attention_coupling.unet_attn2_execution import (
     UnetAttn2Execution,
 )
 from simple_syrup.runtime.attention_coupling.unet_attn2_resolution_cache import (
     StandardUnetAttn2ResolutionCache,
-    StandardUnetAttn2ResolutionKey,
 )
 
 
@@ -124,10 +126,10 @@ def test_resolution_factory_failure_does_not_poison_cache() -> None:
         assert cache.size == 1
 
 
-def _key(layout: SpatialBatchLayout) -> StandardUnetAttn2ResolutionKey:
+def _key(layout: SpatialBatchLayout) -> StandardUnetAttentionResolutionKey:
     """Return one exact CPU float32 rectangular-resolution key."""
 
-    return StandardUnetAttn2ResolutionKey(
+    return StandardUnetAttentionResolutionKey(
         input_batch_size=1,
         query_height=2,
         query_width=4,

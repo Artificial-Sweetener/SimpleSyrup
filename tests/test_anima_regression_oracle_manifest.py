@@ -15,11 +15,11 @@ def test_manifest_pins_visual_managed_performance_and_gate_contracts() -> None:
     manifest = default_manifest(Path.cwd())
 
     assert [image.identity for image in manifest.images] == [
-        "character_a-phased-composition",
-        "adapter_a-one-side-phased-composition",
+        "character-phased-composition",
+        "primary_adapter-one-side-phased-composition",
         "global-style-character-control",
-        "global-adapter_a-050-regional-character_a",
-        "global-adapter_a-100-regional-character_a",
+        "global-primary_adapter-050-regional-character",
+        "global-primary_adapter-100-regional-character",
     ]
     assert [evidence.observation_count for evidence in manifest.managed_results] == [
         None,
@@ -49,8 +49,8 @@ def test_manifest_pins_visual_managed_performance_and_gate_contracts() -> None:
         "full-python-suite",
     ]
     assert [command.identity for command in manifest.managed_rerun_commands] == [
-        "character_a-managed-proof",
-        "adapter_a-managed-proof",
+        "character-managed-proof",
+        "primary_adapter-managed-proof",
         "global-style-character-proof",
         "full-managed-matrix",
         "tiled-managed-matrix",

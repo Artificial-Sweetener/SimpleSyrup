@@ -19,8 +19,8 @@ from .matrix import (
     POSITIVE_PROMPTS_G,
     REFINEMENT_DENOISE,
     REFINEMENT_STEPS,
+    REGIONAL_PROMPT_WEIGHT,
     SOURCE_HEIGHT,
-    SOURCE_STEPS,
     SOURCE_WIDTH,
     TARGET_HEIGHT,
     TARGET_WIDTH,
@@ -29,6 +29,7 @@ from .matrix import (
     TILE_SIZE,
 )
 from .sampler_branch import SdxlWorkflowOutputs, add_sampler_branch
+from .sampling_controls import SDXL_VISUAL_SAMPLING
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,8 +91,10 @@ def build_sdxl_attention_coupling_workflow(
         latent=[source_latent, 0],
         vae=[loader, 2],
         run_id=run_id,
-        steps=SOURCE_STEPS,
+        steps=SDXL_VISUAL_SAMPLING.steps,
         denoise=1.0,
+        regional_prompt_weight=REGIONAL_PROMPT_WEIGHT,
+        region_mask_feather=32,
         sampler_inputs={},
     )
     outputs[MODES[0].mode_id] = full_branch.outputs
@@ -121,6 +124,8 @@ def build_sdxl_attention_coupling_workflow(
         run_id=run_id,
         steps=REFINEMENT_STEPS,
         denoise=REFINEMENT_DENOISE,
+        regional_prompt_weight=REGIONAL_PROMPT_WEIGHT,
+        region_mask_feather=32,
         sampler_inputs={
             "diffusion_mode": "multidiffusion",
             "latent_tile_width": TILE_SIZE,
@@ -143,6 +148,8 @@ def build_sdxl_attention_coupling_workflow(
         run_id=run_id,
         steps=REFINEMENT_STEPS,
         denoise=REFINEMENT_DENOISE,
+        regional_prompt_weight=REGIONAL_PROMPT_WEIGHT,
+        region_mask_feather=32,
         sampler_inputs={
             "diffusion_mode": "multidiffusion",
             "latent_context_size": TILE_SIZE,

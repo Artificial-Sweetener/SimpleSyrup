@@ -10,8 +10,8 @@ from dataclasses import dataclass
 
 from tools.anima_attention_coupling_prompts import (
     GLOBAL_GLOBAL_ADAPTER,
-    PINNED_ADAPTER_B,
-    PINNED_ADAPTER_A,
+    PINNED_PRIMARY_ADAPTER,
+    PINNED_SECONDARY_ADAPTER,
     GlobalLora,
     RegionalLora,
 )
@@ -52,10 +52,10 @@ def cases() -> tuple[TiledIntegrationCase, ...]:
     """Return both fusion modes at tile batches 1, 2, 4, and 8."""
 
     scheduled = (
-        RegionalLora(0, PINNED_ADAPTER_A, 0.8, (0.0, 0.75)),
-        RegionalLora(1, PINNED_ADAPTER_B, 0.8, (0.25, 1.0)),
+        RegionalLora(0, PINNED_PRIMARY_ADAPTER, 0.8, (0.0, 0.75)),
+        RegionalLora(1, PINNED_SECONDARY_ADAPTER, 0.8, (0.25, 1.0)),
     )
-    one_adapter_a = (RegionalLora(0, PINNED_ADAPTER_A, 0.8),)
+    one_primary_adapter = (RegionalLora(0, PINNED_PRIMARY_ADAPTER, 0.8),)
     definitions: list[TiledIntegrationCase] = []
     for diffusion_mode in ("multidiffusion", "mixture_of_diffusers"):
         mode_label = (
@@ -73,9 +73,9 @@ def cases() -> tuple[TiledIntegrationCase, ...]:
                         f"{mode_label} upscale refinement; tile batch "
                         f"{tile_batch_size}; "
                         + (
-                            "scheduled ADAPTER_A/ADAPTER_B; "
+                            "scheduled PRIMARY_ADAPTER/SECONDARY_ADAPTER; "
                             if scheduled_case
-                            else "single ADAPTER_A; "
+                            else "single PRIMARY_ADAPTER; "
                         )
                         + (
                             "contained, boundary, and uncovered tiles"
@@ -90,9 +90,11 @@ def cases() -> tuple[TiledIntegrationCase, ...]:
                     ),
                     cfg=4.0 if tile_batch_size == 8 else 1.0,
                     global_loras=(
-                        (GlobalLora(GLOBAL_GLOBAL_ADAPTER, 0.35),) if tile_batch_size == 8 else ()
+                        (GlobalLora(GLOBAL_GLOBAL_ADAPTER, 0.35),)
+                        if tile_batch_size == 8
+                        else ()
                     ),
-                    regional_loras=scheduled if scheduled_case else one_adapter_a,
+                    regional_loras=scheduled if scheduled_case else one_primary_adapter,
                 )
             )
     return tuple(definitions)

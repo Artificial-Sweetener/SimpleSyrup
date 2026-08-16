@@ -35,7 +35,7 @@ def synthetic_rejection_message(case: AnimaNondiffusionRejectionCase) -> str:
             "diffusion_model.llm_adapter.blocks.5.self_attn.v_proj",
         ]
         issue_lines = tuple(
-            f"- adapter 0 'anima-turbo-v0.2' key '{target}': {reason}"
+            f"- adapter 0 'mixed-target-adapter' key '{target}': {reason}"
             for target in targets
         )
     elif case.case_id == "llm-adapter-only":

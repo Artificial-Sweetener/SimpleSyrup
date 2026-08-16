@@ -256,20 +256,20 @@ def test_compatible_batch_applies_each_multiplier_in_rank_space(
         counted_linear,
     )
 
-    outputs = RegionalLoraDeltaExecutor().compatible_batch(
+    outputs = RegionalLoraDeltaExecutor().compatible_deltas(
         inputs,
         preparation=preparation,
         multipliers=multipliers,
     )
 
-    expected = torch.stack(
-        (
-            ((inputs @ first.down.T) * multipliers[0].unsqueeze(-1)) @ first.up.T,
-            ((inputs @ second.down.T) * multipliers[1].unsqueeze(-1)) @ second.up.T,
-        ),
-        dim=-2,
+    expected = (
+        ((inputs @ first.down.T) * multipliers[0].unsqueeze(-1)) @ first.up.T,
+        ((inputs @ second.down.T) * multipliers[1].unsqueeze(-1)) @ second.up.T,
     )
-    torch.testing.assert_close(outputs, expected)
+    assert len(outputs) == len(expected)
+    for observed, expected_delta in zip(outputs, expected, strict=True):
+        torch.testing.assert_close(observed, expected_delta)
+        assert observed.is_contiguous()
     assert linear_calls == 1
     assert len(preparation._prepared) == 1
 

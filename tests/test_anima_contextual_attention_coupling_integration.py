@@ -68,7 +68,7 @@ def test_matrix_covers_modes_branches_segs_schedules_and_subtoken_masks(
         for case in definitions
     )
     assert all(
-        any("ADAPTER_A" in adapter.lora_name for adapter in case.regional_loras)
+        len({adapter.lora_name for adapter in case.regional_loras}) == 2
         for case in definitions
     )
     writer = MaskArtifactWriter(tmp_path, "p78-test")

@@ -12,6 +12,7 @@ from inspect import Parameter, Signature, signature
 from typing import cast
 
 from comfy.patcher_extension import WrappersMP
+from comfy.utils import get_attr
 
 
 def _require_bound_method(
@@ -237,54 +238,6 @@ class ModelDiffusionWrapperMutation:
 
 
 @dataclass(frozen=True)
-class ModelAttn2PatchesMutation:
-    """Install paired collision-safe attn2 input and output patches."""
-
-    input_patch: Callable[..., object]
-    output_patch: Callable[..., object]
-
-    def apply(self, model: object) -> None:
-        """Validate both patch surfaces and existing state before either mutation."""
-
-        if not callable(self.input_patch):
-            raise TypeError("MODEL attn2 input patch must be callable.")
-        if not callable(self.output_patch):
-            raise TypeError("MODEL attn2 output patch must be callable.")
-
-        input_setter = _require_bound_method(
-            model,
-            "set_model_attn2_patch",
-            ("patch",),
-        )
-        output_setter = _require_bound_method(
-            model,
-            "set_model_attn2_output_patch",
-            ("patch",),
-        )
-        model_options = _require_dictionary_attribute(model, "model_options")
-        transformer_options = model_options.get("transformer_options")
-        if not isinstance(transformer_options, dict):
-            raise TypeError("MODEL transformer_options must be a dictionary.")
-        if "patches" not in transformer_options:
-            patches: dict[object, object] = {}
-        else:
-            patches_value = transformer_options["patches"]
-            if not isinstance(patches_value, dict):
-                raise TypeError("MODEL transformer patches must be a dictionary.")
-            patches = patches_value
-
-        input_exists = _require_callable_patch_list(patches, "attn2_patch")
-        output_exists = _require_callable_patch_list(patches, "attn2_output_patch")
-        if input_exists:
-            raise ValueError("MODEL attn2 input patch is already installed.")
-        if output_exists:
-            raise ValueError("MODEL attn2 output patch is already installed.")
-
-        input_setter(self.input_patch)
-        output_setter(self.output_patch)
-
-
-@dataclass(frozen=True)
 class ModelExactObjectPatchMutation:
     """Replace one exact model object after collision and identity validation."""
 
@@ -320,5 +273,42 @@ class ModelExactObjectPatchMutation:
         if current_object is not self.expected_object:
             raise ValueError(
                 f"MODEL object path '{self.path}' does not match the expected object."
+            )
+        adder(self.path, self.replacement)
+
+
+@dataclass(frozen=True)
+class ModelSharedObjectPatchMutation:
+    """Register one exact object patch already live across a Comfy clone handoff."""
+
+    path: str
+    expected_backup: object
+    replacement: object
+
+    def apply(self, model: object) -> None:
+        """Admit only the exact shared backup and live replacement identities."""
+
+        if (
+            not isinstance(self.path, str)
+            or not self.path
+            or any(not segment for segment in self.path.split("."))
+        ):
+            raise ValueError("MODEL object patch path must be a non-empty dotted path.")
+        adder = _require_bound_method(model, "add_object_patch", ("name", "obj"))
+        object_patches = _require_dictionary_attribute(model, "object_patches")
+        object_patches_backup = _require_dictionary_attribute(
+            model,
+            "object_patches_backup",
+        )
+        if self.path in object_patches:
+            raise ValueError(f"MODEL object path '{self.path}' already has a patch.")
+        if object_patches_backup.get(self.path) is not self.expected_backup:
+            raise ValueError(
+                f"MODEL object path '{self.path}' has a foreign shared backup."
+            )
+        root = getattr(model, "model", None)
+        if root is None or get_attr(root, self.path) is not self.replacement:
+            raise ValueError(
+                f"MODEL object path '{self.path}' has a foreign live replacement."
             )
         adder(self.path, self.replacement)

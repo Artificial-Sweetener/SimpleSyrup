@@ -6,9 +6,10 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import comfy.sd
 
@@ -19,6 +20,7 @@ from simple_syrup.domain.regional_lora_plan import (
     RegionalLoraPlan,
     RegionalLoraScheduleBoundary,
 )
+from tools.comfy_api import JsonObject
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,33 +72,47 @@ class RegionalLoraRealFixture:
         )
 
 
-REGIONAL_LORA_REAL_FIXTURES = {
-    "anima": RegionalLoraRealFixture(
-        family="anima",
-        model_path=Path(
-            r"<MODEL_ROOT>\diffusion_models\Anima\diffusion-model.safetensors"
-        ),
-        lora_path=Path(r"<MODEL_ROOT>\Loras\Anima\style\adapter-a.safetensors"),
-        standalone_diffusion_model=True,
-    ),
-    "sd15": RegionalLoraRealFixture(
-        family="sd15",
-        model_path=Path(
-            r"<MODEL_ROOT>\stable-diffusion\SD 1.5\checkpoint-fixture.safetensors"
-        ),
-        lora_path=Path(r"<MODEL_ROOT>\lorabka\SD 1.5\adapter-fixture.safetensors"),
-        standalone_diffusion_model=False,
-    ),
-    "sdxl": RegionalLoraRealFixture(
-        family="sdxl",
-        model_path=Path(
-            "<MODEL_ROOT>\\stable-diffusion\\Illustrious\\"
-            "checkpoint_aXLIllustrious_v30WIP.safetensors"
-        ),
-        lora_path=Path(
-            "<MODEL_ROOT>\\Loras\\Illustrious\\Style\\"
-            "ELDEN RING Background_illustriousXL_v2.safetensors"
-        ),
-        standalone_diffusion_model=False,
-    ),
-}
+def load_real_fixtures(path: Path) -> dict[str, RegionalLoraRealFixture]:
+    """Load externally selected model/adapter pairs keyed by capability role."""
+
+    try:
+        decoded: object = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            "Regional real-fixture inventory must be valid JSON."
+        ) from error
+    if not isinstance(decoded, dict) or not decoded:
+        raise ValueError("Regional real-fixture inventory must be a non-empty object.")
+    fixtures: dict[str, RegionalLoraRealFixture] = {}
+    for role, raw in decoded.items():
+        if not isinstance(role, str) or not role or not isinstance(raw, dict):
+            raise TypeError("Regional real-fixture entries must be named objects.")
+        entry = cast(JsonObject, raw)
+        model_path = _absolute_path(entry, "model_path")
+        lora_path = _absolute_path(entry, "lora_path")
+        standalone = entry.get("standalone_diffusion_model")
+        if not isinstance(standalone, bool):
+            raise TypeError(
+                "Regional fixture standalone_diffusion_model must be boolean."
+            )
+        fixture = RegionalLoraRealFixture(
+            family=role,
+            model_path=model_path,
+            lora_path=lora_path,
+            standalone_diffusion_model=standalone,
+        )
+        fixture.require_files()
+        fixtures[role] = fixture
+    return fixtures
+
+
+def _absolute_path(payload: JsonObject, key: str) -> Path:
+    """Return one required absolute external artifact path."""
+
+    value = payload.get(key)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"Regional fixture {key!r} must be non-empty text.")
+    path = Path(value)
+    if not path.is_absolute():
+        raise ValueError(f"Regional fixture {key!r} must be absolute.")
+    return path

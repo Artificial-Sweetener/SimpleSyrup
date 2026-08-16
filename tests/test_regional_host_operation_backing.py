@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Prove generic regional operation shells preserve Comfy host behavior."""
+"""Prove lightweight regional wrappers use live native Comfy operations."""
 
 from __future__ import annotations
 
@@ -60,13 +60,12 @@ from simple_syrup.runtime.regional_lora.standard_adapter import StandardLoraTarg
 
 
 def test_linear_inactive_path_matches_exact_original_and_preserves_source() -> None:
-    """Delegate through the exact host class without mutating source registrations."""
+    """Delegate to the exact native host without registering or copying it."""
 
     original = comfy.ops.disable_weight_init.Linear(2, 2, bias=False)
     original.weight = nn.Parameter(torch.eye(2), requires_grad=False)
     original.register_buffer("calibration", torch.tensor([3.0]))
     original.eval()
-    source_weight = original.weight
     context = RegionalOperationInvocationContext()
     patch = RegionalLinearOperationPatch(
         "diffusion_model.linear",
@@ -77,16 +76,12 @@ def test_linear_inactive_path_matches_exact_original_and_preserves_source() -> N
     inputs = torch.tensor([[[1.0, 2.0], [3.0, 4.0]]])
 
     torch.testing.assert_close(patch(inputs), original(inputs))
-    assert type(patch._host_backing.module) is type(original)
-    assert patch.weight is patch._host_backing.module.weight
-    assert patch.weight is not source_weight
-    assert patch.training is False
-    assert patch._host_backing.module.training is False
-    assert patch.calibration is patch._host_backing.module.calibration
-    assert "calibration" in dict(patch.named_buffers())
+    assert patch.original is original
+    assert tuple(patch.parameters()) == ()
+    assert tuple(patch.buffers()) == ()
     patch.to(dtype=torch.float64)
-    assert patch.weight.dtype is torch.float64
-    assert source_weight.dtype is torch.float32
+    assert original.weight.dtype is torch.float32
+    assert original.calibration.dtype is torch.float32
 
 
 def test_linear_active_path_applies_only_task_local_regional_delta() -> None:
@@ -117,8 +112,8 @@ def test_linear_active_path_applies_only_task_local_regional_delta() -> None:
     torch.testing.assert_close(patch(inputs), inputs)
 
 
-def test_host_weight_functions_and_lowvram_writes_reach_exact_shell() -> None:
-    """Mirror Comfy cast, global patch, low-VRAM, and transient deletion state."""
+def test_host_weight_functions_remain_owned_by_live_native_operation() -> None:
+    """Use Comfy cast and weight-function state directly from the native host."""
 
     original = comfy.ops.disable_weight_init.Linear(2, 2, bias=False)
     original.weight = nn.Parameter(torch.eye(2), requires_grad=False)
@@ -128,21 +123,12 @@ def test_host_weight_functions_and_lowvram_writes_reach_exact_shell() -> None:
         _linear_plan(),
     )
     inputs = torch.tensor([[1.0, 2.0]])
-    patch.weight_function = [lambda weight: weight * 2.0]
-    patch.bias_function = []
-    patch.comfy_cast_weights = True
-    patch.weight_lowvram_function = object()
-    patch.prev_comfy_cast_weights = False
+    original.weight_function = [lambda weight: weight * 2.0]
+    original.bias_function = []
+    original.comfy_cast_weights = True
 
     torch.testing.assert_close(patch(inputs), inputs * 2.0)
-    backing = patch._host_backing.module
-    assert backing.weight_function is patch.weight_function
-    assert backing.bias_function is patch.bias_function
-    assert backing.weight_lowvram_function is patch.weight_lowvram_function
-    assert backing.__dict__["prev_comfy_cast_weights"] is False
-    del patch.prev_comfy_cast_weights
-    assert not hasattr(patch, "prev_comfy_cast_weights")
-    assert not hasattr(backing, "prev_comfy_cast_weights")
+    assert patch.original is original
 
 
 def test_convolution_inactive_and_active_paths_preserve_host_semantics() -> None:
@@ -192,10 +178,8 @@ def test_convolution_inactive_and_active_paths_preserve_host_semantics() -> None
     expected = inputs.clone()
     expected[:, :, 0, 0] *= 2.0
     torch.testing.assert_close(output, expected)
-    assert type(patch._host_backing.module) is type(original)
-    assert patch.stride == original.stride
-    assert patch.padding == original.padding
-    assert patch.groups == original.groups
+    assert patch.original is original
+    assert tuple(patch.parameters()) == ()
 
 
 def _linear_plan() -> RegionalLinearExecutionPlan:
