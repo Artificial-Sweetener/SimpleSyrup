@@ -9,25 +9,33 @@ from __future__ import annotations
 import torch
 
 from ...domain.regional_mask_bank import RegionalMaskBank
-from ...domain.spatial_views import SpatialBatchLayout
 from ...masking.regional_mask_projection import (
     RegionalMaskForm,
     RegionalMaskProjectionMode,
     RegionalMaskProjector,
 )
-from ..spatial_model_arguments import (
-    SIMPLE_SYRUP_TRANSFORMER_NAMESPACE,
-    SPATIAL_BATCH_LAYOUT_KEY,
+from .standard_unet_variant_spatial_context import (
+    STANDARD_UNET_VARIANT_SPATIAL_CONTEXT,
+    StandardUnetVariantSpatialContext,
 )
 
 
 class StandardUnetVariantMaskProjector:
     """Own full, tiled, and Contextual model-output mask alignment."""
 
-    def __init__(self, projector: RegionalMaskProjector | None = None) -> None:
+    def __init__(
+        self,
+        projector: RegionalMaskProjector | None = None,
+        spatial_context: StandardUnetVariantSpatialContext = (
+            STANDARD_UNET_VARIANT_SPATIAL_CONTEXT
+        ),
+    ) -> None:
         """Retain the canonical crop and interpolation authority."""
 
+        if not isinstance(spatial_context, StandardUnetVariantSpatialContext):
+            raise TypeError("Standard UNet mask projection requires spatial context.")
         self._projector = projector or RegionalMaskProjector()
+        self._spatial_context = spatial_context
 
     def project(
         self,
@@ -46,7 +54,7 @@ class StandardUnetVariantMaskProjector:
         if not isinstance(transformer_options, dict):
             raise TypeError("Standard UNet variant options must be a dictionary.")
         self._validate_regions(region_indices, bank.region_count)
-        layout = self._layout(transformer_options)
+        layout = self._spatial_context.layout(transformer_options)
         height, width = int(model_input.shape[-2]), int(model_input.shape[-1])
         if layout is None:
             if (height, width) != (bank.canvas_height, bank.canvas_width):
@@ -112,20 +120,6 @@ class StandardUnetVariantMaskProjector:
         )
         coverage = bank.conditioning_masks[list(region_indices)].sum(dim=0)
         return bool((coverage < 1.0).any().item())
-
-    @staticmethod
-    def _layout(options: dict[str, object]) -> SpatialBatchLayout | None:
-        """Return the optional authoritative spatial batch layout."""
-
-        namespace = options.get(SIMPLE_SYRUP_TRANSFORMER_NAMESPACE)
-        if namespace is None:
-            return None
-        if not isinstance(namespace, dict):
-            raise TypeError("Standard UNet SimpleSyrup namespace must be a dictionary.")
-        layout = namespace.get(SPATIAL_BATCH_LAYOUT_KEY)
-        if layout is not None and not isinstance(layout, SpatialBatchLayout):
-            raise TypeError("Standard UNet spatial layout has an invalid type.")
-        return layout
 
     @staticmethod
     def _validate_regions(region_indices: tuple[int, ...], region_count: int) -> None:

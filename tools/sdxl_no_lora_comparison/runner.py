@@ -11,13 +11,13 @@ from pathlib import Path
 from tools.comfy_api import JsonObject, LoopbackComfyClient
 from tools.comfy_integration.artifacts import IntegrationArtifacts
 from tools.comfy_integration.loopback_port import is_loopback_port_available
+from tools.comfy_integration.managed_model_links import (
+    ManagedComfyModelLinks,
+    ManagedModelLink,
+)
 from tools.comfy_integration.managed_server import ManagedComfyServer
 from tools.sdxl_attention_coupling_integration.comfy_model_root import (
     resolve_active_comfy_model_root,
-)
-from tools.sdxl_attention_coupling_integration.managed_model_links import (
-    ManagedModelLink,
-    ManagedSdxlVisualModelLinks,
 )
 from tools.sdxl_attention_coupling_integration.visual_adapter_selections import (
     CHECKPOINT_SELECTION,
@@ -54,7 +54,7 @@ def run_no_lora_comparison(
 ) -> Path:
     """Warm both graph families and record one measured image from each."""
 
-    links = ManagedSdxlVisualModelLinks(
+    links = ManagedComfyModelLinks(
         model_root=resolve_active_comfy_model_root(comfy_root),
         links=(
             ManagedModelLink(

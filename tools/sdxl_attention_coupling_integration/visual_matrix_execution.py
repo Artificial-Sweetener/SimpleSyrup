@@ -13,13 +13,16 @@ from pathlib import Path
 from tools.comfy_api import JsonObject
 from tools.comfy_integration.artifacts import IntegrationArtifacts
 from tools.comfy_integration.loopback_port import is_loopback_port_available
+from tools.comfy_integration.managed_model_links import (
+    ManagedComfyModelLinks,
+    ManagedModelLink,
+)
 from tools.comfy_integration.managed_server import (
     ManagedComfyServer,
     RunningManagedComfy,
 )
 
 from .comfy_model_root import resolve_active_comfy_model_root
-from .managed_model_links import ManagedModelLink, ManagedSdxlVisualModelLinks
 from .sampling_controls import SDXL_VISUAL_SAMPLING, validate_sdxl_visual_seed
 from .visual_adapter_selections import (
     CHECKPOINT_SELECTION,
@@ -127,10 +130,10 @@ def execute_visual_cases(
 def build_sdxl_visual_model_links(
     comfy_root: Path,
     inventory: SdxlVisualInventory,
-) -> ManagedSdxlVisualModelLinks:
+) -> ManagedComfyModelLinks:
     """Return the exact checkpoint and LoRA visibility owner."""
 
-    return ManagedSdxlVisualModelLinks(
+    return ManagedComfyModelLinks(
         model_root=resolve_active_comfy_model_root(comfy_root),
         links=(
             ManagedModelLink(

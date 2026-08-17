@@ -75,3 +75,22 @@ def test_manifest_names_focused_tests_explicitly() -> None:
     assert "tests/test_anima_tiled_attention_coupling_integration.py" in tests
     assert "tests/test_anima_contextual_attention_coupling_integration.py" in tests
     assert "tests/test_anima_regional_lora_performance_results.py" in tests
+
+
+def test_performance_command_supplies_an_external_artifact_inventory() -> None:
+    """Keep the required anonymous input and robust repeat count explicit."""
+
+    command = default_manifest(Path.cwd()).managed_rerun_commands[-1]
+    inventory_flag = command.arguments.index("--artifact-inventory")
+    repeats_flag = command.arguments.index("--repeats")
+
+    assert Path(command.arguments[inventory_flag + 1]).suffix == ".json"
+    assert command.arguments[repeats_flag + 1] == "5"
+
+
+def test_manifest_supplies_an_external_model_visibility_inventory() -> None:
+    """Keep machine-local model identities outside the oracle definition."""
+
+    manifest = default_manifest(Path.cwd())
+
+    assert manifest.model_visibility_inventory.suffix == ".json"

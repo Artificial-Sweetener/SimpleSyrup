@@ -7,14 +7,25 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from tools.anima_regional_lora_performance.artifacts import load_performance_artifacts
-from tools.anima_regional_lora_performance.manifest import default_manifest
-from tools.anima_regional_lora_performance.results import evaluate, write_result
-from tools.anima_regional_lora_performance.runner import (
-    ANIMA_REGIONAL_LORA_PERFORMANCE_RUNNER,
+REPO_ROOT = Path(__file__).resolve().parents[1]
+COMFY_ROOT = REPO_ROOT.parents[1]
+for source_root in (REPO_ROOT, COMFY_ROOT):
+    if str(source_root) not in sys.path:
+        sys.path.insert(0, str(source_root))
+
+from tools.anima_regional_lora_performance.artifacts import (  # noqa: E402
+    load_performance_artifacts,
+)
+from tools.anima_regional_lora_performance.manifest import (  # noqa: E402
+    default_manifest,
+)
+from tools.anima_regional_lora_performance.results import (  # noqa: E402
+    evaluate,
+    write_result,
 )
 
 
@@ -22,6 +33,10 @@ def main() -> int:
     """Execute the complete benchmark and return failure when a gate misses."""
 
     arguments = _arguments()
+    from tools.anima_regional_lora_performance.runner import (
+        ANIMA_REGIONAL_LORA_PERFORMANCE_RUNNER,
+    )
+
     manifest = default_manifest(
         repeats=arguments.repeats,
         artifacts=load_performance_artifacts(arguments.artifact_inventory),

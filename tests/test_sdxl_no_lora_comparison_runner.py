@@ -160,7 +160,7 @@ def test_runner_warms_both_paths_then_records_two_measured_outputs(
         "resolve_active_comfy_model_root",
         lambda _root: tmp_path,
     )
-    monkeypatch.setattr(runner, "ManagedSdxlVisualModelLinks", _FakeModelLinks)
+    monkeypatch.setattr(runner, "ManagedComfyModelLinks", _FakeModelLinks)
     monkeypatch.setattr(runner, "ManagedSdxlVisualMasks", _FakeMasks)
     monkeypatch.setattr(runner, "ManagedComfyServer", _FakeManagedServer)
     monkeypatch.setattr(runner, "is_loopback_port_available", lambda _port: True)

@@ -89,12 +89,8 @@ def _validate_composition_diagnostics(
     label: str,
     expected_spatial_modes: frozenset[str],
 ) -> JsonObject:
-    """Validate persistent-variant composition evidence for a full-latent run."""
+    """Validate persistent-variant composition and spatial execution evidence."""
 
-    if expected_spatial_modes != frozenset({"full"}):
-        raise ValueError(
-            f"SDXL {label} diagnostics must contain spatial-mode snapshots."
-        )
     record_count = diagnostics.get("composition_record_count")
     values = diagnostics.get("composition")
     if (
@@ -105,6 +101,7 @@ def _validate_composition_diagnostics(
         or not values
     ):
         raise ValueError(f"SDXL {label} diagnostics must contain snapshots.")
+    observed_spatial_modes: set[str] = set()
     for value in values:
         if not isinstance(value, dict):
             raise TypeError(f"SDXL {label} composition diagnostic must be an object.")
@@ -113,6 +110,7 @@ def _validate_composition_diagnostics(
         sampling_sigma = value.get("sampling_sigma")
         multipliers = value.get("schedule_multipliers")
         schedules = value.get("adapter_schedules")
+        spatial_modes = value.get("spatial_modes")
         if stage not in {"composition", "specialization", "consolidation"}:
             raise ValueError(f"SDXL {label} composition stage is invalid.")
         if (
@@ -139,6 +137,17 @@ def _validate_composition_diagnostics(
         ):
             raise ValueError(f"SDXL {label} composition sigma is invalid.")
         _validate_adapter_schedules(schedules, len(multipliers), label)
+        if not isinstance(spatial_modes, list) or not spatial_modes:
+            raise ValueError(f"SDXL {label} composition spatial modes are invalid.")
+        for spatial_mode in spatial_modes:
+            if not isinstance(spatial_mode, str) or not spatial_mode:
+                raise ValueError(f"SDXL {label} composition spatial modes are invalid.")
+            observed_spatial_modes.add(spatial_mode)
+    if not expected_spatial_modes <= observed_spatial_modes:
+        raise ValueError(
+            f"SDXL {label} composition diagnostics missing spatial modes "
+            f"{sorted(expected_spatial_modes - observed_spatial_modes)!r}."
+        )
     return diagnostics
 
 

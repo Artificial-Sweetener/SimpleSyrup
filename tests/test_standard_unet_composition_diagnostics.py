@@ -57,6 +57,7 @@ def test_diagnostics_emit_json_compatible_authored_and_effective_strengths() -> 
             ),
             (RegionalLoraScheduleBoundary(0.0, 14.0, 0.25, 1),),
         ),
+        ("tile",),
     )
 
     emitter.emit(diagnostic)
@@ -96,5 +97,6 @@ def test_diagnostics_emit_json_compatible_authored_and_effective_strengths() -> 
                 }
             ],
         ],
+        "spatial_modes": ["tile"],
     }
     json.dumps(values)

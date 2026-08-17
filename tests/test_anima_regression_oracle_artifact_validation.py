@@ -149,6 +149,7 @@ def _manifest(root: Path) -> AnimaRegressionManifest:
                 ("regional-lora-4", 35.0),
             ),
         ),
+        model_visibility_inventory=root / "model-visibility.json",
         focused_command=empty,
         repository_commands=(),
         managed_rerun_commands=(),

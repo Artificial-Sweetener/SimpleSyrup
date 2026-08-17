@@ -46,6 +46,10 @@ from .standard_unet_variant_output import (
     STANDARD_UNET_VARIANT_OUTPUT_COMPOSER,
     StandardUnetVariantOutputComposer,
 )
+from .standard_unet_variant_spatial_context import (
+    STANDARD_UNET_VARIANT_SPATIAL_CONTEXT,
+    StandardUnetVariantSpatialContext,
+)
 from .standard_unet_variant_topology import (
     StandardUnetRegionalVariant,
     StandardUnetVariantTopology,
@@ -74,6 +78,9 @@ class StandardUnetVariantExecution:
         ),
         output_composer: StandardUnetVariantOutputComposer = (
             STANDARD_UNET_VARIANT_OUTPUT_COMPOSER
+        ),
+        spatial_context: StandardUnetVariantSpatialContext = (
+            STANDARD_UNET_VARIANT_SPATIAL_CONTEXT
         ),
         diagnostics: StandardUnetCompositionDiagnosticsEmitter = (
             STANDARD_UNET_COMPOSITION_DIAGNOSTICS_EMITTER
@@ -104,6 +111,8 @@ class StandardUnetVariantExecution:
             raise TypeError("Standard UNet variant execution requires base attention.")
         if not isinstance(lane_planner, StandardUnetVariantLanePlanner):
             raise TypeError("Standard UNet variant execution requires a lane planner.")
+        if not isinstance(spatial_context, StandardUnetVariantSpatialContext):
+            raise TypeError("Standard UNet variant execution requires spatial context.")
         self._base_diffusion = base_diffusion
         self._plan = plan
         self._topology = topology
@@ -113,6 +122,7 @@ class StandardUnetVariantExecution:
         self._mask_projector = mask_projector
         self._output_composer = output_composer
         self._diagnostics = diagnostics
+        self._spatial_context = spatial_context
         self._schedule = StandardUnetLoraSchedule(plan)
         self._lane_planner = lane_planner
         self._lane_executor = StandardUnetVariantLaneExecutor(
@@ -153,6 +163,7 @@ class StandardUnetVariantExecution:
                 multipliers,
                 sampling_sigma,
                 tuple(adapter.schedule for adapter in self._plan.adapters),
+                self._spatial_context.modes(invocation.transformer_options),
             )
         )
         active = self._active_variants(multipliers)

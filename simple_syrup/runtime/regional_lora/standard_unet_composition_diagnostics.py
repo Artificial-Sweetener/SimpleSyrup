@@ -26,6 +26,7 @@ class StandardUnetCompositionDiagnostic:
     schedule_multipliers: tuple[float, ...]
     sampling_sigma: float
     adapter_schedules: tuple[tuple[RegionalLoraScheduleBoundary, ...], ...]
+    spatial_modes: tuple[str, ...]
 
     def __post_init__(self) -> None:
         """Require one schedule and finite multiplier per canonical adapter."""
@@ -38,6 +39,10 @@ class StandardUnetCompositionDiagnostic:
             )
         if any(not schedule for schedule in self.adapter_schedules):
             raise ValueError("Standard UNet composition schedules must be nonempty.")
+        if not self.spatial_modes or any(not mode for mode in self.spatial_modes):
+            raise ValueError(
+                "Standard UNet composition spatial modes must be nonempty."
+            )
 
     def as_dict(self) -> dict[str, object]:
         """Return JSON-compatible structured diagnostic values."""
@@ -59,6 +64,7 @@ class StandardUnetCompositionDiagnostic:
                 ]
                 for schedule in self.adapter_schedules
             ],
+            "spatial_modes": list(self.spatial_modes),
         }
 
 

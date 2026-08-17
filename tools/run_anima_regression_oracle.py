@@ -26,11 +26,18 @@ from tools.anima_regression_oracle.execution import (  # noqa: E402
     OracleCommandExecutor,
 )
 from tools.anima_regression_oracle.manifest import (  # noqa: E402
+    DEFAULT_MODEL_VISIBILITY_INVENTORY,
     OracleCommand,
     default_manifest,
 )
+from tools.anima_regression_oracle.model_visibility import (  # noqa: E402
+    anima_oracle_model_visibility,
+)
 from tools.anima_regression_oracle.results import (  # noqa: E402
     AnimaRegressionResultRecorder,
+)
+from tools.sdxl_attention_coupling_integration.comfy_model_root import (  # noqa: E402
+    resolve_active_comfy_model_root,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -53,6 +60,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
+    parser.add_argument(
+        "--model-visibility-inventory",
+        type=Path,
+        default=DEFAULT_MODEL_VISIBILITY_INVENTORY,
+        help="Load machine-local adapter sources for complete managed reruns.",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     recorder = AnimaRegressionResultRecorder(args.output_root / _run_id())
@@ -67,11 +80,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     observations: tuple[CommandObservation, ...] = ()
     try:
         artifacts = AcceptedArtifactValidator().validate(manifest)
-        observations = OracleCommandExecutor().execute(
-            commands,
-            repo_root=REPO_ROOT,
-            output_root=recorder.root,
-        )
+        if args.level == "complete":
+            visibility = anima_oracle_model_visibility(
+                args.model_visibility_inventory,
+                model_root=_active_model_root(REPO_ROOT.parents[1]),
+            )
+            with visibility:
+                observations = OracleCommandExecutor().execute(
+                    commands,
+                    repo_root=REPO_ROOT,
+                    output_root=recorder.root,
+                )
+            if not visibility.cleaned:
+                raise RuntimeError("Anima oracle model visibility cleanup failed.")
+        else:
+            observations = OracleCommandExecutor().execute(
+                commands,
+                repo_root=REPO_ROOT,
+                output_root=recorder.root,
+            )
     except BaseException:
         LOGGER.exception("Anima regression oracle failed before command completion.")
     result = recorder.publish(
@@ -112,6 +139,12 @@ def _run_id() -> str:
     """Return one collision-resistant UTC result identity."""
 
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+
+
+def _active_model_root(comfy_root: Path) -> Path:
+    """Resolve model visibility through the same authority as managed Comfy."""
+
+    return resolve_active_comfy_model_root(comfy_root)
 
 
 if __name__ == "__main__":

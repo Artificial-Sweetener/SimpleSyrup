@@ -20,10 +20,10 @@ class ManagedModelLink:
     selection_name: str
 
 
-class ManagedSdxlVisualModelLinks:
-    """Own one temporary checkpoint link and all visual-matrix LoRA links."""
+class ManagedComfyModelLinks:
+    """Own temporary model visibility beneath known Comfy categories."""
 
-    _DIRECTORY_NAME = "simple_syrup_u11"
+    _CATEGORIES = frozenset({"checkpoints", "loras"})
 
     def __init__(
         self,
@@ -40,28 +40,24 @@ class ManagedSdxlVisualModelLinks:
         self.cleaned = False
         self._validate()
 
-    def __enter__(self) -> ManagedSdxlVisualModelLinks:
-        """Create all exact links transactionally after collision validation."""
+    def __enter__(self) -> ManagedComfyModelLinks:
+        """Create every exact link transactionally after collision validation."""
 
         if any(target.exists() for target in self._targets):
-            raise FileExistsError("An owned U11 Comfy model link already exists.")
-        directories = tuple(dict.fromkeys(target.parent for target in self._targets))
+            raise FileExistsError("An owned Comfy model link already exists.")
+        directories = self._required_directories()
         created: list[Path] = []
         linked: list[Path] = []
         try:
             for directory in directories:
                 if not directory.exists():
-                    directory.mkdir(parents=False)
+                    directory.mkdir()
                     created.append(directory)
             for link, target in zip(self._links, self._targets, strict=True):
                 os.link(link.source.resolve(), target)
                 linked.append(target)
         except BaseException:
-            for target in reversed(linked):
-                target.unlink(missing_ok=True)
-            for directory in reversed(created):
-                if directory.is_dir() and not any(directory.iterdir()):
-                    directory.rmdir()
+            self._remove_owned(linked, created)
             raise
         self._created_directories = tuple(created)
         return self
@@ -70,39 +66,67 @@ class ManagedSdxlVisualModelLinks:
         """Remove only links and empty directories created by this owner."""
 
         del exc_type, exc, traceback
-        for target in reversed(self._targets):
-            target.unlink(missing_ok=True)
-        for directory in reversed(self._created_directories):
-            if directory.is_dir() and not any(directory.iterdir()):
-                directory.rmdir()
+        self._remove_owned(list(self._targets), list(self._created_directories))
         self.cleaned = not any(target.exists() for target in self._targets)
 
     def _validate(self) -> None:
-        """Fail closed on roots, sources, categories, and target names."""
+        """Fail closed on roots, sources, categories, and relative targets."""
 
         if not self._model_root.is_dir():
             raise FileNotFoundError("Comfy model root does not exist.")
         if not self._links:
-            raise ValueError("Managed U11 model links cannot be empty.")
+            raise ValueError("Managed Comfy model links cannot be empty.")
         targets: set[Path] = set()
         for link, target in zip(self._links, self._targets, strict=True):
             if not link.source.resolve().is_file():
-                raise FileNotFoundError(f"Required U11 model is missing: {link.source}")
-            if link.category not in {"checkpoints", "loras"}:
+                raise FileNotFoundError(
+                    f"Required managed model is missing: {link.source}"
+                )
+            if link.category not in self._CATEGORIES:
                 raise ValueError(f"Unsupported Comfy model category: {link.category!r}")
+            category_root = self._model_root / link.category
+            if not category_root.is_dir():
+                raise FileNotFoundError(
+                    f"Comfy model category does not exist: {link.category}"
+                )
             relative = Path(link.selection_name)
             if (
                 relative.is_absolute()
-                or len(relative.parts) != 2
-                or relative.parts[0] != self._DIRECTORY_NAME
+                or len(relative.parts) < 2
                 or any(part in {"", ".", ".."} for part in relative.parts)
             ):
-                raise ValueError("U11 selection names must use the owned directory.")
+                raise ValueError(
+                    "Managed model selections must be safe nested relative paths."
+                )
             if target in targets:
-                raise ValueError("U11 managed model targets must be unique.")
+                raise ValueError("Managed Comfy model targets must be unique.")
             targets.add(target)
+
+    def _required_directories(self) -> tuple[Path, ...]:
+        """Return missing-capable target parents in parent-before-child order."""
+
+        directories: set[Path] = set()
+        for link, target in zip(self._links, self._targets, strict=True):
+            category_root = self._model_root / link.category
+            current = target.parent
+            while current != category_root:
+                directories.add(current)
+                current = current.parent
+        return tuple(sorted(directories, key=lambda path: len(path.parts)))
 
     def _target(self, link: ManagedModelLink) -> Path:
         """Return one target beneath the declared Comfy model category."""
 
         return self._model_root / link.category / Path(link.selection_name)
+
+    @staticmethod
+    def _remove_owned(targets: list[Path], directories: list[Path]) -> None:
+        """Remove owned targets and then their empty directories in reverse order."""
+
+        for target in reversed(targets):
+            target.unlink(missing_ok=True)
+        for directory in sorted(
+            directories, key=lambda path: len(path.parts), reverse=True
+        ):
+            if directory.is_dir() and not any(directory.iterdir()):
+                directory.rmdir()
