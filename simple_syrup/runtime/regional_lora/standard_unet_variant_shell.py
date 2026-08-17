@@ -11,6 +11,10 @@ from copy import copy
 import torch
 from torch import nn
 
+from .standard_unet_cold_diagnostics import (
+    STANDARD_UNET_COLD_PATH_DIAGNOSTICS,
+    StandardUnetColdStage,
+)
 from .standard_unet_variant_materialization import StandardUnetMaterializedVariant
 
 
@@ -30,10 +34,16 @@ class StandardUnetVariantShellBuilder:
             raise TypeError(
                 "Standard UNet variant shell requires materialized weights."
             )
-        replacements = {
-            parameter.path: parameter.tensor for parameter in variant.parameters
-        }
-        return self._clone_branch(diffusion_model, replacements, prefix="")
+        with STANDARD_UNET_COLD_PATH_DIAGNOSTICS.measure(
+            StandardUnetColdStage.VARIANT_SHELL,
+        ) as metadata:
+            replacements = {
+                parameter.path: parameter.tensor for parameter in variant.parameters
+            }
+            shell = self._clone_branch(diffusion_model, replacements, prefix="")
+            metadata["region_index"] = variant.region_index
+            metadata["parameter_count"] = len(variant.parameters)
+        return shell
 
     def _clone_branch(
         self,
@@ -58,11 +68,7 @@ class StandardUnetVariantShellBuilder:
                 continue
             if parameter is None or not isinstance(parameter, nn.Parameter):
                 raise TypeError(f"Variant target '{path}' must be a Parameter.")
-            if (
-                tensor.shape != parameter.shape
-                or tensor.dtype != parameter.dtype
-                or tensor.device != parameter.device
-            ):
+            if tensor.shape != parameter.shape or tensor.dtype != parameter.dtype:
                 raise ValueError(f"Variant target '{path}' is incompatible.")
             clone._parameters[parameter_name] = nn.Parameter(
                 tensor,

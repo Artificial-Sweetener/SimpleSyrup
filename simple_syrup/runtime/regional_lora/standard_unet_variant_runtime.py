@@ -22,6 +22,9 @@ from ..model_patcher_mutations import (
     ModelKeyedCallbackMutation,
     ModelKeyedWrapperMutation,
 )
+from .standard_unet_cold_sampling import (
+    StandardUnetColdSamplingDiagnosticsMutation,
+)
 from .standard_unet_native_admission import StandardUnetNativeLoraAdmission
 from .standard_unet_variant_base_attention import StandardUnetVariantBaseAttention
 from .standard_unet_variant_conditioning import (
@@ -70,6 +73,7 @@ class StandardUnetVariantRuntimeMutation:
             ),
         )
         execution.prime()
+        StandardUnetColdSamplingDiagnosticsMutation().apply(model)
         ModelKeyedWrapperMutation(
             WrappersMP.DIFFUSION_MODEL,
             _EXECUTION_WRAPPER_KEY,

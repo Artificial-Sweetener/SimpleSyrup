@@ -10,10 +10,16 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 from .anima_regional_profile_node import StaticAnimaRegionalProfileV3
+from .attention_coupling_phase_node import ProfiledKSamplerAttentionCouplingV3
 from .clip_schedule_snapshot import SnapshotClipScheduleV3
+from .cold_path_capture import (
+    CaptureColdPathDiagnosticsV3,
+    ReadColdPathDiagnosticsV3,
+)
 from .conditioning_batch_snapshot import SnapshotConditioningBatchV3
 from .latent_completion import CompleteLatentV3
 from .lora_execution_probe import InstrumentLoraModelV3, ReadLoraMetricsV3
+from .materialization_parity_node import CompareMaterializationParityV3
 from .model_modifier_snapshot import SnapshotModelModifierV3
 from .operator_profile import ProfileIndexedModelCallV3, ReadOperatorProfileV3
 from .prompt_control_expansion import SnapshotPromptControlExpansionV3
@@ -50,15 +56,19 @@ class BenchmarkProbeExtension(_ComfyExtensionBase):
 
         return [
             StaticAnimaRegionalProfileV3,
+            ProfiledKSamplerAttentionCouplingV3,
             SnapshotClipScheduleV3,
             SnapshotConditioningBatchV3,
             InstrumentModelV3,
             ReadMetricsV3,
             CompleteLatentV3,
+            CaptureColdPathDiagnosticsV3,
+            ReadColdPathDiagnosticsV3,
             ProfileIndexedModelCallV3,
             ReadOperatorProfileV3,
             InstrumentLoraModelV3,
             ReadLoraMetricsV3,
+            CompareMaterializationParityV3,
             SnapshotModelModifierV3,
             SnapshotPromptControlV3,
             SnapshotPromptControlExpansionV3,

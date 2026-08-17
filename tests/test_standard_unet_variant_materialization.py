@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import comfy.model_management
+import pytest
 import torch
 from comfy.model_patcher import ModelPatcher
 from torch import nn
@@ -16,7 +18,9 @@ from simple_syrup.runtime.regional_lora.comfy_adapter_resolution import (
     ComfyNormalizedAdapterTarget,
 )
 from simple_syrup.runtime.regional_lora.standard_unet_variant_materialization import (
+    StandardUnetMaterializedVariant,
     StandardUnetVariantMaterializer,
+    StandardUnetVariantParameter,
 )
 from simple_syrup.runtime.regional_lora.standard_unet_variant_topology import (
     StandardUnetRegionalVariant,
@@ -71,6 +75,52 @@ def test_materialization_applies_global_then_ordered_regional_strengths() -> Non
     assert result.parameters[0].path == "layer.weight"
     assert torch.equal(result.parameters[0].tensor, torch.full((2, 2), 6.0))
     assert torch.equal(root.diffusion_model.layer.weight, torch.full((2, 2), 2.0))
+
+
+def test_materialization_calculates_on_comfy_load_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Route the exact base calculation to Comfy's requested residency device."""
+
+    observed: list[torch.device] = []
+
+    def record_cast(
+        tensor: torch.Tensor,
+        device: torch.device,
+        dtype: torch.dtype,
+        copy: bool = False,
+    ) -> torch.Tensor:
+        """Record placement while keeping this deterministic test CPU-only."""
+
+        del copy
+        observed.append(device)
+        return tensor.to(dtype=dtype, copy=True)
+
+    monkeypatch.setattr(comfy.model_management, "cast_to_device", record_cast)
+    root = _Root()
+    patcher = ModelPatcher(root, torch.device("cuda"), torch.device("cpu"))
+    variant = StandardUnetRegionalVariant(0, (_adapter(0, torch.ones((2, 2))),))
+
+    StandardUnetVariantMaterializer().materialize(patcher, variant, (1.0,))
+
+    assert observed
+    assert observed[0] == torch.device("cuda")
+
+
+def test_materialized_variant_rejects_mixed_parameter_devices() -> None:
+    """Require one residency destination for every parameter in a variant bank."""
+
+    with pytest.raises(ValueError, match="must share one device"):
+        StandardUnetMaterializedVariant(
+            0,
+            (
+                StandardUnetVariantParameter("a", torch.ones(1)),
+                StandardUnetVariantParameter(
+                    "b",
+                    torch.empty(1, device="meta"),
+                ),
+            ),
+        )
 
 
 def _adapter(index: int, delta: torch.Tensor) -> StandardUnetVariantAdapter:

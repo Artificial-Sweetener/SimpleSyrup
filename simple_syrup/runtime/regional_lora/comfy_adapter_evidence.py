@@ -12,6 +12,7 @@ from comfy.weight_adapter.base import WeightAdapterBase
 from comfy.weight_adapter.lora import LoRAAdapter
 
 from ...domain.regional_lora_plan import RegionalLoraAdapterPlan
+from .comfy_adapter_identity_index import ComfyAdapterIdentityIndex
 from .comfy_adapter_resolution import (
     ComfyAdapterResolutionIssue,
     ComfyAdapterResolutionIssueCode,
@@ -154,11 +155,11 @@ def _normalized_source_keys(
     """Recover consumed keys from adapter metadata or retained value identity."""
 
     exposed = _operation_mapping_source_keys(normalized)
-    normalized_values = tuple(normalized.values())
+    identities = ComfyAdapterIdentityIndex.build(normalized.values())
     return exposed | {
         source_key
         for source_key, source_value in raw_weights.items()
-        if any(_contains_identity(value, source_value) for value in normalized_values)
+        if identities.contains(source_value)
     }
 
 
@@ -178,18 +179,6 @@ def _operation_source_keys(operation: object) -> tuple[str, ...]:
     if not isinstance(operation, WeightAdapterBase):
         return ()
     return tuple(sorted(operation.loaded_keys))
-
-
-def _contains_identity(container: object, sought: object) -> bool:
-    """Find a retained source value without tensor equality or device movement."""
-
-    if container is sought:
-        return True
-    if isinstance(container, (tuple, list)):
-        return any(_contains_identity(item, sought) for item in container)
-    if isinstance(container, WeightAdapterBase):
-        return _contains_identity(container.weights, sought)
-    return False
 
 
 def _target_path(value: object) -> ComfyAdapterTargetPath | None:

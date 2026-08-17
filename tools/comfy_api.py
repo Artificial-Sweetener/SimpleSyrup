@@ -57,6 +57,15 @@ class LoopbackComfyClient:
         self._poll_interval = poll_interval
         self._client_id = str(uuid.uuid4())
 
+    @property
+    def websocket_url(self) -> str:
+        """Return the matching loopback WebSocket endpoint for this session."""
+
+        parsed = urllib.parse.urlparse(self._base_url)
+        host = parsed.netloc
+        query = urllib.parse.urlencode({"clientId": self._client_id})
+        return f"ws://{host}/ws?{query}"
+
     def verify_server(self, required_node_ids: Collection[str]) -> JsonObject:
         """Verify readiness and the caller's required node contracts."""
 

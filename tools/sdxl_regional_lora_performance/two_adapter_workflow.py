@@ -67,7 +67,7 @@ def build_two_adapter_performance_workflow(
 ) -> BuiltTwoAdapterPerformanceWorkflow:
     """Build one matched 30-step sampler without decode or artifact work."""
 
-    prepared = _prepare_two_adapter_sampling(
+    prepared = prepare_two_adapter_sampling(
         checkpoint_name=checkpoint_name,
         mask_names=mask_names,
         case=case,
@@ -98,7 +98,7 @@ def build_two_adapter_steady_state_workflow(
 ) -> BuiltSdxlSteadyStateWorkflow:
     """Build one cache-realistic graph with no MODEL-cloning timing probe."""
 
-    prepared = _prepare_two_adapter_sampling(
+    prepared = prepare_two_adapter_sampling(
         checkpoint_name=checkpoint_name,
         mask_names=mask_names,
         case=case,
@@ -116,7 +116,7 @@ def build_two_adapter_steady_state_workflow(
     )
 
 
-def _prepare_two_adapter_sampling(
+def prepare_two_adapter_sampling(
     *,
     checkpoint_name: str,
     mask_names: tuple[str, str],

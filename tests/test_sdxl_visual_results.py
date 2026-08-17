@@ -63,6 +63,7 @@ def test_recorder_serializes_prompts_from_the_exact_case(tmp_path: Path) -> None
         checkpoint_name=r"owned\checkpoint.safetensors",
         mask_names=("left.png", "right.png"),
         case=case,
+        seed=7_429_113_058,
     )
     history = _history(workflow, case)
     recorder.record_case(
@@ -77,6 +78,7 @@ def test_recorder_serializes_prompts_from_the_exact_case(tmp_path: Path) -> None
     decoded = json.loads((tmp_path / "u11-result.json").read_text(encoding="utf-8"))
     prompts = decoded["observations"][0]["prompts"]
 
+    assert decoded["observations"][0]["seed"] == 7_429_113_058
     assert prompts == {
         "base_positive_g": case.base_positive_g,
         "base_positive_l": case.base_positive_l,

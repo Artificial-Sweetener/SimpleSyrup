@@ -13,6 +13,13 @@ from comfy import float as comfy_float
 from comfy import lora, model_management, utils
 from comfy.model_patcher import ModelPatcher, get_key_weight
 
+from .standard_unet_cold_diagnostics import (
+    STANDARD_UNET_COLD_PATH_DIAGNOSTICS,
+    StandardUnetColdStage,
+)
+from .standard_unet_variant_materialization_device import (
+    STANDARD_UNET_VARIANT_MATERIALIZATION_DEVICE,
+)
 from .standard_unet_variant_topology import StandardUnetRegionalVariant
 
 _DIFFUSION_PREFIX = "diffusion_model."
@@ -54,6 +61,9 @@ class StandardUnetMaterializedVariant:
         paths = tuple(parameter.path for parameter in self.parameters)
         if paths != tuple(sorted(set(paths))):
             raise ValueError("Materialized variant paths must be unique and sorted.")
+        devices = {parameter.tensor.device for parameter in self.parameters}
+        if len(devices) != 1:
+            raise ValueError("Materialized variant parameters must share one device.")
 
 
 class StandardUnetVariantMaterializer:
@@ -72,6 +82,37 @@ class StandardUnetVariantMaterializer:
         if not isinstance(variant, StandardUnetRegionalVariant):
             raise TypeError("Standard UNet variant materialization requires a variant.")
         self._validate_multipliers(variant, schedule_multipliers)
+        device = STANDARD_UNET_VARIANT_MATERIALIZATION_DEVICE.resolve(model)
+        with STANDARD_UNET_COLD_PATH_DIAGNOSTICS.measure(
+            StandardUnetColdStage.VARIANT_MATERIALIZATION,
+            device=device,
+        ) as metadata:
+            result = self._materialize_validated(
+                model,
+                variant,
+                schedule_multipliers,
+                device=device,
+            )
+            metadata["region_index"] = variant.region_index
+            metadata["adapter_count"] = len(variant.adapters)
+            metadata["parameter_count"] = len(result.parameters)
+            metadata["device_type"] = device.type
+            metadata["parameter_bytes"] = sum(
+                parameter.tensor.numel() * parameter.tensor.element_size()
+                for parameter in result.parameters
+            )
+        return result
+
+    def _materialize_validated(
+        self,
+        model: ModelPatcher,
+        variant: StandardUnetRegionalVariant,
+        schedule_multipliers: tuple[float, ...],
+        *,
+        device: torch.device,
+    ) -> StandardUnetMaterializedVariant:
+        """Construct one validated variant through conventional Comfy math."""
+
         patches_by_key: dict[str, list[tuple[object, ...]]] = {}
         for adapter in variant.adapters:
             strength = (
@@ -100,6 +141,7 @@ class StandardUnetVariantMaterializer:
                 key,
                 patches_by_key.get(key, []),
                 originals=originals,
+                device=device,
             )
             for key in target_keys
         )
@@ -112,6 +154,7 @@ class StandardUnetVariantMaterializer:
         patches: list[tuple[object, ...]],
         *,
         originals: dict[str, list[object]],
+        device: torch.device,
     ) -> StandardUnetVariantParameter:
         """Apply one ordered host patch list and conventional final rounding."""
 
@@ -140,7 +183,7 @@ class StandardUnetVariantMaterializer:
         base_weight = base_entry[0]
         temporary = model_management.cast_to_device(
             base_weight,
-            weight.device,
+            device,
             torch.float32,
             copy=True,
         )

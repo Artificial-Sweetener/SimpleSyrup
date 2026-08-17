@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+MAX_COMFY_SEED = 0xFFFFFFFFFFFFFFFF
+
 
 @dataclass(frozen=True, slots=True)
 class SdxlVisualSamplingControls:
@@ -27,3 +29,13 @@ SDXL_VISUAL_SAMPLING = SdxlVisualSamplingControls(
     sampler="euler_ancestral",
     scheduler="karras",
 )
+
+
+def validate_sdxl_visual_seed(seed: object) -> int:
+    """Return one seed accepted by Comfy's sampler schema."""
+
+    if isinstance(seed, bool) or not isinstance(seed, int):
+        raise TypeError("SDXL visual seed must be an integer.")
+    if not 0 <= seed <= MAX_COMFY_SEED:
+        raise ValueError(f"SDXL visual seed must be between 0 and {MAX_COMFY_SEED}.")
+    return seed

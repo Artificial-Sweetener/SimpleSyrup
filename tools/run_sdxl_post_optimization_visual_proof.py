@@ -12,6 +12,12 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from tools.comfy_integration.artifacts import IntegrationArtifacts
+from tools.sdxl_attention_coupling_integration.sampling_controls import (
+    SDXL_VISUAL_SAMPLING,
+)
+from tools.sdxl_attention_coupling_integration.visual_case_selection import (
+    select_visual_cases,
+)
 from tools.sdxl_attention_coupling_integration.visual_inventory import (
     SdxlVisualInventory,
 )
@@ -32,13 +38,15 @@ DEFAULT_OUTPUT_ROOT = Path(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Load locked fixtures and execute exactly two labeled artifacts."""
+    """Load locked fixtures and execute the explicitly selected artifacts."""
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inventory", type=Path, required=True)
     parser.add_argument("--prompt-case", type=Path, required=True)
     parser.add_argument("--comfy-root", type=Path, default=Path(r"<COMFY_ROOT>"))
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
+    parser.add_argument("--case-id", action="append", default=[])
+    parser.add_argument("--seed", type=int, default=SDXL_VISUAL_SAMPLING.seed)
     parser.add_argument("--readiness-timeout", type=float, default=240.0)
     parser.add_argument("--prompt-timeout", type=float, default=1200.0)
     args = parser.parse_args(argv)
@@ -47,13 +55,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         inventory = SdxlVisualInventory.load(args.inventory)
         prompt_set = load_visual_prompt_set(args.prompt_case)
+        cases = select_visual_cases(
+            post_optimization_visual_cases(inventory, prompt_set),
+            tuple(args.case_id),
+        )
         result = execute_visual_cases(
             artifacts,
             inventory=inventory,
-            cases=post_optimization_visual_cases(inventory, prompt_set),
+            cases=cases,
             comfy_root=args.comfy_root,
             readiness_timeout=args.readiness_timeout,
             prompt_timeout=args.prompt_timeout,
+            seed=args.seed,
         )
     except BaseException as error:
         artifacts.record_failure(error)

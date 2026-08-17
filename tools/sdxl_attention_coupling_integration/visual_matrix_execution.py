@@ -20,6 +20,7 @@ from tools.comfy_integration.managed_server import (
 
 from .comfy_model_root import resolve_active_comfy_model_root
 from .managed_model_links import ManagedModelLink, ManagedSdxlVisualModelLinks
+from .sampling_controls import SDXL_VISUAL_SAMPLING, validate_sdxl_visual_seed
 from .visual_adapter_selections import (
     CHECKPOINT_SELECTION,
     LEFT_CHARACTER_SELECTION,
@@ -46,11 +47,13 @@ def execute_visual_cases(
     comfy_root: Path,
     readiness_timeout: float,
     prompt_timeout: float,
+    seed: int = SDXL_VISUAL_SAMPLING.seed,
 ) -> Path:
     """Execute every explicit case in one managed server trajectory."""
 
     if not cases:
         raise ValueError("SDXL visual execution requires at least one case.")
+    validated_seed = validate_sdxl_visual_seed(seed)
     recorder = SdxlVisualResultRecorder(artifacts.root, cases=cases)
     model_links = build_sdxl_visual_model_links(comfy_root, inventory)
     masks = ManagedSdxlVisualMasks(
@@ -70,6 +73,7 @@ def execute_visual_cases(
                         checkpoint_name=CHECKPOINT_SELECTION,
                         mask_names=masks.names(case.mask_profile),
                         case=case,
+                        seed=validated_seed,
                     ),
                 )
                 for case in cases

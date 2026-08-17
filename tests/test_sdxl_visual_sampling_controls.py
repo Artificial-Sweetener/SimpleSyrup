@@ -2,40 +2,36 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Characterize the focused SDXL visual sampling controls."""
+"""Verify the focused SDXL visual sampling controls."""
 
 from __future__ import annotations
 
-from typing import cast
+import pytest
 
-from tools.comfy_api import JsonObject
-from tools.sdxl_attention_couple_parity.cases import parity_case
-from tools.sdxl_attention_couple_parity.workflow import (
-    ParityBackend,
-    build_parity_workflow,
+from tools.sdxl_attention_coupling_integration.sampling_controls import (
+    MAX_COMFY_SEED,
+    validate_sdxl_visual_seed,
 )
 
 
-def test_candidate_workflow_uses_characterized_sampling_controls() -> None:
-    """Preserve the exact base sampler controls through ownership extraction."""
+@pytest.mark.parametrize("seed", (0, 7_429_113_058, MAX_COMFY_SEED))
+def test_visual_seed_accepts_comfy_sampler_range(seed: int) -> None:
+    """Return every integer inside Comfy's declared seed range unchanged."""
 
-    workflow = build_parity_workflow(
-        backend=ParityBackend.CANDIDATE,
-        run_id="sampling-control-characterization",
-        checkpoint_name="checkpoint.safetensors",
-        mask_names=("left.png", "right.png"),
-        case=parity_case(),
-    )
+    assert validate_sdxl_visual_seed(seed) == seed
 
-    sampler = next(
-        node
-        for node in workflow.prompt.values()
-        if node["class_type"] == "SimpleSyrup.KSamplerAttentionCoupling"
-    )
-    inputs = cast(JsonObject, sampler["inputs"])
 
-    assert inputs["seed"] == 7_429_113_057
-    assert inputs["cfg"] == 5.0
-    assert inputs["sampler_name"] == "euler_ancestral"
-    assert inputs["scheduler"] == "karras"
-    assert inputs["steps"] == 30
+@pytest.mark.parametrize("seed", (-1, MAX_COMFY_SEED + 1))
+def test_visual_seed_rejects_values_outside_comfy_sampler_range(seed: int) -> None:
+    """Reject integers Comfy's sampler schema cannot represent."""
+
+    with pytest.raises(ValueError, match="must be between"):
+        validate_sdxl_visual_seed(seed)
+
+
+@pytest.mark.parametrize("seed", (True, 1.5, "1"))
+def test_visual_seed_rejects_non_integer_values(seed: object) -> None:
+    """Reject bool and dynamically supplied non-integer values explicitly."""
+
+    with pytest.raises(TypeError, match="must be an integer"):
+        validate_sdxl_visual_seed(seed)

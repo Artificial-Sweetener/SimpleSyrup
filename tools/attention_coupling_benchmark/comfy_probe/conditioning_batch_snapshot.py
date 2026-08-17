@@ -9,10 +9,13 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from importlib import import_module
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any
 
 import torch
 
+from simple_syrup.domain.conditioning_batch import ConditioningBatch
+
+from .conditioning_batch_bridge import normalize_conditioning_batch
 from .tensor_snapshot import snapshot_tensor
 
 _comfy_api: Any = None
@@ -31,17 +34,6 @@ _comfy_io: Any = None if TYPE_CHECKING else _comfy_api.io
 _mixed_conditioning_io: Any = (
     None if TYPE_CHECKING else _comfy_io.Custom("CONDITIONING,CONDITIONING_BATCH")
 )
-
-
-@runtime_checkable
-class _ConditioningBatchValue(Protocol):
-    """Describe the immutable domain surface across Comfy loader namespaces."""
-
-    @property
-    def entries(self) -> tuple[object, ...]:
-        """Return ordered conditioning values."""
-
-        ...
 
 
 class SnapshotConditioningBatchV3(_ComfyNodeBase):
@@ -86,13 +78,13 @@ class SnapshotConditioningBatchV3(_ComfyNodeBase):
 def snapshot_conditioning_value(value: object) -> dict[str, object]:
     """Record one conditioning or ordered ConditioningBatch tensor structure."""
 
-    batch_entries = _conditioning_batch_entries(value)
-    if batch_entries is not None:
+    normalized = normalize_conditioning_batch(value)
+    if isinstance(normalized, ConditioningBatch):
         kind = "conditioning_batch"
-        batches = batch_entries
+        batches = normalized.entries
     else:
         kind = "conditioning"
-        batches = (value,)
+        batches = (normalized,)
     return {
         "kind": kind,
         "batch_entries": [
@@ -106,26 +98,6 @@ def snapshot_conditioning_value(value: object) -> dict[str, object]:
             for batch_index, conditioning in enumerate(batches)
         ],
     }
-
-
-def _conditioning_batch_entries(value: object) -> tuple[object, ...] | None:
-    """Narrow the canonical batch contract across Comfy package namespaces."""
-
-    if not hasattr(value, "entries"):
-        return None
-    value_type = type(value)
-    if value_type.__name__ != "ConditioningBatch" or not value_type.__module__.endswith(
-        ".domain.conditioning_batch"
-    ):
-        raise TypeError("Unsupported conditioning batch runtime type.")
-    if not isinstance(value, _ConditioningBatchValue):
-        raise TypeError("ConditioningBatch must expose immutable entries.")
-    entries = value.entries
-    if not isinstance(entries, tuple):
-        raise TypeError("ConditioningBatch entries must be an immutable tuple.")
-    if not entries:
-        raise ValueError("ConditioningBatch entries must not be empty.")
-    return entries
 
 
 def _snapshot_conditioning(

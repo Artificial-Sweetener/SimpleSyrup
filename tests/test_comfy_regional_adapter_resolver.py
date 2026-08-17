@@ -156,6 +156,120 @@ def test_resolver_consumes_initialized_payloads_by_exact_identity(
     ]
 
 
+def test_resolver_interns_exact_shared_raw_payload_with_one_host_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Resolve one CFG-shared payload once while preserving authored uses."""
+
+    raw_weights = {"up": object(), "down": object()}
+    payloads = (
+        RegionalLoraHostPayload.unresolved(raw_weights),
+        RegionalLoraHostPayload.unresolved(raw_weights),
+    )
+    operation = _lora("up", "down")
+    model_map_calls = 0
+    load_calls = 0
+
+    def model_map(_model: object, _key_map: object) -> dict[str, str]:
+        nonlocal model_map_calls
+        model_map_calls += 1
+        return {"adapter": "diffusion_model.layer.weight"}
+
+    def load_lora(
+        _weights: object,
+        _key_map: object,
+        *,
+        log_missing: bool,
+    ) -> dict[str, LoRAAdapter]:
+        nonlocal load_calls
+        assert log_missing is False
+        load_calls += 1
+        return {"diffusion_model.layer.weight": operation}
+
+    monkeypatch.setattr(comfy.lora, "model_lora_keys_unet", model_map)
+    monkeypatch.setattr(comfy.lora, "load_lora", load_lora)
+
+    result = ComfyRegionalAdapterResolver().resolve(
+        _adaptation(payloads),
+        model=_patcher(torch.nn.Linear(1, 1)),
+    )
+
+    assert model_map_calls == 1
+    assert load_calls == 1
+    assert len(result.adapters) == 2
+    assert result.adapters[0].adapter.composition_index == 0
+    assert result.adapters[1].adapter.composition_index == 1
+    assert result.adapters[0].payload is payloads[0]
+    assert result.adapters[1].payload is payloads[1]
+    assert result.adapters[0].model_targets is result.adapters[1].model_targets
+
+
+def test_resolver_reuses_host_key_map_across_distinct_raw_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scan the runtime model once while decoding each distinct payload once."""
+
+    payloads = (
+        RegionalLoraHostPayload.unresolved({"left": object()}),
+        RegionalLoraHostPayload.unresolved({"right": object()}),
+    )
+    model_map_calls = 0
+    load_calls = 0
+
+    def model_map(_model: object, _key_map: object) -> dict[str, str]:
+        nonlocal model_map_calls
+        model_map_calls += 1
+        return {"adapter": "diffusion_model.layer.weight"}
+
+    def load_lora(
+        _weights: object,
+        _key_map: object,
+        *,
+        log_missing: bool,
+    ) -> dict[str, LoRAAdapter]:
+        nonlocal load_calls
+        assert log_missing is False
+        load_calls += 1
+        return {"diffusion_model.layer.weight": _lora("up", "down")}
+
+    monkeypatch.setattr(comfy.lora, "model_lora_keys_unet", model_map)
+    monkeypatch.setattr(comfy.lora, "load_lora", load_lora)
+
+    ComfyRegionalAdapterResolver().resolve(
+        _adaptation(payloads),
+        model=_patcher(torch.nn.Linear(1, 1)),
+    )
+
+    assert model_map_calls == 1
+    assert load_calls == 2
+
+
+def test_resolver_rescopes_shared_payload_issues_for_every_authored_use() -> None:
+    """Preserve canonical composition identity when cached evidence is invalid."""
+
+    model_weights = {"diffusion_model.layer.weight": ("set", (object(),))}
+    payloads = (
+        RegionalLoraHostPayload(False, None, model_weights, None),
+        RegionalLoraHostPayload(False, None, model_weights, None),
+    )
+
+    result = ComfyRegionalAdapterResolver().resolve(
+        _adaptation(payloads),
+        model=_patcher(torch.nn.Linear(1, 1)),
+    )
+
+    assert result.adapters[0].model_targets is result.adapters[1].model_targets
+    assert [observed.composition_index for observed in result.issues] == [0, 1]
+    assert [observed.adapter_identity for observed in result.issues] == [
+        "adapter-0.safetensors",
+        "adapter-1.safetensors",
+    ]
+    assert [observed.code for observed in result.issues] == [
+        ComfyAdapterResolutionIssueCode.UNSUPPORTED_OPERATION,
+        ComfyAdapterResolutionIssueCode.UNSUPPORTED_OPERATION,
+    ]
+
+
 def test_resolver_preserves_normalized_lora_metadata_by_identity() -> None:
     """Retain alpha, middle, reshape, and tensor identities for U3 translation."""
 

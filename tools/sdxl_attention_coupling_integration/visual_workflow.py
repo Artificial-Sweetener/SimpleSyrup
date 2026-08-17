@@ -24,7 +24,7 @@ from .matrix import (
     TILE_SIZE,
 )
 from .sampler_branch import SdxlWorkflowOutputs, add_sampler_branch
-from .sampling_controls import SDXL_VISUAL_SAMPLING
+from .sampling_controls import SDXL_VISUAL_SAMPLING, validate_sdxl_visual_seed
 from .visual_case_model import SdxlVisualCase, VisualMode
 from .visual_conditioning import SdxlVisualConditioningBuilder
 
@@ -46,6 +46,7 @@ class BuiltSdxlVisualWorkflow:
 
     prompt: dict[str, JsonObject]
     outputs: tuple[SdxlVisualWorkflowOutput, ...]
+    seed: int
 
     @property
     def required_node_ids(self) -> frozenset[str]:
@@ -60,9 +61,11 @@ def build_sdxl_visual_workflow(
     checkpoint_name: str,
     mask_names: tuple[str, str],
     case: SdxlVisualCase,
+    seed: int = SDXL_VISUAL_SAMPLING.seed,
 ) -> BuiltSdxlVisualWorkflow:
     """Build one full source and only the case's declared refinement modes."""
 
+    validated_seed = validate_sdxl_visual_seed(seed)
     graph = SdxlWorkflowGraph()
     loader = graph.add("CheckpointLoaderSimple", ckpt_name=checkpoint_name)
     conditioning = SdxlVisualConditioningBuilder().build(
@@ -94,6 +97,7 @@ def build_sdxl_visual_workflow(
         latent=[source_latent, 0],
         vae=[loader, 2],
         run_id=case_run_id,
+        seed=validated_seed,
         steps=SDXL_VISUAL_SAMPLING.steps,
         denoise=1.0,
         regional_prompt_weight=case.regional_prompt_weight,
@@ -131,6 +135,7 @@ def build_sdxl_visual_workflow(
                 latent=[upscaled_latent, 0],
                 vae=[loader, 2],
                 run_id=case_run_id,
+                seed=validated_seed,
                 steps=REFINEMENT_STEPS,
                 denoise=REFINEMENT_DENOISE,
                 regional_prompt_weight=case.regional_prompt_weight,
@@ -141,7 +146,7 @@ def build_sdxl_visual_workflow(
             output_records.append(_output_record(case, mode, branch.outputs))
     if tuple(record.mode for record in output_records) != case.modes:
         raise ValueError("U11 workflow output order must match the case declaration.")
-    return BuiltSdxlVisualWorkflow(graph.prompt, tuple(output_records))
+    return BuiltSdxlVisualWorkflow(graph.prompt, tuple(output_records), validated_seed)
 
 
 def _output_record(
