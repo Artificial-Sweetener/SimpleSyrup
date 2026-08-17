@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import cast
 
 import comfy.lora
@@ -34,6 +35,32 @@ from .comfy_adapter_resolution import (
 LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(slots=True)
+class _ResolutionKeyMaps:
+    """Build each successful host key map once per complete resolution."""
+
+    model: object
+    clip_model: object | None
+    _model_map: Mapping[object, object] | None = None
+    _clip_map: Mapping[object, object] | None = None
+
+    def model_map(self) -> Mapping[object, object]:
+        """Return the one cached UNet key map after successful construction."""
+
+        if self._model_map is None:
+            self._model_map = comfy.lora.model_lora_keys_unet(self.model, {})
+        return self._model_map
+
+    def clip_map(self) -> Mapping[object, object]:
+        """Return the one cached CLIP key map after successful construction."""
+
+        if self.clip_model is None:
+            return {}
+        if self._clip_map is None:
+            self._clip_map = comfy.lora.model_lora_keys_clip(self.clip_model, {})
+        return self._clip_map
+
+
 class ComfyRegionalAdapterResolver:
     """Resolve regional model LoRAs without model, hook, or tensor mutation."""
 
@@ -48,22 +75,37 @@ class ComfyRegionalAdapterResolver:
         """Resolve every ordered payload and aggregate adapter-scoped failures."""
 
         base_model = _base_model(model)
-        results = tuple(
-            self._resolve_adapter(
-                adapter,
-                payload,
-                model=base_model,
-                clip_model=clip_model,
-                vae_key_map=vae_key_map,
+        key_maps = _ResolutionKeyMaps(base_model, clip_model)
+        interned: list[
+            tuple[RegionalLoraHostPayload, ComfyRegionalAdapterResolution]
+        ] = []
+        results: list[ComfyRegionalAdapterResolution] = []
+        for adapter, payload in zip(
+            adaptation.plan.adapters,
+            adaptation.adapter_payloads,
+            strict=True,
+        ):
+            cached = next(
+                (
+                    result
+                    for existing_payload, result in interned
+                    if _same_payload(existing_payload, payload)
+                ),
+                None,
             )
-            for adapter, payload in zip(
-                adaptation.plan.adapters,
-                adaptation.adapter_payloads,
-                strict=True,
-            )
-        )
+            if cached is None:
+                resolved = self._resolve_adapter(
+                    adapter,
+                    payload,
+                    key_maps=key_maps,
+                    vae_key_map=vae_key_map,
+                )
+                interned.append((payload, resolved))
+            else:
+                resolved = _rebind_resolution(cached, adapter, payload)
+            results.append(resolved)
         return ComfyRegionalLoraResolution(
-            adapters=results,
+            adapters=tuple(results),
             issues=tuple(issue for result in results for issue in result.issues),
         )
 
@@ -72,8 +114,7 @@ class ComfyRegionalAdapterResolver:
         adapter: RegionalLoraAdapterPlan,
         payload: RegionalLoraHostPayload,
         *,
-        model: object,
-        clip_model: object | None,
+        key_maps: _ResolutionKeyMaps,
         vae_key_map: Mapping[str, object] | None,
     ) -> ComfyRegionalAdapterResolution:
         """Resolve one payload while converting exceptions into scoped evidence."""
@@ -82,8 +123,7 @@ class ComfyRegionalAdapterResolver:
             return self._resolve_adapter_or_raise(
                 adapter,
                 payload,
-                model=model,
-                clip_model=clip_model,
+                key_maps=key_maps,
                 vae_key_map=vae_key_map,
             )
         except Exception as error:
@@ -120,8 +160,7 @@ class ComfyRegionalAdapterResolver:
         adapter: RegionalLoraAdapterPlan,
         payload: RegionalLoraHostPayload,
         *,
-        model: object,
-        clip_model: object | None,
+        key_maps: _ResolutionKeyMaps,
         vae_key_map: Mapping[str, object] | None,
     ) -> ComfyRegionalAdapterResolution:
         """Use only Comfy key maps and decoding for one valid host payload."""
@@ -130,16 +169,16 @@ class ComfyRegionalAdapterResolver:
             raw_weights = _require_source_mapping(payload.raw_weights)
             model_weights = comfy.lora.load_lora(
                 raw_weights,
-                comfy.lora.model_lora_keys_unet(model, {}),
+                key_maps.model_map(),
                 log_missing=False,
             )
             clip_weights = (
                 comfy.lora.load_lora(
                     raw_weights,
-                    comfy.lora.model_lora_keys_clip(clip_model, {}),
+                    key_maps.clip_map(),
                     log_missing=False,
                 )
-                if clip_model is not None
+                if key_maps.clip_model is not None
                 else {}
             )
             vae_weights = (
@@ -204,6 +243,39 @@ def _optional_mapping(value: object | None) -> Mapping[object, object]:
     """Accept an absent initialized side payload as one empty mapping."""
 
     return {} if value is None else _require_mapping(value)
+
+
+def _same_payload(
+    left: RegionalLoraHostPayload,
+    right: RegionalLoraHostPayload,
+) -> bool:
+    """Match only exact host payload references and resolution representation."""
+
+    return (
+        left.needs_resolution is right.needs_resolution
+        and left.raw_weights is right.raw_weights
+        and left.model_weights is right.model_weights
+        and left.clip_weights is right.clip_weights
+    )
+
+
+def _rebind_resolution(
+    cached: ComfyRegionalAdapterResolution,
+    adapter: RegionalLoraAdapterPlan,
+    payload: RegionalLoraHostPayload,
+) -> ComfyRegionalAdapterResolution:
+    """Reuse immutable payload evidence while preserving authored issue scope."""
+
+    return ComfyRegionalAdapterResolution(
+        adapter=adapter,
+        payload=payload,
+        model_targets=cached.model_targets,
+        source_entries=cached.source_entries,
+        issues=tuple(
+            issue(adapter, observed.code, observed.message)
+            for observed in cached.issues
+        ),
+    )
 
 
 COMFY_REGIONAL_ADAPTER_RESOLVER = ComfyRegionalAdapterResolver()

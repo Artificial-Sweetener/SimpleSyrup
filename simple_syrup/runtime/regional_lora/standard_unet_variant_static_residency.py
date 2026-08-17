@@ -16,6 +16,10 @@ from comfy.patcher_extension import WrappersMP
 from torch import nn
 
 from ..model_patcher_mutations import ModelKeyedWrapperMutation
+from .standard_unet_cold_diagnostics import (
+    STANDARD_UNET_COLD_PATH_DIAGNOSTICS,
+    StandardUnetColdStage,
+)
 from .standard_unet_variant_residency_handoff import (
     STANDARD_UNET_VARIANT_RESIDENCY_HANDOFF,
     StandardUnetVariantResidencyHandoff,
@@ -105,7 +109,17 @@ class StandardUnetStaticVariantResidency:
                     "device": str(model.load_device),
                 },
             )
-        return executor(model, noise_shape, conds, *args, **forwarded)
+        device = model.load_device
+        measured_device = device if isinstance(device, torch.device) else None
+        with STANDARD_UNET_COLD_PATH_DIAGNOSTICS.measure(
+            StandardUnetColdStage.MODEL_RESIDENCY,
+            device=measured_device,
+        ) as metadata:
+            result = executor(model, noise_shape, conds, *args, **forwarded)
+            metadata["required_bytes"] = self._required_bytes
+            metadata["force_full_load"] = force_full_load or eligible
+            metadata["force_offload"] = force_offload
+        return result
 
     def _is_eligible(
         self,

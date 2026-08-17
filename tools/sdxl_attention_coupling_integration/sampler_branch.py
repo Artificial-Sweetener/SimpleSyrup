@@ -42,6 +42,7 @@ def add_sampler_branch(
     latent: NodeReference,
     vae: NodeReference,
     run_id: str,
+    seed: int,
     steps: int,
     denoise: float,
     regional_prompt_weight: float,
@@ -66,7 +67,7 @@ def add_sampler_branch(
     sampled = graph.add(
         node_id,
         model=[captured, 0],
-        seed=SDXL_VISUAL_SAMPLING.seed,
+        seed=seed,
         steps=steps,
         cfg=SDXL_VISUAL_SAMPLING.cfg,
         sampler_name=SDXL_VISUAL_SAMPLING.sampler,

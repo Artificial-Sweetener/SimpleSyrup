@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import cast
 
+import pytest
 import torch
 from torch import nn
 
@@ -79,3 +80,81 @@ def test_shell_replaces_only_target_parameter_and_preserves_source() -> None:
     assert shell.branch.target.weight is not source.branch.target.weight
     assert torch.equal(source.branch.target.weight, torch.ones((2, 2)))
     assert torch.equal(shell(torch.ones((1, 2))), torch.full((1, 2), 6.0))
+
+
+def test_shell_reports_every_missing_target_path() -> None:
+    """Preserve complete canonical evidence when target branches are absent."""
+
+    source = _Diffusion()
+    materialized = StandardUnetMaterializedVariant(
+        0,
+        (
+            StandardUnetVariantParameter(
+                "absent.weight",
+                torch.ones_like(source.branch.target.weight),
+            ),
+            StandardUnetVariantParameter(
+                "branch.absent.weight",
+                torch.ones_like(source.branch.target.weight),
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Variant shell did not bind target paths "
+            "\\('absent.weight', 'branch.absent.weight'\\)"
+        ),
+    ):
+        StandardUnetVariantShellBuilder().build(source, materialized)
+
+
+def test_shell_rejects_null_and_incompatible_parameters() -> None:
+    """Preserve fail-closed parameter and tensor compatibility contracts."""
+
+    source = _Diffusion()
+    null_parameter = StandardUnetMaterializedVariant(
+        0,
+        (
+            StandardUnetVariantParameter(
+                "branch.target.bias",
+                torch.ones(2),
+            ),
+        ),
+    )
+    with pytest.raises(TypeError, match="must be a Parameter"):
+        StandardUnetVariantShellBuilder().build(source, null_parameter)
+
+    wrong_shape = StandardUnetMaterializedVariant(
+        0,
+        (
+            StandardUnetVariantParameter(
+                "branch.target.weight",
+                torch.ones(3, 2),
+            ),
+        ),
+    )
+    with pytest.raises(ValueError, match="is incompatible"):
+        StandardUnetVariantShellBuilder().build(source, wrong_shape)
+
+
+def test_shell_binds_pre_resident_target_device() -> None:
+    """Accept exact variant tensors already placed for Comfy model residency."""
+
+    source = _Diffusion()
+    materialized = StandardUnetMaterializedVariant(
+        0,
+        (
+            StandardUnetVariantParameter(
+                "branch.target.weight",
+                torch.empty_like(source.branch.target.weight, device="meta"),
+            ),
+        ),
+    )
+
+    shell = StandardUnetVariantShellBuilder().build(source, materialized)
+
+    assert isinstance(shell, _Diffusion)
+    assert shell.branch.target.weight.device == torch.device("meta")
+    assert source.branch.target.weight.device == torch.device("cpu")

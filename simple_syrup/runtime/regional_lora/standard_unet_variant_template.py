@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from itertools import product
 from threading import Lock
 
+import torch
 from comfy.model_patcher import ModelPatcher
 from torch import nn
 
@@ -21,6 +22,10 @@ from ..model_patcher_mutations import (
 )
 from ..patcher_lifecycle import PATCHER_LIFECYCLE
 from .execution_cache import ModelCloneLineage
+from .standard_unet_cold_diagnostics import (
+    STANDARD_UNET_COLD_PATH_DIAGNOSTICS,
+    StandardUnetColdStage,
+)
 from .standard_unet_native_admission import StandardUnetNativeLoraAdmission
 from .standard_unet_variant_execution_session import (
     StandardUnetVariantExecutionSession,
@@ -88,37 +93,46 @@ class StandardUnetVariantTemplate:
 
         if self._frozen:
             raise RuntimeError("Standard UNet variant template is already prepared.")
-        for variant in self.topology.variants:
-            multiplier_sets = tuple(
-                tuple(
-                    dict.fromkeys(
-                        boundary.strength_multiplier for boundary in adapter.schedule
+        device = getattr(self.model, "load_device", None)
+        measured_device = device if isinstance(device, torch.device) else None
+        with STANDARD_UNET_COLD_PATH_DIAGNOSTICS.measure(
+            StandardUnetColdStage.TEMPLATE_PREPARATION,
+            device=measured_device,
+        ) as metadata:
+            for variant in self.topology.variants:
+                multiplier_sets = tuple(
+                    tuple(
+                        dict.fromkeys(
+                            boundary.strength_multiplier
+                            for boundary in adapter.schedule
+                        )
                     )
+                    for adapter in variant.adapters
                 )
-                for adapter in variant.adapters
-            )
-            for local_values in product(*multiplier_sets):
-                if not any(
-                    adapter.model_strength * multiplier != 0.0
+                for local_values in product(*multiplier_sets):
+                    if not any(
+                        adapter.model_strength * multiplier != 0.0
+                        for adapter, multiplier in zip(
+                            variant.adapters,
+                            local_values,
+                            strict=True,
+                        )
+                    ):
+                        continue
+                    complete = [0.0] * self._adapter_count
                     for adapter, multiplier in zip(
                         variant.adapters,
                         local_values,
                         strict=True,
-                    )
-                ):
-                    continue
-                complete = [0.0] * self._adapter_count
-                for adapter, multiplier in zip(
-                    variant.adapters,
-                    local_values,
-                    strict=True,
-                ):
-                    complete[adapter.composition_index] = multiplier
-                self._prepare_variant(variant, tuple(complete))
-        self.root.install_forward(
-            StandardUnetVariantForward(self.root.module, self.execution_session)
-        )
-        self._frozen = True
+                    ):
+                        complete[adapter.composition_index] = multiplier
+                    self._prepare_variant(variant, tuple(complete))
+            self.root.install_forward(
+                StandardUnetVariantForward(self.root.module, self.execution_session)
+            )
+            self._frozen = True
+            metadata["topology_variant_count"] = len(self.topology.variants)
+            metadata["materialized_variant_count"] = len(self._variants)
 
     def bind_request(self, source: object) -> ModelPatcher:
         """Bind current request patcher state to the cache-stable static graph."""

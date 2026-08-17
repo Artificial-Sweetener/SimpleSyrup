@@ -19,7 +19,6 @@ from .evidence_validation import (
     validate_sdxl_metrics,
 )
 from .matrix import MODES, SdxlIntegrationMode
-from .sampling_controls import SDXL_VISUAL_SAMPLING
 from .visual_case_model import RegionalVisualAdapter, SdxlVisualCase, VisualMode
 from .visual_history import SdxlVisualHistoryEvidence
 from .visual_runtime_expectations import SDXL_VISUAL_RUNTIME_EXPECTATIONS
@@ -98,7 +97,7 @@ class SdxlVisualResultRecorder:
                     "case_id": case.case_id,
                     "label": case.label,
                     "mode": output.mode.value,
-                    "seed": SDXL_VISUAL_SAMPLING.seed,
+                    "seed": workflow.seed,
                     "mask_profile": case.mask_profile.value,
                     "regional_prompt_start_percent": (
                         case.regional_prompt_start_percent

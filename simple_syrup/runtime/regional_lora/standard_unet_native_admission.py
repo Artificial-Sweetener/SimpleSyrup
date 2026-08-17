@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+import torch
+
 from ..attention_coupling.family_admission import AttentionCouplingFamilyAdmission
 from ..regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 from .comfy_adapter_resolution import (
@@ -16,6 +18,10 @@ from .comfy_adapter_resolution import (
     ComfyRegionalLoraResolution,
 )
 from .comfy_adapter_resolver import COMFY_REGIONAL_ADAPTER_RESOLVER
+from .standard_unet_cold_diagnostics import (
+    STANDARD_UNET_COLD_PATH_DIAGNOSTICS,
+    StandardUnetColdStage,
+)
 
 _BLOCKING_ISSUE_CODES = frozenset(
     {
@@ -78,8 +84,18 @@ class StandardUnetNativeLoraAdmissionService:
             raise TypeError("Native standard-UNet admission requires adaptation.")
         if not adaptation.plan.adapters:
             return StandardUnetNativeLoraAdmission(adaptation, None)
-        resolution = self._resolver.resolve(adaptation, model=model)
-        self._validate(adaptation, resolution)
+        device = getattr(model, "load_device", None)
+        measured_device = device if isinstance(device, torch.device) else None
+        with STANDARD_UNET_COLD_PATH_DIAGNOSTICS.measure(
+            StandardUnetColdStage.ADMISSION_RESOLUTION,
+            device=measured_device,
+        ) as metadata:
+            resolution = self._resolver.resolve(adaptation, model=model)
+            self._validate(adaptation, resolution)
+            metadata["adapter_count"] = len(resolution.adapters)
+            metadata["target_count"] = sum(
+                len(result.model_targets) for result in resolution.adapters
+            )
         return StandardUnetNativeLoraAdmission(adaptation, resolution)
 
     @staticmethod
