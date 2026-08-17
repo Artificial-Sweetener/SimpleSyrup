@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tools.comfy_api import JsonObject
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+)
 from tools.prompt_control_characterization.cases import PromptControlCase, cases
 from tools.prompt_control_characterization.evidence_validation import validate_evidence
 from tools.prompt_control_characterization.history_outputs import PromptControlOutputs
@@ -21,8 +24,8 @@ from tools.prompt_control_characterization.source_identity import (
     PINNED_VERSION,
 )
 
-DEFAULT_BASELINE_PATH = Path(
-    r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1\p0.8\result.json"
+DEFAULT_BASELINE_PATH = default_benchmark_artifact_root(
+    "anima-regional-prompting-v1/p0.8/result.json"
 )
 
 

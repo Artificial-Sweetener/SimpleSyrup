@@ -16,6 +16,9 @@ from PIL import Image, ImageDraw
 
 from tools.comfy_api import ImageReference, JsonObject
 from tools.comfy_integration.artifacts import IntegrationArtifacts
+from tools.comfy_integration.default_paths import (
+    default_comfy_root,
+)
 from tools.comfy_integration.history_output import extract_saved_image
 from tools.comfy_integration.loopback_port import is_loopback_port_available
 from tools.comfy_integration.managed_server import ManagedComfyServer
@@ -28,7 +31,7 @@ from tools.global_lora_visual_proof.matrix import (
 from tools.global_lora_visual_proof.results import GlobalLoraVisualProofRecorder
 
 LOGGER = logging.getLogger(__name__)
-COMFY_ROOT = Path(r"<COMFY_ROOT>")
+COMFY_ROOT = default_comfy_root()
 OUTPUT_ROOT = (
     COMFY_ROOT
     / "benchmark_artifacts"

@@ -10,9 +10,10 @@ import hashlib
 import json
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from tools.comfy_api import ImageReference, JsonObject
+from tools.comfy_integration.portable_font import load_label_font
 
 from .matrix import GlobalStyleCharacterCase
 
@@ -112,7 +113,7 @@ class GlobalStyleCharacterProofRecorder:
         panel = 1024
         canvas = Image.new("RGB", (panel * 3, panel + header), (20, 20, 20))
         draw = ImageDraw.Draw(canvas)
-        font = ImageFont.truetype(r"<SYSTEM_FONT>", 25)
+        font = load_label_font(25)
         for index, case in enumerate(definitions):
             with Image.open(self._images[case.case_id]) as source:
                 image = source.convert("RGB")

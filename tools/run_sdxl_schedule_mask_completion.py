@@ -7,8 +7,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
 
+from tools.comfy_integration.default_paths import default_benchmark_artifact_root
 from tools.sdxl_attention_coupling_integration.selected_external_visual_runner import (
     SelectedExternalVisualRun,
 )
@@ -18,9 +18,8 @@ from tools.sdxl_schedule_mask_completion.cases import (
 
 RUN = SelectedExternalVisualRun(
     description=__doc__ or "Run SDXL schedule and mask-geometry proofs.",
-    output_root=Path(
-        r"<COMFY_ROOT>\benchmark_artifacts\universal-regional-adapter"
-        r"\ra06-schedule-mask-completion"
+    output_root=default_benchmark_artifact_root(
+        "universal-regional-adapter/ra06-schedule-mask-completion"
     ),
     log_label="SDXL schedule and mask-geometry proof",
     case_factory=schedule_mask_completion_cases,

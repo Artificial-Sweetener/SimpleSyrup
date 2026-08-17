@@ -676,16 +676,16 @@ def _composition(
     model = ModelCloneLineage(uuid4(), uuid4())
     cache = RegionalLoraExecutionCache()
     uses: tuple[tuple[AnimaLoraTarget, str, int, float], ...] = (
-        (first_target, r"<FIXTURE_ROOT>\one.safetensors", 0, 1.0),
+        (first_target, "private-adapter-path/one.safetensors", 0, 1.0),
         (
             first_target,
-            r"<FIXTURE_ROOT>\one.safetensors",
+            "private-adapter-path/one.safetensors",
             min(1, region_count - 1),
             0.5,
         ),
         (
             second_target,
-            r"<FIXTURE_ROOT>\two.safetensors",
+            "private-adapter-path/two.safetensors",
             min(1, region_count - 1),
             -0.25,
         ),

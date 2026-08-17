@@ -14,6 +14,9 @@ from pathlib import Path
 from typing import TypeAlias
 
 from tools.comfy_integration.artifacts import IntegrationArtifacts
+from tools.comfy_integration.default_paths import (
+    default_comfy_root,
+)
 
 from .visual_case_model import SdxlVisualCase
 from .visual_case_selection import select_visual_cases
@@ -46,7 +49,7 @@ class SelectedExternalVisualRun:
         parser.add_argument("--inventory", type=Path, required=True)
         parser.add_argument("--prompt-case", type=Path, required=True)
         parser.add_argument("--case-id", action="append", required=True)
-        parser.add_argument("--comfy-root", type=Path, default=Path(r"<COMFY_ROOT>"))
+        parser.add_argument("--comfy-root", type=Path, default=default_comfy_root())
         parser.add_argument("--output-root", type=Path, default=self.output_root)
         parser.add_argument("--readiness-timeout", type=float, default=240.0)
         parser.add_argument("--prompt-timeout", type=float, default=1200.0)

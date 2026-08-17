@@ -15,6 +15,9 @@ from tools.anima_regional_lora_performance.profiling import (
     capture_performance_profiles,
 )
 from tools.anima_regional_lora_performance.suite import performance_suite_session
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+)
 
 
 def main() -> int:
@@ -41,8 +44,8 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path(
-            r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1\p10.1\profiles"
+        default=default_benchmark_artifact_root(
+            "anima-regional-prompting-v1/p10.1/profiles"
         ),
     )
     return parser.parse_args()

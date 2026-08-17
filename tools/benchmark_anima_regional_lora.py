@@ -27,6 +27,9 @@ from tools.anima_regional_lora_performance.results import (  # noqa: E402
     evaluate,
     write_result,
 )
+from tools.comfy_integration.default_paths import (  # noqa: E402
+    default_benchmark_artifact_root,
+)
 
 
 def main() -> int:
@@ -71,9 +74,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path(
-            r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1\p5.7"
-        ),
+        default=default_benchmark_artifact_root("anima-regional-prompting-v1/p5.7"),
     )
     return parser.parse_args()
 

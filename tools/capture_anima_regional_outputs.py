@@ -17,14 +17,18 @@ from tools.anima_regional_output_capture.workflow import VisualOutputWorkflowBui
 from tools.attention_coupling_benchmark.manifest import load_manifest
 from tools.attention_coupling_benchmark.mask_artifacts import MaskArtifactWriter
 from tools.comfy_integration.artifacts import IntegrationArtifacts
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+    default_comfy_root,
+)
 from tools.comfy_integration.history_output import extract_saved_image
 from tools.comfy_integration.loopback_port import is_loopback_port_available
 from tools.comfy_integration.managed_server import ManagedComfyServer
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_COMFY_ROOT = Path(r"<COMFY_ROOT>")
-DEFAULT_OUTPUT_ROOT = Path(
-    r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1\p5.7\visual"
+DEFAULT_COMFY_ROOT = default_comfy_root()
+DEFAULT_OUTPUT_ROOT = default_benchmark_artifact_root(
+    "anima-regional-prompting-v1/p5.7/visual"
 )
 
 

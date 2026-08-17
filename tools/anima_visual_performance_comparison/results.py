@@ -11,13 +11,12 @@ import io
 import json
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from tools.comfy_api import JsonObject
+from tools.comfy_integration.portable_font import load_label_font
 
 from .cases import AnimaVisualCase
-
-_FONT = Path(r"<SYSTEM_FONT>")
 
 
 class AnimaVisualResultRecorder:
@@ -102,7 +101,7 @@ def _label(
     canvas = Image.new("RGB", (1024, 1144), (20, 20, 20))
     canvas.paste(image, (0, 120))
     draw = ImageDraw.Draw(canvas)
-    draw.text((22, 15), label, fill="white", font=ImageFont.truetype(str(_FONT), 28))
+    draw.text((22, 15), label, fill="white", font=load_label_font(28))
     detail = (
         f"30 steps · 1024×1024 · model {model_runtime / 1000:.2f}s · "
         f"wall {wall_runtime_ms / 1000:.2f}s"
@@ -111,7 +110,7 @@ def _label(
         (22, 66),
         detail,
         fill=(205, 205, 205),
-        font=ImageFont.truetype(str(_FONT), 21),
+        font=load_label_font(21),
     )
     canvas.save(path, format="PNG")
 

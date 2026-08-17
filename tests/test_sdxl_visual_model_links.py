@@ -62,6 +62,41 @@ def test_links_are_hard_links_and_cleanup_removes_only_owned_targets(
     assert not (loras / "simple_syrup_u11").exists()
 
 
+def test_links_support_split_model_categories(tmp_path: Path) -> None:
+    """Expose split diffusion, text-encoder, and VAE fixtures transactionally."""
+
+    model_root = tmp_path / "models"
+    categories = ("diffusion_models", "text_encoders", "vae")
+    sources: list[Path] = []
+    for category in categories:
+        (model_root / category).mkdir(parents=True)
+        source = tmp_path / f"{category}.safetensors"
+        source.write_bytes(category.encode())
+        sources.append(source)
+    owner = ManagedComfyModelLinks(
+        model_root=model_root,
+        links=tuple(
+            ManagedModelLink(
+                source,
+                category,
+                f"managed/{category}.safetensors",
+            )
+            for category, source in zip(categories, sources, strict=True)
+        ),
+    )
+
+    with owner:
+        assert all(
+            (model_root / category / "managed" / f"{category}.safetensors").is_file()
+            for category in categories
+        )
+
+    assert owner.cleaned
+    assert all(
+        not (model_root / category / "managed").exists() for category in categories
+    )
+
+
 def test_collision_fails_before_creating_any_link(tmp_path: Path) -> None:
     """Refuse ambiguous ownership without touching the existing target."""
 

@@ -14,6 +14,11 @@ from tools.attention_coupling_benchmark.manifest_types import (
     BenchmarkManifest,
 )
 from tools.comfy_api import JsonObject
+from tools.comfy_integration.anima_fixture_selections import (
+    ANIMA_DIFFUSION_SELECTION,
+    ANIMA_TEXT_ENCODER_SELECTION,
+    ANIMA_VAE_SELECTION,
+)
 
 from .matrix import (
     CONTEXTUAL_GLOBAL_STEPS,
@@ -171,12 +176,12 @@ class VisualBenchmarkWorkflowBuilder:
 
         return graph.add(
             "SimpleSyrup.SimpleLoadAnima",
-            diffusion_model="Anima\\diffusion-model.safetensors",
+            diffusion_model=ANIMA_DIFFUSION_SELECTION,
             quantization="Original",
             diffusion_weight_dtype="default",
-            text_encoder="qwen\\qwen_3_06b_base.safetensors",
+            text_encoder=ANIMA_TEXT_ENCODER_SELECTION,
             text_encoder_device="default",
-            vae="qwen\\qwen_image_vae.safetensors",
+            vae=ANIMA_VAE_SELECTION,
         )
 
     @staticmethod

@@ -20,6 +20,9 @@ from tools.anima_regional_lora_performance.isolated_runner import (
 from tools.anima_regional_lora_performance.matrix_manifest import (
     default_scaling_manifest,
 )
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+)
 
 
 def main() -> int:
@@ -50,7 +53,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path(r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1")
+        default=default_benchmark_artifact_root("anima-regional-prompting-v1")
         / "p10.1"
         / "isolated-vram",
     )

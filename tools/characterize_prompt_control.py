@@ -11,6 +11,10 @@ import logging
 from pathlib import Path
 
 from tools.comfy_api import JsonObject, LoopbackComfyClient
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+    default_custom_node_root,
+)
 from tools.prompt_control_characterization.cases import PromptControlCase, cases
 from tools.prompt_control_characterization.history_outputs import parse_outputs
 from tools.prompt_control_characterization.results import PromptControlResultRecorder
@@ -141,15 +145,13 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--prompt-control-root",
         type=Path,
-        default=Path(r"<COMFY_ROOT>\custom_nodes\ComfyUI-Prompt-Control"),
+        default=default_custom_node_root("ComfyUI-Prompt-Control"),
     )
     parser.add_argument("--server-url", default="http://127.0.0.1:8297")
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path(
-            r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1\p0.8"
-        ),
+        default=default_benchmark_artifact_root("anima-regional-prompting-v1/p0.8"),
     )
     parser.add_argument("--prompt-timeout", type=float, default=600.0)
     return parser.parse_args()

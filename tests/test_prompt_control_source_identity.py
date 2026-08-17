@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from tools.comfy_integration.default_paths import default_custom_node_root
 from tools.prompt_control_characterization.source_identity import (
     inspect_source,
     validate_pinned_source,
@@ -17,7 +18,7 @@ from tools.prompt_control_characterization.source_identity import (
 def test_installed_prompt_control_matches_pinned_tracked_tree() -> None:
     """Pin version, path count, and canonical path-plus-content digest."""
 
-    identity = inspect_source(Path(r"<COMFY_ROOT>\custom_nodes\ComfyUI-Prompt-Control"))
+    identity = inspect_source(default_custom_node_root("ComfyUI-Prompt-Control"))
     validate_pinned_source(identity)
     assert identity.version == "3.0.0-beta.3"
     assert identity.tracked_path_count == 53

@@ -9,13 +9,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_PERFORMANCE_ARTIFACT_INVENTORY = Path(
-    r"<COMFY_ROOT>\benchmark_artifacts\execution-inventories"
-    r"\anima-performance-fresh-20260814.json"
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
 )
-DEFAULT_MODEL_VISIBILITY_INVENTORY = Path(
-    r"<COMFY_ROOT>\benchmark_artifacts\execution-inventories"
-    r"\anima-complete-oracle-model-visibility-20260817.json"
+
+DEFAULT_PERFORMANCE_ARTIFACT_INVENTORY = default_benchmark_artifact_root(
+    "execution-inventories/anima-performance-fresh-20260814.json"
+)
+DEFAULT_MODEL_VISIBILITY_INVENTORY = default_benchmark_artifact_root(
+    "execution-inventories/anima-complete-oracle-model-visibility-20260817.json"
 )
 
 
@@ -78,7 +80,7 @@ def default_manifest(repo_root: Path) -> AnimaRegressionManifest:
     )
     ruff = str((repo_root / ".." / ".." / "venv" / "Scripts" / "ruff.exe").resolve())
     mypy = str((repo_root / ".." / ".." / "venv" / "Scripts" / "mypy.exe").resolve())
-    evidence_root = Path(r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1")
+    evidence_root = default_benchmark_artifact_root("anima-regional-prompting-v1")
     character_root = (
         evidence_root
         / "user-prompt-character-ownership-proof"

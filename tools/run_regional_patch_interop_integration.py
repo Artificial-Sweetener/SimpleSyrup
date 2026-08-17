@@ -23,6 +23,10 @@ from tools.attention_coupling_benchmark.manifest_types import ModelArtifact
 from tools.attention_coupling_benchmark.mask_artifacts import MaskArtifactWriter
 from tools.comfy_api import JsonObject
 from tools.comfy_integration.artifacts import IntegrationArtifacts
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+    default_comfy_root,
+)
 from tools.comfy_integration.loopback_port import is_loopback_port_available
 from tools.comfy_integration.managed_server import ManagedComfyServer
 from tools.regional_patch_interop_integration.history import (
@@ -58,9 +62,9 @@ from tools.sdxl_attention_coupling_integration.checkpoint_link import (
 
 LOGGER = logging.getLogger(__name__)
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_COMFY_ROOT = Path(r"<COMFY_ROOT>")
-DEFAULT_OUTPUT_ROOT = Path(
-    r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1\p9.7"
+DEFAULT_COMFY_ROOT = default_comfy_root()
+DEFAULT_OUTPUT_ROOT = default_benchmark_artifact_root(
+    "anima-regional-prompting-v1/p9.7"
 )
 METADATA_NODE_IDS = (
     FULL_NODE_ID,
