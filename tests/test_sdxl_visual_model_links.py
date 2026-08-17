@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from tools.sdxl_attention_coupling_integration.managed_model_links import (
+from tools.comfy_integration.managed_model_links import (
+    ManagedComfyModelLinks,
     ManagedModelLink,
-    ManagedSdxlVisualModelLinks,
 )
 
 
@@ -31,7 +31,7 @@ def test_links_are_hard_links_and_cleanup_removes_only_owned_targets(
     lora = tmp_path / "adapter.safetensors"
     checkpoint.write_bytes(b"checkpoint")
     lora.write_bytes(b"lora")
-    owner = ManagedSdxlVisualModelLinks(
+    owner = ManagedComfyModelLinks(
         model_root=model_root,
         links=(
             ManagedModelLink(
@@ -73,7 +73,7 @@ def test_collision_fails_before_creating_any_link(tmp_path: Path) -> None:
     source.write_bytes(b"source")
     collision = directory / "adapter.safetensors"
     collision.write_bytes(b"existing")
-    owner = ManagedSdxlVisualModelLinks(
+    owner = ManagedComfyModelLinks(
         model_root=model_root,
         links=(
             ManagedModelLink(
@@ -88,3 +88,29 @@ def test_collision_fails_before_creating_any_link(tmp_path: Path) -> None:
         owner.__enter__()
 
     assert collision.read_bytes() == b"existing"
+
+
+def test_exception_cleanup_removes_nested_owned_directories(tmp_path: Path) -> None:
+    """Clean nested targets even when the protected operation raises."""
+
+    model_root = tmp_path / "models"
+    (model_root / "loras").mkdir(parents=True)
+    source = tmp_path / "source.safetensors"
+    source.write_bytes(b"source")
+    owner = ManagedComfyModelLinks(
+        model_root=model_root,
+        links=(
+            ManagedModelLink(
+                source,
+                "loras",
+                r"family\style\adapter.safetensors",
+            ),
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="operation failed"):
+        with owner:
+            raise RuntimeError("operation failed")
+
+    assert owner.cleaned
+    assert not (model_root / "loras" / "family").exists()

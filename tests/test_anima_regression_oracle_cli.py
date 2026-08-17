@@ -6,12 +6,14 @@
 
 from __future__ import annotations
 
+import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 import tools.run_anima_regression_oracle as oracle
-from tools.anima_regression_oracle.manifest import OracleCommand
+from tools.anima_regression_oracle.manifest import OracleCommand, default_manifest
 
 
 def test_oracle_script_supports_direct_filename_execution(tmp_path: Path) -> None:
@@ -46,3 +48,34 @@ def test_complete_level_includes_every_declared_managed_rerun() -> None:
         "repository",
         "managed",
     ]
+
+
+def test_every_managed_python_module_is_import_resolvable() -> None:
+    """Reject stale or partially renamed managed command modules."""
+
+    manifest = default_manifest(Path(__file__).parents[1])
+    modules = tuple(
+        command.arguments[command.arguments.index("-m") + 1]
+        for command in manifest.managed_rerun_commands
+        if "-m" in command.arguments
+    )
+
+    assert modules
+    assert all(importlib.util.find_spec(module) is not None for module in modules)
+
+
+def test_complete_visibility_uses_the_configured_active_model_root(
+    tmp_path: Path,
+) -> None:
+    """Keep oracle aliases in the exact model root managed Comfy scans."""
+
+    active = tmp_path / "active-models"
+    active.mkdir()
+    configuration = tmp_path / ".substitute" / "model_root.json"
+    configuration.parent.mkdir()
+    configuration.write_text(
+        json.dumps({"schemaVersion": 1, "modelRoot": str(active)}),
+        encoding="utf-8",
+    )
+
+    assert oracle._active_model_root(tmp_path) == active.resolve()

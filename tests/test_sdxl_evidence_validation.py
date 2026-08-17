@@ -27,6 +27,7 @@ def test_full_mode_accepts_persistent_variant_composition_diagnostics() -> None:
                 "sampling_sigma": 14.0,
                 "schedule_multipliers": [1.0, 1.0],
                 "adapter_schedules": [_schedule(1.0), _schedule(1.0)],
+                "spatial_modes": ["full"],
             },
             {
                 "stage": "specialization",
@@ -34,6 +35,7 @@ def test_full_mode_accepts_persistent_variant_composition_diagnostics() -> None:
                 "sampling_sigma": 3.0,
                 "schedule_multipliers": [1.0, 1.0],
                 "adapter_schedules": [_schedule(1.0), _schedule(1.0)],
+                "spatial_modes": ["full"],
             },
         ],
     }
@@ -48,10 +50,47 @@ def test_full_mode_accepts_persistent_variant_composition_diagnostics() -> None:
     )
 
 
-def test_non_full_mode_still_requires_spatial_snapshots() -> None:
-    """Do not infer tiled or Contextual coverage from full-mode composition."""
+def test_non_full_mode_accepts_matching_composition_spatial_coverage() -> None:
+    """Accept runtime-authored tiled and Contextual composition coverage."""
 
-    with pytest.raises(ValueError, match="spatial-mode snapshots"):
+    diagnostics = {
+        "record_count": 0,
+        "snapshots": [],
+        "composition_record_count": 2,
+        "composition": [
+            {
+                "stage": "composition",
+                "denoising_progress": 0.0,
+                "sampling_sigma": 14.0,
+                "schedule_multipliers": [1.0],
+                "adapter_schedules": [_schedule(1.0)],
+                "spatial_modes": ["tile"],
+            },
+            {
+                "stage": "specialization",
+                "denoising_progress": 0.5,
+                "sampling_sigma": 3.0,
+                "schedule_multipliers": [1.0],
+                "adapter_schedules": [_schedule(1.0)],
+                "spatial_modes": ["contextual_global"],
+            },
+        ],
+    }
+
+    assert (
+        validate_sdxl_diagnostics(
+            diagnostics,
+            label="contextual",
+            expected_spatial_modes=frozenset({"tile", "contextual_global"}),
+        )
+        is diagnostics
+    )
+
+
+def test_composition_rejects_missing_spatial_coverage() -> None:
+    """Fail closed when persistent evidence omits its execution geometry."""
+
+    with pytest.raises(ValueError, match="composition spatial modes"):
         validate_sdxl_diagnostics(
             {
                 "record_count": 0,
@@ -86,6 +125,7 @@ def test_full_mode_rejects_missing_sigma_domain_schedule_evidence() -> None:
                         "stage": "composition",
                         "denoising_progress": 0.0,
                         "schedule_multipliers": [1.0],
+                        "spatial_modes": ["full"],
                     }
                 ],
             },

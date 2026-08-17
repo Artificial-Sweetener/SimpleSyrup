@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, TypeVar, cast
+from typing import Any, ClassVar, cast
 from uuid import uuid4
 
 import comfy.latent_formats
@@ -15,7 +15,16 @@ import comfy.model_patcher
 import pytest
 import torch
 from comfy.ldm.anima.model import Anima as AnimaDiffusionModel
-from comfy.ldm.modules.diffusionmodules.openaimodel import UNetModel
+from regional_model_capability_test_values import (
+    AlternateImageLatent,
+    standard_unet_graph,
+)
+from regional_model_capability_test_values import (
+    empty_module as _empty_module,
+)
+from regional_model_capability_test_values import (
+    patcher as _patcher,
+)
 
 from simple_syrup.domain.conditioning_batch import ConditioningBatch
 from simple_syrup.domain.conditioning_schedule import ConditioningScheduleRange
@@ -54,8 +63,6 @@ from simple_syrup.services.contextual_attention_coupling_sampling_service import
 from simple_syrup.services.tiled_attention_coupling_sampling_service import (
     TiledAttentionCouplingSamplingService,
 )
-
-ModuleType = TypeVar("ModuleType", bound=torch.nn.Module)
 
 
 class _LoraAdapter:
@@ -138,6 +145,7 @@ def test_every_spatial_mode_uses_the_same_central_preparation_owner() -> None:
         (comfy.model_base.BaseModel, comfy.latent_formats.SD15(), 768),
         (comfy.model_base.SDXL, comfy.latent_formats.SDXL(), 2048),
         (comfy.model_base.SDXLRefiner, comfy.latent_formats.SDXL(), 2048),
+        (comfy.model_base.BaseModel, AlternateImageLatent(), 768),
     ],
 )
 def test_central_admission_routes_standard_unet_to_production_backend(
@@ -149,7 +157,7 @@ def test_central_admission_routes_standard_unet_to_production_backend(
 
     source = _patcher(
         base_type=base_type,
-        diffusion_type=UNetModel,
+        diffusion_model=standard_unet_graph(),
         latent_format=latent_format,
     )
     originals = _install_fakes()
@@ -187,7 +195,7 @@ def test_central_admission_preserves_anima_family_route() -> None:
 
     source = _patcher(
         base_type=comfy.model_base.Anima,
-        diffusion_type=AnimaDiffusionModel,
+        diffusion_model=_empty_module(AnimaDiffusionModel),
         latent_format=comfy.latent_formats.Wan21(),
     )
     originals = _install_fakes()
@@ -221,7 +229,7 @@ def test_standard_unet_exact_request_reuses_complete_preparation() -> None:
 
     source = _patcher(
         base_type=comfy.model_base.SDXL,
-        diffusion_type=UNetModel,
+        diffusion_model=standard_unet_graph(),
         latent_format=comfy.latent_formats.SDXL(),
     )
     positive = ConditioningBatch((_conditioning(1.0), _conditioning(2.0)))
@@ -268,7 +276,7 @@ def test_anima_exact_inputs_still_prepare_every_request() -> None:
 
     source = _patcher(
         base_type=comfy.model_base.Anima,
-        diffusion_type=AnimaDiffusionModel,
+        diffusion_model=_empty_module(AnimaDiffusionModel),
         latent_format=comfy.latent_formats.Wan21(),
     )
     positive = ConditioningBatch((_conditioning(1.0), _conditioning(2.0)))
@@ -306,38 +314,6 @@ def test_anima_exact_inputs_still_prepare_every_request() -> None:
     assert _ModelLoader.calls == [source, source]
     assert len(_ConditioningProcessor.calls) == 2
     assert len(_AnimaBackend.calls) == 2
-
-
-def test_cross_family_model_rejection_precedes_loading_and_mutation() -> None:
-    """Reject an SD wrapper with SDXL latent state before lower-layer work."""
-
-    source = _patcher(
-        base_type=comfy.model_base.BaseModel,
-        diffusion_type=UNetModel,
-        latent_format=comfy.latent_formats.SDXL(),
-    )
-    originals = _install_fakes()
-    _reset_calls(context_dimension=768)
-    try:
-        with pytest.raises(ValueError, match="does not support this model combination"):
-            AttentionCouplingModelPreparationService().prepare(
-                model=source,
-                positive=ConditioningBatch((_conditioning(1.0), _conditioning(2.0))),
-                negative=ConditioningBatch((_conditioning(-1.0), _conditioning(-2.0))),
-                region_masks=torch.ones(1, 8, 8),
-                regional_prompt_weight=1.0,
-                region_mask_feather=0,
-                latent_image={"samples": torch.zeros(1, 4, 8, 8)},
-                execution_mode=RegionalAttentionExecutionMode.FULL,
-            )
-    finally:
-        _restore_fakes(originals)
-
-    assert _LoraAdapter.calls == []
-    assert _ModelLoader.calls == []
-    assert _ConditioningProcessor.calls == []
-    assert source.wrappers == {}
-    assert source.model_options["transformer_options"].get("patches") is None
 
 
 def _branch(
@@ -380,35 +356,6 @@ def _conditioning(value: float) -> list[list[object]]:
     """Return one raw global or regional conditioning entry."""
 
     return [[torch.full((1, 2, 3), value), {}]]
-
-
-def _patcher(
-    *,
-    base_type: type[torch.nn.Module],
-    diffusion_type: type[torch.nn.Module],
-    latent_format: object,
-) -> comfy.model_patcher.ModelPatcher:
-    """Build a real patcher around exact allocation-free installed types."""
-
-    base_model = _empty_module(base_type)
-    dynamic_base = cast(Any, base_model)
-    dynamic_base.diffusion_model = _empty_module(diffusion_type)
-    dynamic_base.latent_format = latent_format
-    dynamic_base.device = torch.device("cpu")
-    return comfy.model_patcher.ModelPatcher(
-        base_model,
-        load_device=torch.device("cpu"),
-        offload_device=torch.device("cpu"),
-        size=1,
-    )
-
-
-def _empty_module(module_type: type[ModuleType]) -> ModuleType:
-    """Create one exact torch module without allocating its real weights."""
-
-    module = module_type.__new__(module_type)
-    torch.nn.Module.__init__(module)
-    return module
 
 
 def _install_fakes() -> tuple[type[Any], ...]:

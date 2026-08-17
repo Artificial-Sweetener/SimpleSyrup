@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Run one fixed-seed PRIMARY_ADAPTER regional-composition proof in managed ComfyUI."""
+"""Run one managed fixed-seed PRIMARY_ADAPTER regional-composition proof."""
 
 from __future__ import annotations
 

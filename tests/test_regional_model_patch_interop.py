@@ -21,6 +21,7 @@ from comfy_extras.nodes_easycache import (  # type: ignore[import-not-found]
 
 from simple_syrup.domain.regional_model_capabilities import (
     RegionalAttentionBackend,
+    RegionalAttentionTopology,
     RegionalControlGligenPolicy,
     RegionalLatentLayout,
     RegionalModelCapabilities,
@@ -319,6 +320,9 @@ def _capabilities(family: RegionalModelFamily) -> RegionalModelCapabilities:
         return RegionalModelCapabilities(
             model_family=family,
             attention_backend=RegionalAttentionBackend.ANIMA_OBJECT_PATCH,
+            attention_topology=(
+                RegionalAttentionTopology.SINGLETON_FRAME_SPATIOTEMPORAL
+            ),
             latent_layout=RegionalLatentLayout.ANIMA_SINGLE_FRAME_BCTHW,
             spatial_patch_support=(RegionalSpatialPatchSupport.FULL_AND_SPATIAL_VIEWS),
             control_gligen_policy=RegionalControlGligenPolicy.REJECT,
@@ -333,6 +337,7 @@ def _capabilities(family: RegionalModelFamily) -> RegionalModelCapabilities:
     return RegionalModelCapabilities(
         model_family=family,
         attention_backend=RegionalAttentionBackend.UNET_ATTN2_PATCH,
+        attention_topology=RegionalAttentionTopology.SEPARATE_IMAGE_AND_CONTEXT,
         latent_layout=RegionalLatentLayout.STANDARD_IMAGE_BCHW,
         spatial_patch_support=RegionalSpatialPatchSupport.FULL_AND_SPATIAL_VIEWS,
         control_gligen_policy=RegionalControlGligenPolicy.REJECT,

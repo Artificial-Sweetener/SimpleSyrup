@@ -17,6 +17,7 @@ from simple_syrup.domain.regional_features import (
 )
 from simple_syrup.domain.regional_model_capabilities import (
     RegionalAttentionBackend,
+    RegionalAttentionTopology,
     RegionalControlGligenPolicy,
     RegionalLatentLayout,
     RegionalModelCapabilities,
@@ -144,6 +145,7 @@ def _anima_capabilities() -> RegionalModelCapabilities:
     return RegionalModelCapabilities(
         model_family=RegionalModelFamily.ANIMA,
         attention_backend=RegionalAttentionBackend.ANIMA_OBJECT_PATCH,
+        attention_topology=RegionalAttentionTopology.SINGLETON_FRAME_SPATIOTEMPORAL,
         latent_layout=RegionalLatentLayout.ANIMA_SINGLE_FRAME_BCTHW,
         spatial_patch_support=RegionalSpatialPatchSupport.FULL_AND_SPATIAL_VIEWS,
         control_gligen_policy=RegionalControlGligenPolicy.REJECT,

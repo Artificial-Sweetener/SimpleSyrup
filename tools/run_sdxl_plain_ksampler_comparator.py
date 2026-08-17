@@ -19,14 +19,14 @@ from tools.comfy_api import JsonObject
 from tools.comfy_integration.artifacts import IntegrationArtifacts
 from tools.comfy_integration.history_output import extract_saved_image
 from tools.comfy_integration.loopback_port import is_loopback_port_available
+from tools.comfy_integration.managed_model_links import (
+    ManagedComfyModelLinks,
+    ManagedModelLink,
+)
 from tools.comfy_integration.managed_server import ManagedComfyServer
 from tools.sdxl_attention_couple_parity.cases import load_parity_case
 from tools.sdxl_attention_coupling_integration.comfy_model_root import (
     resolve_active_comfy_model_root,
-)
-from tools.sdxl_attention_coupling_integration.managed_model_links import (
-    ManagedModelLink,
-    ManagedSdxlVisualModelLinks,
 )
 from tools.sdxl_attention_coupling_integration.visual_adapter_selections import (
     CHECKPOINT_SELECTION,
@@ -86,7 +86,7 @@ def _execute(
         negative_g=negative_g,
         negative_l=negative_l,
     )
-    links = ManagedSdxlVisualModelLinks(
+    links = ManagedComfyModelLinks(
         model_root=resolve_active_comfy_model_root(comfy_root),
         links=(
             ManagedModelLink(

@@ -10,6 +10,7 @@ import pytest
 
 from simple_syrup.domain.regional_model_capabilities import (
     RegionalAttentionBackend,
+    RegionalAttentionTopology,
     RegionalControlGligenPolicy,
     RegionalLatentLayout,
     RegionalModelCapabilities,
@@ -36,6 +37,7 @@ from simple_syrup.services.unet_attention_coupling_model_family import (
             RegionalModelCapabilities(
                 RegionalModelFamily.ANIMA,
                 RegionalAttentionBackend.ANIMA_OBJECT_PATCH,
+                RegionalAttentionTopology.SINGLETON_FRAME_SPATIOTEMPORAL,
                 RegionalLatentLayout.ANIMA_SINGLE_FRAME_BCTHW,
                 RegionalSpatialPatchSupport.FULL_AND_SPATIAL_VIEWS,
                 RegionalControlGligenPolicy.REJECT,
@@ -53,6 +55,7 @@ from simple_syrup.services.unet_attention_coupling_model_family import (
             RegionalModelCapabilities(
                 RegionalModelFamily.STANDARD_UNET,
                 RegionalAttentionBackend.UNET_ATTN2_PATCH,
+                RegionalAttentionTopology.SEPARATE_IMAGE_AND_CONTEXT,
                 RegionalLatentLayout.STANDARD_IMAGE_BCHW,
                 RegionalSpatialPatchSupport.FULL_AND_SPATIAL_VIEWS,
                 RegionalControlGligenPolicy.REJECT,

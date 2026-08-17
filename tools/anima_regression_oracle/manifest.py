@@ -9,6 +9,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+DEFAULT_PERFORMANCE_ARTIFACT_INVENTORY = Path(
+    r"<COMFY_ROOT>\benchmark_artifacts\execution-inventories"
+    r"\anima-performance-fresh-20260814.json"
+)
+DEFAULT_MODEL_VISIBILITY_INVENTORY = Path(
+    r"<COMFY_ROOT>\benchmark_artifacts\execution-inventories"
+    r"\anima-complete-oracle-model-visibility-20260817.json"
+)
+
 
 @dataclass(frozen=True, slots=True)
 class AcceptedImage:
@@ -55,6 +64,7 @@ class AnimaRegressionManifest:
     images: tuple[AcceptedImage, ...]
     managed_results: tuple[CompletedJsonEvidence, ...]
     performance: PerformanceEvidence
+    model_visibility_inventory: Path
     focused_command: OracleCommand
     repository_commands: tuple[OracleCommand, ...]
     managed_rerun_commands: tuple[OracleCommand, ...]
@@ -232,6 +242,7 @@ def default_manifest(repo_root: Path) -> AnimaRegressionManifest:
                 ("regional-lora-4", 35.0),
             ),
         ),
+        model_visibility_inventory=DEFAULT_MODEL_VISIBILITY_INVENTORY,
         focused_command=OracleCommand(
             "focused-anima-characterization",
             (python, "-m", "pytest", "-n", "auto", "-q", *focused_tests),
@@ -279,7 +290,15 @@ def default_manifest(repo_root: Path) -> AnimaRegressionManifest:
             ),
             OracleCommand(
                 "performance-gate",
-                (python, "-m", "tools.benchmark_anima_regional_lora"),
+                (
+                    python,
+                    "-m",
+                    "tools.benchmark_anima_regional_lora",
+                    "--artifact-inventory",
+                    str(DEFAULT_PERFORMANCE_ARTIFACT_INVENTORY),
+                    "--repeats",
+                    "5",
+                ),
             ),
         ),
     )

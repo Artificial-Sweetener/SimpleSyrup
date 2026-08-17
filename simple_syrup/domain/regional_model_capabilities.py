@@ -24,6 +24,13 @@ class RegionalAttentionBackend(StrEnum):
     UNET_ATTN2_PATCH = "unet_attn2_patch"
 
 
+class RegionalAttentionTopology(StrEnum):
+    """Identify the image/context token roles owned by an attention backend."""
+
+    SEPARATE_IMAGE_AND_CONTEXT = "separate_image_and_context"
+    SINGLETON_FRAME_SPATIOTEMPORAL = "singleton_frame_spatiotemporal"
+
+
 class RegionalLatentLayout(StrEnum):
     """Identify the latent rank and temporal layout admitted by a backend."""
 
@@ -64,6 +71,7 @@ class RegionalModelCapabilities:
 
     model_family: RegionalModelFamily
     attention_backend: RegionalAttentionBackend
+    attention_topology: RegionalAttentionTopology
     latent_layout: RegionalLatentLayout
     spatial_patch_support: RegionalSpatialPatchSupport
     control_gligen_policy: RegionalControlGligenPolicy
@@ -76,6 +84,11 @@ class RegionalModelCapabilities:
         enum_fields = (
             ("model family", self.model_family, RegionalModelFamily),
             ("attention backend", self.attention_backend, RegionalAttentionBackend),
+            (
+                "attention topology",
+                self.attention_topology,
+                RegionalAttentionTopology,
+            ),
             ("latent layout", self.latent_layout, RegionalLatentLayout),
             (
                 "spatial patch support",
@@ -123,12 +136,14 @@ class RegionalModelCapabilities:
 
         expected: tuple[
             RegionalAttentionBackend,
+            RegionalAttentionTopology,
             RegionalLatentLayout,
             tuple[RegionalPatchConflict, ...],
         ]
         if self.model_family is RegionalModelFamily.ANIMA:
             expected = (
                 RegionalAttentionBackend.ANIMA_OBJECT_PATCH,
+                RegionalAttentionTopology.SINGLETON_FRAME_SPATIOTEMPORAL,
                 RegionalLatentLayout.ANIMA_SINGLE_FRAME_BCTHW,
                 (
                     RegionalPatchConflict.DIFFUSION_MODEL_WRAPPER,
@@ -140,6 +155,7 @@ class RegionalModelCapabilities:
         else:
             expected = (
                 RegionalAttentionBackend.UNET_ATTN2_PATCH,
+                RegionalAttentionTopology.SEPARATE_IMAGE_AND_CONTEXT,
                 RegionalLatentLayout.STANDARD_IMAGE_BCHW,
                 (
                     RegionalPatchConflict.ATTN2_INPUT_PATCH,
@@ -148,6 +164,7 @@ class RegionalModelCapabilities:
             )
         if (
             self.attention_backend,
+            self.attention_topology,
             self.latent_layout,
             self.known_patch_conflicts,
         ) != expected:
