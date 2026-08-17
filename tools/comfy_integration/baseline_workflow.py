@@ -9,6 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from tools.comfy_api import JsonObject
+from tools.comfy_integration.anima_fixture_selections import (
+    ANIMA_DIFFUSION_SELECTION,
+    ANIMA_TEXT_ENCODER_SELECTION,
+    ANIMA_VAE_SELECTION,
+)
 
 
 @dataclass(frozen=True)
@@ -31,12 +36,12 @@ def build_baseline_workflow(run_id: str) -> BuiltBaselineWorkflow:
     graph = _Graph()
     loader = graph.add(
         "SimpleSyrup.SimpleLoadAnima",
-        diffusion_model="Anima\\diffusion-model.safetensors",
+        diffusion_model=ANIMA_DIFFUSION_SELECTION,
         quantization="Original",
         diffusion_weight_dtype="default",
-        text_encoder="qwen\\qwen_3_06b_base.safetensors",
+        text_encoder=ANIMA_TEXT_ENCODER_SELECTION,
         text_encoder_device="default",
-        vae="qwen\\qwen_image_vae.safetensors",
+        vae=ANIMA_VAE_SELECTION,
     )
     positive = graph.add("CLIPTextEncode", clip=[loader, 1], text="a red cube")
     negative = graph.add("CLIPTextEncode", clip=[loader, 1], text="low quality")

@@ -12,6 +12,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from tools.comfy_integration.artifacts import IntegrationArtifacts
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+    default_comfy_root,
+)
 from tools.sdxl_attention_couple_parity.cases import load_parity_case
 from tools.sdxl_attention_coupling_integration.visual_case_selection import (
     select_visual_cases,
@@ -30,9 +34,9 @@ from tools.sdxl_full_strength_lora_fidelity.composition_cases import (
 )
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_COMFY_ROOT = Path(r"<COMFY_ROOT>")
-DEFAULT_OUTPUT_ROOT = Path(
-    r"<COMFY_ROOT>\benchmark_artifacts\universal-regional-adapter\full-strength-composition"
+DEFAULT_COMFY_ROOT = default_comfy_root()
+DEFAULT_OUTPUT_ROOT = default_benchmark_artifact_root(
+    "universal-regional-adapter/full-strength-composition"
 )
 
 

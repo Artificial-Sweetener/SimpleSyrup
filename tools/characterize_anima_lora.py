@@ -27,6 +27,9 @@ from tools.anima_lora_characterization.workflow import LoraWorkflowBuilder
 from tools.attention_coupling_benchmark.manifest import load_manifest
 from tools.attention_coupling_benchmark.manifest_types import BenchmarkManifest
 from tools.comfy_api import JsonObject, LoopbackComfyClient
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+)
 
 LOGGER = logging.getLogger("simple_syrup.anima_lora_characterization")
 
@@ -196,9 +199,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path(
-            r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1\p0.7"
-        ),
+        default=default_benchmark_artifact_root("anima-regional-prompting-v1/p0.7"),
     )
     parser.add_argument("--prompt-timeout", type=float, default=1800.0)
     parser.add_argument("--max-runs", type=_positive_integer)

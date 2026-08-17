@@ -7,8 +7,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
 
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+)
 from tools.sdxl_attention_coupling_integration.selected_external_visual_runner import (
     SelectedExternalVisualRun,
 )
@@ -16,8 +18,8 @@ from tools.sdxl_two_character_oracle import two_character_oracle_cases
 
 RUN = SelectedExternalVisualRun(
     description=__doc__ or "Run the SDXL two-character oracle.",
-    output_root=Path(
-        r"<COMFY_ROOT>\benchmark_artifacts\universal-regional-adapter\sdxl-two-character-oracle"
+    output_root=default_benchmark_artifact_root(
+        "universal-regional-adapter/sdxl-two-character-oracle"
     ),
     log_label="SDXL two-character oracle",
     case_factory=two_character_oracle_cases,

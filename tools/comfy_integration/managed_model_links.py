@@ -23,7 +23,9 @@ class ManagedModelLink:
 class ManagedComfyModelLinks:
     """Own temporary model visibility beneath known Comfy categories."""
 
-    _CATEGORIES = frozenset({"checkpoints", "loras"})
+    _CATEGORIES = frozenset(
+        {"checkpoints", "diffusion_models", "loras", "text_encoders", "vae"}
+    )
 
     def __init__(
         self,

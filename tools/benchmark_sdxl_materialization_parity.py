@@ -12,6 +12,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from tools.comfy_integration.artifacts import IntegrationArtifacts
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+    default_comfy_root,
+)
 from tools.sdxl_attention_couple_parity.cases import load_parity_case
 from tools.sdxl_attention_coupling_integration.visual_inventory import (
     SdxlVisualInventory,
@@ -25,8 +29,8 @@ from tools.sdxl_full_strength_lora_fidelity.composition_cases import (
 from tools.sdxl_materialization_parity.runner import run_materialization_parity
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_OUTPUT_ROOT = Path(
-    r"<COMFY_ROOT>\benchmark_artifacts\universal-regional-adapter\sdxl-materialization-parity"
+DEFAULT_OUTPUT_ROOT = default_benchmark_artifact_root(
+    "universal-regional-adapter/sdxl-materialization-parity"
 )
 
 
@@ -36,7 +40,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inventory", type=Path, required=True)
     parser.add_argument("--prompt-case", type=Path, required=True)
-    parser.add_argument("--comfy-root", type=Path, default=Path(r"<COMFY_ROOT>"))
+    parser.add_argument("--comfy-root", type=Path, default=default_comfy_root())
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")

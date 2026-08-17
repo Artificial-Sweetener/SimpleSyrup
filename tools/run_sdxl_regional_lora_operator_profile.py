@@ -13,6 +13,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from tools.comfy_integration.artifacts import IntegrationArtifacts
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+    default_comfy_root,
+)
 from tools.comfy_integration.loopback_port import is_loopback_port_available
 from tools.comfy_integration.managed_server import ManagedComfyServer
 from tools.sdxl_attention_couple_parity.cases import load_parity_case
@@ -49,8 +53,8 @@ from tools.sdxl_regional_lora_performance.two_adapter_workflow import (
 )
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_OUTPUT_ROOT = Path(
-    r"<COMFY_ROOT>\benchmark_artifacts\universal-regional-adapter\sdxl-operator-profile"
+DEFAULT_OUTPUT_ROOT = default_benchmark_artifact_root(
+    "universal-regional-adapter/sdxl-operator-profile"
 )
 
 
@@ -60,7 +64,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inventory", type=Path, required=True)
     parser.add_argument("--prompt-case", type=Path, required=True)
-    parser.add_argument("--comfy-root", type=Path, default=Path(r"<COMFY_ROOT>"))
+    parser.add_argument("--comfy-root", type=Path, default=default_comfy_root())
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument(
         "--mode",

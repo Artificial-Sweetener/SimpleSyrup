@@ -6,6 +6,11 @@
 
 from __future__ import annotations
 
+from tools.comfy_integration.anima_fixture_selections import (
+    ANIMA_DIFFUSION_SELECTION,
+    ANIMA_TEXT_ENCODER_SELECTION,
+    ANIMA_VAE_SELECTION,
+)
 from tools.comfy_integration.baseline_workflow import build_baseline_workflow
 
 
@@ -26,12 +31,12 @@ def test_baseline_is_small_deterministic_loader_to_saved_image_graph() -> None:
         }
     )
     assert workflow.prompt["1"]["inputs"] == {
-        "diffusion_model": "Anima\\diffusion-model.safetensors",
+        "diffusion_model": ANIMA_DIFFUSION_SELECTION,
         "quantization": "Original",
         "diffusion_weight_dtype": "default",
-        "text_encoder": "qwen\\qwen_3_06b_base.safetensors",
+        "text_encoder": ANIMA_TEXT_ENCODER_SELECTION,
         "text_encoder_device": "default",
-        "vae": "qwen\\qwen_image_vae.safetensors",
+        "vae": ANIMA_VAE_SELECTION,
     }
     assert workflow.prompt["5"]["inputs"] == {
         "model": ["1", 0],

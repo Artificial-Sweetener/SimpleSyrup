@@ -7,8 +7,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
 
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+)
 from tools.sdxl_attention_coupling_integration.selected_external_visual_runner import (
     SelectedExternalVisualRun,
 )
@@ -16,8 +18,8 @@ from tools.sdxl_composed_lora_completion.cases import (
     composed_lora_completion_cases,
 )
 
-DEFAULT_OUTPUT_ROOT = Path(
-    r"<COMFY_ROOT>\benchmark_artifacts\universal-regional-adapter\composed-lora-completion"
+DEFAULT_OUTPUT_ROOT = default_benchmark_artifact_root(
+    "universal-regional-adapter/composed-lora-completion"
 )
 RUN = SelectedExternalVisualRun(
     description=__doc__ or "Run SDXL composed-LoRA visual proofs.",

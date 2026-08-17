@@ -258,8 +258,8 @@ def test_region_and_adapter_order_permutations_change_safe_diagnostics(
         anima_surface,
         targets=(first, second),
         identities=(
-            r"<FIXTURE_ROOT>\adapter-a.safetensors",
-            r"<FIXTURE_ROOT>\adapter-b.safetensors",
+            "private/adapter-a.safetensors",
+            "private/adapter-b.safetensors",
         ),
         regions=(0, 1),
     )
@@ -267,8 +267,8 @@ def test_region_and_adapter_order_permutations_change_safe_diagnostics(
         anima_surface,
         targets=(first, second),
         identities=(
-            r"<FIXTURE_ROOT>\adapter-a.safetensors",
-            r"<FIXTURE_ROOT>\adapter-b.safetensors",
+            "private/adapter-a.safetensors",
+            "private/adapter-b.safetensors",
         ),
         regions=(1, 0),
     )
@@ -276,8 +276,8 @@ def test_region_and_adapter_order_permutations_change_safe_diagnostics(
         anima_surface,
         targets=(second, first),
         identities=(
-            r"<FIXTURE_ROOT>\adapter-b.safetensors",
-            r"<FIXTURE_ROOT>\adapter-a.safetensors",
+            "private/adapter-b.safetensors",
+            "private/adapter-a.safetensors",
         ),
         regions=(1, 0),
     )
@@ -295,7 +295,7 @@ def test_region_and_adapter_order_permutations_change_safe_diagnostics(
             tuple(use.adapter_token for use in adapter_permuted.adapter_uses),
         )
     serialized = json.dumps(baseline.to_log_fields())
-    assert r"<FIXTURE_ROOT>" not in serialized
+    assert "private/" not in serialized
     assert [use.composition_index for use in baseline.adapter_uses] == [0, 1]
 
 

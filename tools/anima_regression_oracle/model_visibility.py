@@ -18,12 +18,15 @@ from tools.anima_attention_coupling_prompts import (
     PINNED_SECONDARY_ADAPTER,
     PINNED_TERTIARY_ADAPTER,
 )
+from tools.comfy_integration.anima_fixture_selections import ANIMA_BASE_SELECTIONS
 from tools.comfy_integration.managed_model_links import (
     ManagedComfyModelLinks,
     ManagedModelLink,
 )
 
-ANIMA_ORACLE_ADAPTER_SELECTIONS = (
+ANIMA_ORACLE_MODEL_SELECTIONS = tuple(
+    selection_name for _, selection_name in ANIMA_BASE_SELECTIONS
+) + (
     PINNED_PRIMARY_ADAPTER,
     PINNED_SECONDARY_ADAPTER,
     PINNED_TERTIARY_ADAPTER,
@@ -88,12 +91,12 @@ def anima_oracle_model_visibility(
     *,
     model_root: Path,
 ) -> ManagedOracleModelVisibility:
-    """Build the complete Anima oracle's declared adapter visibility scope."""
+    """Build the complete Anima oracle's declared model visibility scope."""
 
     return ManagedOracleModelVisibility.from_inventory(
         inventory_path,
         model_root=model_root,
-        required_selections=ANIMA_ORACLE_ADAPTER_SELECTIONS,
+        required_selections=ANIMA_ORACLE_MODEL_SELECTIONS,
     )
 
 

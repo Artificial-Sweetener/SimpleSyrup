@@ -36,13 +36,16 @@ from tools.anima_regression_oracle.model_visibility import (  # noqa: E402
 from tools.anima_regression_oracle.results import (  # noqa: E402
     AnimaRegressionResultRecorder,
 )
+from tools.comfy_integration.default_paths import (  # noqa: E402
+    default_benchmark_artifact_root,
+)
 from tools.sdxl_attention_coupling_integration.comfy_model_root import (  # noqa: E402
     resolve_active_comfy_model_root,
 )
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_OUTPUT_ROOT = Path(
-    r"<COMFY_ROOT>\benchmark_artifacts\universal-regional-adapter\anima-oracle"
+DEFAULT_OUTPUT_ROOT = default_benchmark_artifact_root(
+    "universal-regional-adapter/anima-oracle"
 )
 
 

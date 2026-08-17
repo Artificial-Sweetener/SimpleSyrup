@@ -29,8 +29,8 @@ class _FakeFolderPaths(ModuleType):
         """Create deterministic ComfyUI filename lists."""
 
         super().__init__("folder_paths")
-        self.models_dir = "<COMFY_ROOT>\\models"
-        self.user_directory = "<COMFY_ROOT>\\user"
+        self.models_dir = "models"
+        self.user_directory = "user"
         self._files = {
             "checkpoints": ["model.safetensors"],
             "diffusion_models": ["diffusion.safetensors"],

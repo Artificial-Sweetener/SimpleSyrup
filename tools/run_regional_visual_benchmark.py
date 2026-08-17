@@ -12,6 +12,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from tools.attention_coupling_benchmark.manifest import load_manifest
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+    default_comfy_root,
+)
 from tools.regional_visual_benchmark.execution import (
     DEFAULT_SEGMENT_SIZE,
     VisualCorpusExecutor,
@@ -19,9 +23,9 @@ from tools.regional_visual_benchmark.execution import (
 from tools.regional_visual_benchmark.run_artifacts import VisualBenchmarkRunArtifacts
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_COMFY_ROOT = Path(r"<COMFY_ROOT>")
-DEFAULT_OUTPUT_ROOT = Path(
-    r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1\p10.3"
+DEFAULT_COMFY_ROOT = default_comfy_root()
+DEFAULT_OUTPUT_ROOT = default_benchmark_artifact_root(
+    "anima-regional-prompting-v1/p10.3"
 )
 
 

@@ -10,9 +10,10 @@ import hashlib
 import json
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from tools.comfy_api import ImageReference, JsonObject
+from tools.comfy_integration.portable_font import load_label_font
 
 from .matrix import GlobalLoraVisualCase
 
@@ -142,8 +143,8 @@ class GlobalLoraVisualProofRecorder:
         header = 80
         canvas = Image.new("RGB", (panel * 3, (panel + header) * 2), (20, 20, 20))
         draw = ImageDraw.Draw(canvas)
-        title_font = ImageFont.truetype(r"<SYSTEM_FONT>", 24)
-        body_font = ImageFont.truetype(r"<SYSTEM_FONT>", 20)
+        title_font = load_label_font(24)
+        body_font = load_label_font(20)
         for index, case in enumerate(definitions):
             column = index % 3
             row = index // 3

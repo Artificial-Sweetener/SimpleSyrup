@@ -4,17 +4,16 @@
 
 """Verify the P9.1 managed coordinator remains a thin explicit entrypoint."""
 
-from pathlib import Path
+import sys
 from subprocess import run
 
 
 def test_cli_help_exposes_managed_source_baseline_and_timeout_boundaries() -> None:
     """Keep external install and evidence locations caller-controlled."""
 
-    python = Path(r"<COMFY_ROOT>\venv\Scripts\python.exe")
     completed = run(
         [
-            str(python),
+            sys.executable,
             "-m",
             "tools.run_prompt_control_attention_coupling_integration",
             "--help",

@@ -21,6 +21,7 @@ from tools.anima_regional_lora_performance.matrix_results import (
 from tools.anima_regional_lora_performance.matrix_runner import (
     ANIMA_REGIONAL_LORA_SCALING_RUNNER,
 )
+from tools.comfy_integration.default_paths import default_benchmark_artifact_root
 
 
 def main() -> int:
@@ -64,9 +65,8 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path(
-            r"<COMFY_ROOT>\benchmark_artifacts\anima-regional-prompting-v1"
-            r"\p10.1\scaling-matrix"
+        default=default_benchmark_artifact_root(
+            "anima-regional-prompting-v1/p10.1/scaling-matrix"
         ),
     )
     return parser.parse_args()

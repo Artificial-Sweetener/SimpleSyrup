@@ -11,16 +11,20 @@ import logging
 from pathlib import Path
 from typing import cast
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from tools.comfy_api import JsonObject
 from tools.comfy_integration.artifacts import IntegrationArtifacts
+from tools.comfy_integration.default_paths import (
+    default_comfy_root,
+)
 from tools.comfy_integration.history_output import extract_saved_image
 from tools.comfy_integration.loopback_port import is_loopback_port_available
 from tools.comfy_integration.managed_server import ManagedComfyServer
+from tools.comfy_integration.portable_font import load_label_font
 
 LOGGER = logging.getLogger(__name__)
-COMFY_ROOT = Path(r"<COMFY_ROOT>")
+COMFY_ROOT = default_comfy_root()
 OUTPUT_ROOT = (
     COMFY_ROOT
     / "benchmark_artifacts"
@@ -165,7 +169,7 @@ def _label(root: Path) -> None:
     header = 96
     canvas = Image.new("RGB", (3072, 1024 + header), color=(20, 20, 20))
     draw = ImageDraw.Draw(canvas)
-    font = ImageFont.truetype(r"<SYSTEM_FONT>", 26)
+    font = load_label_font(26)
     for index, (path, label) in enumerate(zip(inputs, labels, strict=True)):
         image = Image.open(path).convert("RGB")
         if image.size != (1024, 1024):

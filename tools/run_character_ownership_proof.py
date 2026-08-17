@@ -11,16 +11,20 @@ import logging
 from pathlib import Path
 from typing import cast
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from tools.comfy_api import JsonObject
 from tools.comfy_integration.artifacts import IntegrationArtifacts
+from tools.comfy_integration.default_paths import (
+    default_comfy_root,
+)
 from tools.comfy_integration.history_output import extract_saved_image
 from tools.comfy_integration.loopback_port import is_loopback_port_available
 from tools.comfy_integration.managed_server import ManagedComfyServer
+from tools.comfy_integration.portable_font import load_label_font
 
 LOGGER = logging.getLogger(__name__)
-COMFY_ROOT = Path(r"<COMFY_ROOT>")
+COMFY_ROOT = default_comfy_root()
 OUTPUT_ROOT = (
     COMFY_ROOT
     / "benchmark_artifacts"
@@ -163,7 +167,7 @@ def _label(root: Path) -> None:
     canvas.paste(before, (0, header))
     canvas.paste(after, (1024, header))
     draw = ImageDraw.Draw(canvas)
-    font = ImageFont.truetype(r"<SYSTEM_FONT>", 28)
+    font = load_label_font(28)
     draw.text(
         (24, 30), "BEFORE — global self-attention takeover", fill="white", font=font
     )

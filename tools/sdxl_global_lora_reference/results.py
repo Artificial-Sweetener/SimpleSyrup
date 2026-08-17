@@ -11,13 +11,12 @@ import io
 import json
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from tools.comfy_api import JsonObject
+from tools.comfy_integration.portable_font import load_label_font
 
 from .workflow import GLOBAL_LORA_STRENGTH, BuiltNativeGlobalLoraWorkflow
-
-_FONT_PATH = Path(r"<SYSTEM_FONT>")
 
 
 class NativeGlobalLoraResultRecorder:
@@ -110,8 +109,8 @@ def _write_labeled(image: Image.Image, path: Path, label: str) -> None:
     canvas = Image.new("RGB", (1024, 1024 + header_height), (20, 20, 20))
     canvas.paste(image, (0, header_height))
     draw = ImageDraw.Draw(canvas)
-    title_font = ImageFont.truetype(str(_FONT_PATH), 30)
-    detail_font = ImageFont.truetype(str(_FONT_PATH), 21)
+    title_font = load_label_font(30)
+    detail_font = load_label_font(21)
     draw.text((24, 18), label, fill="white", font=title_font)
     draw.text(
         (24, 66),

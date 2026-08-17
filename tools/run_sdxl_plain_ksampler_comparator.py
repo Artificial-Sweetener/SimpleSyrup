@@ -17,6 +17,10 @@ from typing import cast
 
 from tools.comfy_api import JsonObject
 from tools.comfy_integration.artifacts import IntegrationArtifacts
+from tools.comfy_integration.default_paths import (
+    default_benchmark_artifact_root,
+    default_comfy_root,
+)
 from tools.comfy_integration.history_output import extract_saved_image
 from tools.comfy_integration.loopback_port import is_loopback_port_available
 from tools.comfy_integration.managed_model_links import (
@@ -39,9 +43,9 @@ from tools.sdxl_full_strength_lora_fidelity.plain_workflow import (
 )
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_COMFY_ROOT = Path(r"<COMFY_ROOT>")
-DEFAULT_OUTPUT_ROOT = Path(
-    r"<COMFY_ROOT>\benchmark_artifacts\universal-regional-adapter\plain-ksampler"
+DEFAULT_COMFY_ROOT = default_comfy_root()
+DEFAULT_OUTPUT_ROOT = default_benchmark_artifact_root(
+    "universal-regional-adapter/plain-ksampler"
 )
 
 

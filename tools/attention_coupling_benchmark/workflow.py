@@ -8,6 +8,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from tools.comfy_integration.anima_fixture_selections import (
+    ANIMA_DIFFUSION_SELECTION,
+    ANIMA_TEXT_ENCODER_SELECTION,
+    ANIMA_VAE_SELECTION,
+)
+
 from .manifest_types import (
     BenchmarkCase,
     BenchmarkManifest,
@@ -49,12 +55,12 @@ class BenchmarkWorkflowBuilder:
         prompt: Workflow = {
             "1": self._node(
                 "SimpleSyrup.SimpleLoadAnima",
-                diffusion_model="Anima\\diffusion-model.safetensors",
+                diffusion_model=ANIMA_DIFFUSION_SELECTION,
                 quantization="Original",
                 diffusion_weight_dtype="default",
-                text_encoder="qwen\\qwen_3_06b_base.safetensors",
+                text_encoder=ANIMA_TEXT_ENCODER_SELECTION,
                 text_encoder_device="default",
-                vae="qwen\\qwen_image_vae.safetensors",
+                vae=ANIMA_VAE_SELECTION,
             ),
             "2": self._node(
                 "SimpleSyrup.EncodePromptBatch",
