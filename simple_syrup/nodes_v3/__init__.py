@@ -12,9 +12,14 @@ from ..runtime.prompt_control_availability import prompt_control_is_available
 def get_nodes() -> list[type[object]]:
     """Return v3 nodes that can be advertised in this environment."""
 
+    from .all_prompt_attention_segs import AllPromptAttentionSEGSV3
+    from .attention_capture_model import AttentionCaptureModelV3
+    from .attention_masked_conditioning import AttentionMaskedConditioningV3
+    from .attention_region_mask import AttentionRegionMaskV3
     from .batch_region_conditioning import BatchRegionConditioningV3
     from .batch_segs import BatchSEGSV3
     from .compose_regional_conditioning import ComposeRegionalConditioningV3
+    from .concept_attention_segs import ConceptAttentionSEGSV3
     from .external_llm_prompt import ExternalLLMPromptV3
     from .ksampler_attention_coupling import KSamplerAttentionCouplingV3
     from .ksampler_contextual_attention_coupling import (
@@ -69,6 +74,10 @@ def get_nodes() -> list[type[object]]:
     from .wd14_tagger_loader import WD14TaggerLoaderV3
 
     nodes: list[type[object]] = [
+        AllPromptAttentionSEGSV3,
+        AttentionCaptureModelV3,
+        AttentionMaskedConditioningV3,
+        AttentionRegionMaskV3,
         BatchRegionConditioningV3,
         BatchSEGSV3,
         ConditioningBatchAppendV3,
@@ -103,6 +112,7 @@ def get_nodes() -> list[type[object]]:
         SAMModelLoaderV3,
         SEGSFromSAMOutputV3,
         ScaleFactorV3,
+        ConceptAttentionSEGSV3,
         SeedV3,
         SimpleLoadAnimaV3,
         SimplePreviewSEGSV3,
