@@ -12,6 +12,9 @@ from . import simple_syrup as _simple_syrup_package
 
 sys.modules.setdefault("simple_syrup", _simple_syrup_package)
 
+from .simple_syrup.runtime.attention_region_prompt_handler import (  # noqa: E402
+    register_attention_region_prompt_handler,
+)
 from .simple_syrup.runtime.comfy_safetensors_dtypes import (  # noqa: E402
     register_comfy_safetensors_dtypes,
 )
@@ -52,6 +55,7 @@ register_comfy_safetensors_dtypes()
 register_quant_cache_routes()
 register_external_llm_routes()
 register_mask_batch_preview_routes()
+register_attention_region_prompt_handler()
 
 __all__ = [
     "WEB_DIRECTORY",

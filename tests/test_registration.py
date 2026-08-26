@@ -17,6 +17,10 @@ from typing import Any, Protocol, cast
 import pytest
 
 BASE_NODE_IDS = [
+    "SimpleSyrup.AllPromptAttentionSEGS",
+    "SimpleSyrup.AttentionCaptureModel",
+    "SimpleSyrup.AttentionMaskedConditioning",
+    "SimpleSyrup.AttentionRegionMask",
     "SimpleSyrup.BatchRegionConditioning",
     "SimpleSyrup.BatchSEGS",
     "SimpleSyrup.ConditioningBatchAppend",
@@ -51,6 +55,7 @@ BASE_NODE_IDS = [
     "SimpleSyrup.SAMModelLoader",
     "SimpleSyrup.SEGSFromSAMOutput",
     "SimpleSyrup.ScaleFactor",
+    "SimpleSyrup.ConceptAttentionSEGS",
     "SimpleSyrup.Seed",
     "SimpleSyrup.SimpleLoadAnima",
     "SimpleSyrup.SimplePreviewSEGS",
