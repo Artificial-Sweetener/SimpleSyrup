@@ -14,6 +14,9 @@ from ..domain.attention_region_capture import AttentionRegionControls
 from ..domain.attention_region_evidence import AttentionConceptEvidence
 from ..domain.segs import BoundingBox
 from ..masking.mask_components import connected_mask_components
+from .attention_region_component_cohesion import (
+    ATTENTION_COMPONENT_COHESION_SERVICE,
+)
 from .attention_region_instance_splitting import (
     ATTENTION_INSTANCE_SPLITTING_SERVICE,
 )
@@ -42,10 +45,18 @@ class AttentionComponentService:
         """Return valid components under the requested per-concept policy."""
 
         candidates: list[AttentionRegionComponent] = []
-        for cohesive_region in connected_mask_components(evidence.support):
+        eligible_supports = tuple(
+            region.mask.to(device=evidence.support.device)
+            for region in connected_mask_components(evidence.support)
+            if int(region.mask.count_nonzero().item()) >= controls.minimum_region_size
+        )
+        cohesive_supports = ATTENTION_COMPONENT_COHESION_SERVICE.group(
+            eligible_supports
+        )
+        for cohesive_support in cohesive_supports:
             partitions = ATTENTION_INSTANCE_SPLITTING_SERVICE.partition(
                 alpha=evidence.alpha,
-                support=cohesive_region.mask,
+                support=cohesive_support,
                 minimum_strength=controls.minimum_strength,
                 sensitivity=controls.split_sensitivity,
             )
