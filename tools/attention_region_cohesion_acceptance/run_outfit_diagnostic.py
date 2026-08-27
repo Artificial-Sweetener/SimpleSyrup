@@ -10,11 +10,14 @@ import json
 from pathlib import Path
 
 from .client import execute
+from .fidelity_diagnostic import compose_mask_diagnostic_sheet
 from .phrase_diagnostic import (
     build_phrase_diagnostic_workflow,
     compose_phrase_diagnostic_sheet,
 )
 from .run import OUTPUT_ROOT, PROOF_ROOT, SERVER
+from .source_workflow import build_source_workflow
+from .workflow import configure_mask
 
 CONCEPTS = ("pink", "blue", "witch", "outfit", "pink and blue witch outfit")
 OUTFIT_STRENGTHS = (0.15, 0.30, 0.50, 0.70, 0.85)
@@ -85,6 +88,62 @@ def main() -> None:
         encoding="utf-8",
     )
     print(strength_destination)
+
+    default_graph = build_source_workflow(
+        source,
+        output_prefix="simple_syrup_attention_cohesion_proof/anima_outfit_default",
+        concept=CONCEPTS[-1],
+    )
+    configure_mask(
+        default_graph,
+        request_id="14",
+        save_id="1131",
+        concept=CONCEPTS[-1],
+        strength=0.15,
+        consensus=0.25,
+        split=0.0,
+        minimum_size=512,
+        keep_only=1,
+        solidity=0.75,
+        evidence_mode="concept isolation",
+        prefix="simple_syrup_attention_cohesion_proof/anima_outfit_default/mask",
+        edge_feather=8,
+    )
+    default_graph = {
+        node_id: node
+        for node_id, node in default_graph.items()
+        if node_id in {"1", "2", "3", "4", "5", "6", "14", "900", "1130", "1131"}
+    }
+    default_outputs = execute(
+        SERVER,
+        default_graph,
+        OUTPUT_ROOT,
+    )
+    default_sheet = PROOF_ROOT / "anima_outfit_default_mask.png"
+    compose_mask_diagnostic_sheet(
+        title="Hassaku Anima - Default Compound Outfit Mask",
+        subtitle=(
+            "Strength 0.15; consensus 0.25; minimum region 512; "
+            "largest cohesive instance; solidity 0.75; feather 8"
+        ),
+        image_path=default_outputs["900"],
+        stage_paths=(("DEFAULT MASK", default_outputs["1131"]),),
+        destination=default_sheet,
+    )
+    default_destination = PROOF_ROOT / "anima_outfit_default_mask.json"
+    default_destination.write_text(
+        json.dumps(
+            {
+                "sheet": str(default_sheet),
+                "outputs": {
+                    node_id: str(path) for node_id, path in default_outputs.items()
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    print(default_destination)
 
 
 if __name__ == "__main__":

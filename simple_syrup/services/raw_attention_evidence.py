@@ -11,6 +11,9 @@ import torch
 from ..domain.attention_region_capture import AttentionRegionControls
 from ..domain.attention_region_evidence import AttentionConceptEvidence
 from ..domain.attention_region_maps import CapturedAttentionMap
+from .attention_region_geometry_recovery import (
+    ATTENTION_REGION_GEOMETRY_RECOVERY_SERVICE,
+)
 from .attention_region_observation_projection import (
     ATTENTION_OBSERVATION_PROJECTION_SERVICE,
 )
@@ -81,8 +84,40 @@ class RawAttentionEvidencePolicy:
         return (alpha > 0.0) & (alpha >= minimum_strength)
 
 
+RAW_ATTENTION_EVIDENCE_POLICY = RawAttentionEvidencePolicy()
+
+
 class AnimaConceptAttentionEvidencePolicy(RawAttentionEvidencePolicy):
     """Aggregate Anima's contextualized semantic-head probabilities."""
+
+    def aggregate(
+        self,
+        label: str,
+        observations: tuple[CapturedAttentionMap, ...],
+        controls: AttentionRegionControls,
+        height: int,
+        width: int,
+    ) -> AttentionConceptEvidence:
+        """Anchor exact prompt-token geometry to the semantic concept core."""
+
+        semantic = super().aggregate(
+            label,
+            observations,
+            controls,
+            height,
+            width,
+        )
+        geometry = RAW_ATTENTION_EVIDENCE_POLICY.aggregate(
+            label,
+            observations,
+            controls,
+            height,
+            width,
+        )
+        return ATTENTION_REGION_GEOMETRY_RECOVERY_SERVICE.recover(
+            semantic=semantic,
+            geometry=geometry,
+        )
 
     def _values(self, observation: CapturedAttentionMap) -> torch.Tensor:
         """Return phrase agreement above its observation-local spatial baseline."""
@@ -105,5 +140,4 @@ class AnimaConceptAttentionEvidencePolicy(RawAttentionEvidencePolicy):
         return ATTENTION_CONCEPT_SUPPORT_SERVICE.select(alpha, minimum_strength)
 
 
-RAW_ATTENTION_EVIDENCE_POLICY = RawAttentionEvidencePolicy()
 ANIMA_CONCEPT_ATTENTION_EVIDENCE_POLICY = AnimaConceptAttentionEvidencePolicy()

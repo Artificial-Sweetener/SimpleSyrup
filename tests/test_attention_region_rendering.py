@@ -195,6 +195,93 @@ def test_anima_concept_mode_uses_validated_probability_aggregation() -> None:
     assert raw_mask[0, 0, 1] > raw_mask[0, 0, 0]
 
 
+def test_anima_concept_mode_recovers_connected_exact_token_geometry() -> None:
+    """Keep a raw-attention appendage attached to the semantic concept core."""
+
+    maps = tuple(
+        _map(
+            "cat",
+            [1.0, 1.0, 0.8, 0.7, 0.0],
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=[1.0, 1.0, 0.0, 0.0, 0.0],
+        )
+        for progress in (0.2, 0.7)
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.5,
+            consensus=0.25,
+            evidence_mode=AttentionEvidenceMode.CONCEPT,
+        ),
+        height=1,
+        width=5,
+    )
+
+    assert mask[0, 0, :4].count_nonzero().item() == 4
+    assert mask[0, 0, 4].item() == 0.0
+
+
+def test_anima_concept_mode_rejects_detached_exact_token_noise() -> None:
+    """Exclude raw-attention components that do not touch the semantic core."""
+
+    maps = tuple(
+        _map(
+            "cat",
+            [1.0, 1.0, 0.0, 0.0, 0.9],
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=[1.0, 1.0, 0.0, 0.0, 0.0],
+        )
+        for progress in (0.2, 0.7)
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.5,
+            consensus=0.25,
+            evidence_mode=AttentionEvidenceMode.CONCEPT,
+        ),
+        height=1,
+        width=5,
+    )
+
+    assert mask[0, 0, :2].count_nonzero().item() == 2
+    assert mask[0, 0, 4].item() == 0.0
+
+
+def test_anima_concept_mode_rejects_globally_expansive_raw_geometry() -> None:
+    """Fall back to semantic support when raw evidence floods the image."""
+
+    maps = tuple(
+        _map(
+            "outfit",
+            [1.0, 1.0, 0.8, 0.8, 0.8],
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=[1.0, 1.0, 0.0, 0.0, 0.0],
+        )
+        for progress in (0.2, 0.7)
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.5,
+            consensus=0.25,
+            evidence_mode=AttentionEvidenceMode.CONCEPT,
+        ),
+        height=1,
+        width=5,
+    )
+
+    assert mask[0, 0, :2].count_nonzero().item() == 2
+    assert mask[0, 0, 2:].count_nonzero().item() == 0
+
+
 def test_concept_isolation_prefers_repeated_support_over_transient_peak() -> None:
     """Suppress one strong flash when stable observations localize elsewhere."""
 
@@ -430,6 +517,31 @@ def test_keep_only_and_combine_apply_per_concept_without_changing_union() -> Non
     assert len(separate[1]) == 2
     assert len(combined[1]) == 1
     assert torch.equal(separate_mask, combined_mask)
+
+
+def test_keep_largest_groups_a_nearby_detached_concept_fragment() -> None:
+    """Treat qualifying nearby support as one instance before top-N ranking."""
+
+    values = torch.zeros((9, 9), dtype=torch.float32)
+    values[1, 1:8] = 1.0
+    values[7, 1:8] = 1.0
+    values[1:8, 1] = 1.0
+    values[4:6, 4:6] = 0.8
+
+    segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=(_map("cat", values.flatten().tolist(), 0.5),),
+        controls=_controls(
+            strength=0.5,
+            consensus=0.0,
+            keep_only=1,
+            feather=0,
+        ),
+        height=9,
+        width=9,
+    )
+
+    assert len(segs[1]) == 1
+    assert mask[0, 4:6, 4:6].count_nonzero().item() == 4
 
 
 def test_matte_solidity_flattens_interior_and_edge_feather_softens_boundary() -> None:
