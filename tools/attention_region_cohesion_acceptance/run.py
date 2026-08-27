@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Run SDXL and Anima attention-cohesion visual acceptance cases."""
 
 from __future__ import annotations
@@ -8,6 +12,7 @@ from pathlib import Path
 
 from .artifacts import compose_sheet
 from .client import execute
+from .source_workflow import build_source_workflow
 from .workflow import build_workflow
 
 OUTPUT_ROOT = Path("E:/ComfyUI/output")
@@ -49,8 +54,9 @@ def main() -> None:
             concept=case.concept,
             image_path=outputs["900"],
             raw_path=outputs["101"],
-            default_path=outputs["1101"],
-            solid_path=outputs["1131"],
+            previous_path=outputs["1101"],
+            isolated_path=outputs["1131"],
+            solid_path=outputs["1141"],
             destination=sheet,
         )
         case_manifest[key] = {
@@ -58,6 +64,31 @@ def main() -> None:
             "outputs": {node_id: str(path) for node_id, path in outputs.items()},
             "proof_sheet": str(sheet),
         }
+    atlas_key = "anima_outfit"
+    atlas_concept = "pink and blue witch outfit"
+    atlas_prefix = f"simple_syrup_attention_cohesion_proof/{atlas_key}"
+    atlas_graph = build_source_workflow(
+        Path("E:/devprojects/attention-atlas/fixtures/source/pink-witch.json"),
+        output_prefix=atlas_prefix,
+        concept=atlas_concept,
+    )
+    atlas_outputs = execute(SERVER, atlas_graph, OUTPUT_ROOT)
+    atlas_sheet = PROOF_ROOT / f"{atlas_key}_cohesive_silhouette_proof.png"
+    compose_sheet(
+        title="Hassaku Anima - Compound Outfit Concept Isolation",
+        concept=atlas_concept,
+        image_path=atlas_outputs["900"],
+        raw_path=atlas_outputs["101"],
+        previous_path=atlas_outputs["1101"],
+        isolated_path=atlas_outputs["1131"],
+        solid_path=atlas_outputs["1141"],
+        destination=atlas_sheet,
+    )
+    case_manifest[atlas_key] = {
+        "concept": atlas_concept,
+        "outputs": {node_id: str(path) for node_id, path in atlas_outputs.items()},
+        "proof_sheet": str(atlas_sheet),
+    }
     manifest = {"server": SERVER, "cases": case_manifest}
     destination = PROOF_ROOT / "cohesion_manifest.json"
     destination.write_text(json.dumps(manifest, indent=2), encoding="utf-8")

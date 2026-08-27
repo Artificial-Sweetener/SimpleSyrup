@@ -10,11 +10,16 @@ from typing import Any
 
 from ..domain.attention_region_capture import (
     AttentionCaptureProfile,
+    AttentionEvidenceMode,
     AttentionRegionControls,
 )
 
 
-def attention_region_control_inputs(io: Any) -> list[object]:
+def attention_region_control_inputs(
+    io: Any,
+    *,
+    evidence_mode_default: AttentionEvidenceMode = AttentionEvidenceMode.CONCEPT,
+) -> list[object]:
     """Return the complete shared attention-native control schema."""
 
     return [
@@ -75,13 +80,13 @@ def attention_region_control_inputs(io: Any) -> list[object]:
         ),
         io.Float.Input(
             "split_sensitivity",
-            default=0.35,
+            default=0.0,
             min=0.0,
             max=1.0,
             step=0.01,
             tooltip=(
-                "Sensitivity to separate peaks into instances without shrinking "
-                "their combined silhouette; higher values cut stronger bridges."
+                "Sensitivity to divide one connected region around separate peaks; "
+                "higher values can split a soft silhouette into multiple instances."
             ),
         ),
         io.Int.Input(
@@ -141,6 +146,15 @@ def attention_region_control_inputs(io: Any) -> list[object]:
                 "adds temporal evidence, and exhaustive retains every eligible call."
             ),
         ),
+        io.Combo.Input(
+            "evidence_mode",
+            options=[mode.value for mode in AttentionEvidenceMode],
+            default=evidence_mode_default.value,
+            tooltip=(
+                "Concept isolation derives a cleaner stable region; raw attention "
+                "shows the captured model probabilities without isolation weighting."
+            ),
+        ),
     ]
 
 
@@ -158,6 +172,7 @@ def attention_region_controls(
     matte_solidity: float,
     edge_feather: int,
     capture_profile: str,
+    evidence_mode: str,
 ) -> AttentionRegionControls:
     """Build validated domain controls from public node inputs."""
 
@@ -174,4 +189,5 @@ def attention_region_controls(
         combine_segs=combine_segs,
         matte_solidity=matte_solidity,
         edge_feather=edge_feather,
+        evidence_mode=AttentionEvidenceMode(evidence_mode),
     )

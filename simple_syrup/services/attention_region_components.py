@@ -11,9 +11,9 @@ from dataclasses import dataclass
 import torch
 
 from ..domain.attention_region_capture import AttentionRegionControls
+from ..domain.attention_region_evidence import AttentionConceptEvidence
 from ..domain.segs import BoundingBox
 from ..masking.mask_components import connected_mask_components
-from .attention_region_evidence import AttentionConceptEvidence
 from .attention_region_instance_splitting import (
     ATTENTION_INSTANCE_SPLITTING_SERVICE,
 )

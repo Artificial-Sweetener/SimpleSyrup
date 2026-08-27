@@ -63,7 +63,20 @@ class AttentionPromptTokenizer:
             indices, search_start = match
             normalized = " ".join(concept.casefold().replace("_", " ").split())
             occurrences[normalized] += 1
-            spans.append(AttentionTokenSpan(concept, occurrences[normalized], indices))
+            spans.append(
+                AttentionTokenSpan(
+                    concept,
+                    occurrences[normalized],
+                    indices,
+                    _head_token_indices(
+                        tokenize=tokenize,
+                        label=concept,
+                        model_family=model_family,
+                        full_ids=tuple(item[0] for item in full),
+                        span_indices=indices,
+                    ),
+                )
+            )
         return AttentionTokenCatalog(
             len(full),
             tuple(spans),
@@ -118,7 +131,21 @@ class AttentionPromptTokenizer:
             used_indices.update(indices)
             resolved_indices.extend(indices)
             word_index += consumed_words
-        return (AttentionTokenSpan(query, 1, tuple(sorted(set(resolved_indices)))),)
+        indices = tuple(sorted(set(resolved_indices)))
+        return (
+            AttentionTokenSpan(
+                query,
+                1,
+                indices,
+                _head_token_indices(
+                    tokenize=tokenize,
+                    label=query,
+                    model_family=model_family,
+                    full_ids=catalog.token_ids,
+                    span_indices=indices,
+                ),
+            ),
+        )
 
     def encode_open_vocabulary_query(
         self,
@@ -249,6 +276,41 @@ def _find_unused_concept_tokens(
                 return indices, start + len(candidate_ids)
             search_start = start + 1
     return None
+
+
+def _head_token_indices(
+    *,
+    tokenize: Any,
+    label: str,
+    model_family: RegionalModelFamily,
+    full_ids: tuple[object, ...],
+    span_indices: tuple[int, ...],
+) -> tuple[int, ...]:
+    """Resolve the final lexical word as a phrase's semantic head."""
+
+    words = tuple(
+        match.group(0).strip("()[]{}\"'").split(":", maxsplit=1)[0]
+        for match in re.finditer(r"[^\s,;|]+", label)
+        if match.group(0).strip("()[]{}\"'").split(":", maxsplit=1)[0]
+    )
+    if not words:
+        return span_indices[-1:]
+    allowed = set(span_indices)
+    for candidate in (words[-1], f" {words[-1]}"):
+        encoded = _flatten_tokens(
+            _family_tokens(tokenize(candidate, return_word_ids=True), model_family)
+        )
+        token_ids = tuple(item[0] for item in encoded if item[2] != 0)
+        if not token_ids:
+            continue
+        for offset in range(len(span_indices) - len(token_ids), -1, -1):
+            indices = span_indices[offset : offset + len(token_ids)]
+            if (
+                set(indices).issubset(allowed)
+                and tuple(full_ids[index] for index in indices) == token_ids
+            ):
+                return indices
+    return span_indices[-1:]
 
 
 ATTENTION_PROMPT_TOKENIZER = AttentionPromptTokenizer()

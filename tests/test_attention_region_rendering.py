@@ -10,9 +10,11 @@ import torch
 
 from simple_syrup.domain.attention_region_capture import (
     AttentionCaptureProfile,
+    AttentionEvidenceMode,
     AttentionRegionControls,
 )
 from simple_syrup.domain.attention_region_maps import CapturedAttentionMap
+from simple_syrup.domain.regional_model_capabilities import RegionalModelFamily
 from simple_syrup.services.attention_region_matte import ATTENTION_MATTE_SERVICE
 from simple_syrup.services.attention_region_rendering import (
     ATTENTION_REGION_RENDERING_SERVICE,
@@ -68,6 +70,223 @@ def test_temporal_window_changes_region_without_morphology() -> None:
 
     assert early[0, 0].sum().item() > early[0, 1].sum().item()
     assert late[0, 1].sum().item() > late[0, 0].sum().item()
+
+
+def test_raw_attention_preserves_diffuse_model_evidence() -> None:
+    """Keep low-amplitude positive attention visible in inspection mode."""
+
+    maps = (
+        _map(
+            "outfit",
+            [0.26, 0.25, 0.27, 0.25],
+            0.1,
+            baseline=0.25,
+        ),
+        _map(
+            "outfit",
+            [0.25, 0.80, 0.25, 0.25],
+            0.6,
+            baseline=0.25,
+        ),
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.0,
+            consensus=0.0,
+            evidence_mode=AttentionEvidenceMode.RAW,
+        ),
+        height=2,
+        width=2,
+    )
+
+    assert mask.count_nonzero().item() == 4
+    assert mask[0, 0, 1].item() == 1.0
+    assert mask[0, 0, 0].item() > 0.0
+
+
+def test_concept_isolation_removes_uniform_attention_baseline() -> None:
+    """Do not promote near-uniform attention into concept support."""
+
+    maps = (
+        _map(
+            "outfit",
+            [0.26, 0.25, 0.27, 0.25],
+            0.1,
+            baseline=0.25,
+        ),
+        _map(
+            "outfit",
+            [0.25, 0.80, 0.25, 0.25],
+            0.5,
+            baseline=0.25,
+        ),
+        _map(
+            "outfit",
+            [0.25, 0.75, 0.25, 0.25],
+            0.7,
+            baseline=0.25,
+        ),
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.2,
+            evidence_mode=AttentionEvidenceMode.CONCEPT,
+        ),
+        height=2,
+        width=2,
+    )
+
+    assert mask.count_nonzero().item() == 1
+    assert mask[0, 0, 1].item() == 1.0
+
+
+def test_anima_concept_mode_uses_validated_probability_aggregation() -> None:
+    """Keep Anima on its spatially faithful cross-attention evidence policy."""
+
+    maps = (
+        _map(
+            "cat",
+            [0.1, 0.8, 0.2, 0.7],
+            0.2,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=[0.8, 0.1, 0.7, 0.2],
+            baseline=0.1,
+        ),
+        _map(
+            "cat",
+            [0.1, 0.9, 0.1, 0.2],
+            0.7,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=[0.9, 0.1, 0.8, 0.1],
+            baseline=0.1,
+        ),
+    )
+    concept_controls = _controls(
+        strength=0.2,
+        consensus=0.25,
+        evidence_mode=AttentionEvidenceMode.CONCEPT,
+    )
+    raw_controls = _controls(
+        strength=0.2,
+        consensus=0.25,
+        evidence_mode=AttentionEvidenceMode.RAW,
+    )
+
+    _concept_segs, concept_mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=concept_controls,
+        height=2,
+        width=2,
+    )
+    _raw_segs, raw_mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=raw_controls,
+        height=2,
+        width=2,
+    )
+
+    assert not torch.equal(concept_mask, raw_mask)
+    assert concept_mask[0, 0, 0] > concept_mask[0, 0, 1]
+    assert raw_mask[0, 0, 1] > raw_mask[0, 0, 0]
+
+
+def test_concept_isolation_prefers_repeated_support_over_transient_peak() -> None:
+    """Suppress one strong flash when stable observations localize elsewhere."""
+
+    maps = (
+        _map(
+            "hair",
+            [0.25, 0.25, 0.25, 0.95],
+            0.1,
+            baseline=0.25,
+            layer="early",
+        ),
+        _map(
+            "hair",
+            [0.25, 0.78, 0.25, 0.25],
+            0.4,
+            baseline=0.25,
+            layer="middle-a",
+        ),
+        _map(
+            "hair",
+            [0.25, 0.82, 0.25, 0.25],
+            0.6,
+            baseline=0.25,
+            layer="middle-b",
+        ),
+        _map(
+            "hair",
+            [0.25, 0.76, 0.25, 0.25],
+            0.8,
+            baseline=0.25,
+            layer="late",
+        ),
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.2,
+            consensus=0.4,
+            evidence_mode=AttentionEvidenceMode.CONCEPT,
+        ),
+        height=2,
+        width=2,
+    )
+
+    assert mask.count_nonzero().item() == 1
+    assert mask[0, 0, 1].item() == 1.0
+
+
+def test_concept_isolation_preserves_repeated_fine_layer_structure() -> None:
+    """Keep layer-local fine detail without admitting a one-step transient."""
+
+    maps = tuple(
+        _map(
+            "hair",
+            [0.25, 0.85, 0.25, 0.25],
+            progress,
+            baseline=0.25,
+            layer="coarse",
+        )
+        for progress in (0.2, 0.4, 0.6, 0.8)
+    ) + (
+        _map(
+            "hair",
+            [0.25, 0.85, 0.52, 0.48],
+            0.4,
+            baseline=0.25,
+            layer="fine",
+        ),
+        _map(
+            "hair",
+            [0.25, 0.85, 0.55, 0.25],
+            0.7,
+            baseline=0.25,
+            layer="fine",
+        ),
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.5,
+            feather=0,
+            evidence_mode=AttentionEvidenceMode.CONCEPT,
+        ),
+        height=2,
+        width=2,
+    )
+
+    assert mask[0, 1, 0].item() > 0.0
+    assert mask[0, 1, 1].item() == 0.0
 
 
 def test_empty_maps_return_correctly_sized_no_op_outputs() -> None:
@@ -338,14 +557,30 @@ def test_highest_confidence_keeps_stronger_component() -> None:
     assert segs[1][0].bbox == (0, 0, 1, 1)
 
 
-def _map(label: str, values: list[float], progress: float) -> CapturedAttentionMap:
+def _map(
+    label: str,
+    values: list[float],
+    progress: float,
+    *,
+    baseline: float = 0.0,
+    layer: str = "layer",
+    family: RegionalModelFamily = RegionalModelFamily.STANDARD_UNET,
+    concept_values: list[float] | None = None,
+) -> CapturedAttentionMap:
     """Create one compact square attention observation."""
 
     return CapturedAttentionMap(
         label,
         torch.tensor(values, dtype=torch.float16),
         progress,
-        "layer",
+        layer,
+        uniform_probability=baseline,
+        model_family=family,
+        concept_values=(
+            torch.tensor(concept_values, dtype=torch.float16)
+            if concept_values is not None
+            else None
+        ),
     )
 
 
@@ -361,6 +596,7 @@ def _controls(
     solidity: float = 0.0,
     feather: int = 8,
     split: float = 0.0,
+    evidence_mode: AttentionEvidenceMode = AttentionEvidenceMode.CONCEPT,
 ) -> AttentionRegionControls:
     """Return representative balanced rendering controls."""
 
@@ -376,4 +612,5 @@ def _controls(
         combine_segs=combine,
         matte_solidity=solidity,
         edge_feather=feather,
+        evidence_mode=evidence_mode,
     )

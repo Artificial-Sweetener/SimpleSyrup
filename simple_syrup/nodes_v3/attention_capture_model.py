@@ -87,3 +87,10 @@ class AttentionCaptureModelV3(_ComfyNodeBase):
                 clip=clip,
             ),
         )
+
+    @classmethod
+    def fingerprint_inputs(cls, **kwargs: object) -> float:
+        """Force prompt-scoped session publication on every graph execution."""
+
+        del kwargs
+        return float("nan")

@@ -13,6 +13,7 @@ from typing import Any
 from ..domain.attention_region_capture import (
     AttentionCapturePlan,
     AttentionCaptureProfile,
+    AttentionEvidenceMode,
     AttentionRegionControls,
     AttentionRegionRequest,
     AttentionRegionRequestKind,
@@ -78,6 +79,7 @@ def _request(value: object) -> AttentionRegionRequest:
         matte_solidity=_float(controls_value, "matte_solidity"),
         edge_feather=_integer(controls_value, "edge_feather"),
         profile=AttentionCaptureProfile(_string(controls_value, "profile")),
+        evidence_mode=AttentionEvidenceMode(_string(controls_value, "evidence_mode")),
     )
     return AttentionRegionRequest(
         node_id=_string(value, "node_id"),

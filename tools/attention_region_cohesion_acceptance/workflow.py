@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Build focused attention-cohesion acceptance workflows from saved prompts."""
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ def build_workflow(
     consensus: float,
     split: float,
 ) -> Graph:
-    """Return a minimal same-seed graph with raw, default, and solid masks."""
+    """Return a same-seed graph comparing raw and isolated concept evidence."""
 
     prompt = json.loads(Image.open(source_png).info["prompt"])
     graph: Graph = deepcopy(prompt)
@@ -54,8 +58,13 @@ def build_workflow(
         "1131",
     }
     graph = {node_id: node for node_id, node in graph.items() if node_id in retained}
+    graph["15"] = deepcopy(graph["14"])
+    graph["1140"] = deepcopy(graph["1130"])
+    graph["1141"] = deepcopy(graph["1131"])
+    graph["1140"]["inputs"]["mask"] = ["15", 2]
+    graph["1141"]["inputs"]["images"] = ["1140", 0]
     graph["900"]["inputs"]["filename_prefix"] = f"{output_prefix}/image"
-    _configure_mask(
+    configure_mask(
         graph,
         request_id="10",
         save_id="101",
@@ -66,9 +75,10 @@ def build_workflow(
         minimum_size=1,
         keep_only=0,
         solidity=0.0,
+        evidence_mode="raw attention",
         prefix=f"{output_prefix}/raw_alpha",
     )
-    _configure_mask(
+    configure_mask(
         graph,
         request_id="11",
         save_id="1101",
@@ -79,9 +89,10 @@ def build_workflow(
         minimum_size=512,
         keep_only=1,
         solidity=0.75,
-        prefix=f"{output_prefix}/default_cohesive",
+        evidence_mode="raw attention",
+        prefix=f"{output_prefix}/previous_aggregate",
     )
-    _configure_mask(
+    configure_mask(
         graph,
         request_id="14",
         save_id="1131",
@@ -91,13 +102,28 @@ def build_workflow(
         split=0.35,
         minimum_size=512,
         keep_only=1,
+        solidity=0.0,
+        evidence_mode="concept isolation",
+        prefix=f"{output_prefix}/concept_isolation",
+    )
+    configure_mask(
+        graph,
+        request_id="15",
+        save_id="1141",
+        concept=concept,
+        strength=0.15,
+        consensus=0.25,
+        split=0.35,
+        minimum_size=512,
+        keep_only=1,
         solidity=1.0,
-        prefix=f"{output_prefix}/full_solid",
+        evidence_mode="concept isolation",
+        prefix=f"{output_prefix}/concept_isolation_solid",
     )
     return graph
 
 
-def _configure_mask(
+def configure_mask(
     graph: Graph,
     *,
     request_id: str,
@@ -109,7 +135,9 @@ def _configure_mask(
     minimum_size: int,
     keep_only: int,
     solidity: float,
+    evidence_mode: str,
     prefix: str,
+    edge_feather: int = 8,
 ) -> None:
     """Configure one focused concept-mask output."""
 
@@ -117,15 +145,20 @@ def _configure_mask(
     inputs.update(
         {
             "concepts": concept,
+            "sampler_stage": 1,
+            "capture_start": 0.0,
+            "capture_end": 1.0,
             "minimum_strength": strength,
             "minimum_consensus": consensus,
             "split_sensitivity": split,
             "minimum_region_size": minimum_size,
             "keep_only": keep_only,
+            "keep_by": "largest size",
             "combine_segs": False,
             "matte_solidity": solidity,
-            "edge_feather": 8,
+            "edge_feather": edge_feather,
             "capture_profile": "fast",
+            "evidence_mode": evidence_mode,
         }
     )
     graph[save_id]["inputs"]["filename_prefix"] = prefix
