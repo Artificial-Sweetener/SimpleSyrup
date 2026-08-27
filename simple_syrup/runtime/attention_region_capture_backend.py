@@ -48,6 +48,7 @@ class OptimizedAttentionCaptureOverride:
             self._session.observe(
                 query,
                 key,
+                value,
                 heads,
                 transformer_options,
                 skip_reshape=bool(kwargs.get("skip_reshape", False)),

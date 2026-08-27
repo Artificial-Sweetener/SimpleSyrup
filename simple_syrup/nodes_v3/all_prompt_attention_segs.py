@@ -9,6 +9,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from ..domain.attention_region_capture import AttentionEvidenceMode
 from ..services.attention_region_node_service import ATTENTION_REGION_NODE_SERVICE
 from .attention_region_inputs import (
     attention_region_control_inputs,
@@ -61,7 +62,10 @@ class AllPromptAttentionSEGSV3(_ComfyNodeBase):
                         "the image is returned unchanged."
                     ),
                 ),
-                *attention_region_control_inputs(_comfy_io),
+                *attention_region_control_inputs(
+                    _comfy_io,
+                    evidence_mode_default=AttentionEvidenceMode.RAW,
+                ),
             ],
             outputs=[
                 _comfy_io.Image.Output("image", tooltip="Unchanged connected image."),
@@ -94,6 +98,7 @@ class AllPromptAttentionSEGSV3(_ComfyNodeBase):
         matte_solidity: float,
         edge_feather: int,
         capture_profile: str,
+        evidence_mode: str,
     ) -> tuple[object, object, object]:
         """Consume all prompt maps and render separate overlapping SEGS."""
 
@@ -114,6 +119,7 @@ class AllPromptAttentionSEGSV3(_ComfyNodeBase):
                 matte_solidity=matte_solidity,
                 edge_feather=edge_feather,
                 capture_profile=capture_profile,
+                evidence_mode=evidence_mode,
             ),
         )
         return result.image, result.segs, result.mask

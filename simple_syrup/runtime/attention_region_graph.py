@@ -17,6 +17,7 @@ from ..domain.attention_concepts import parse_attention_concepts
 from ..domain.attention_region_capture import (
     AttentionCapturePlan,
     AttentionCaptureProfile,
+    AttentionEvidenceMode,
     AttentionRegionControls,
     AttentionRegionRequest,
     AttentionRegionRequestKind,
@@ -222,6 +223,9 @@ def _request(
         matte_solidity=float(inputs.get("matte_solidity", 0.75)),
         edge_feather=int(inputs.get("edge_feather", 8)),
         profile=AttentionCaptureProfile(str(inputs.get("capture_profile", "fast"))),
+        evidence_mode=AttentionEvidenceMode(
+            str(inputs.get("evidence_mode", AttentionEvidenceMode.CONCEPT.value))
+        ),
     )
     return AttentionRegionRequest(
         node_id,
@@ -261,6 +265,7 @@ def _serialize_plan(plan: AttentionCapturePlan) -> str:
                 split_sensitivity=0.0,
                 minimum_region_size=1,
                 profile=request.controls.profile,
+                evidence_mode=request.controls.evidence_mode,
             ),
         )
         for request in plan.requests

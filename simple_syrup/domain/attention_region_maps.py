@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import torch
 
 from .attention_spatial_transform import AttentionSpatialTransform
+from .regional_model_capabilities import RegionalModelFamily
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +21,7 @@ class AttentionTokenSpan:
     label: str
     occurrence: int
     token_indices: tuple[int, ...]
+    head_token_indices: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         """Require canonical labels and ordered non-negative token indices."""
@@ -34,6 +36,17 @@ class AttentionTokenSpan:
             or self.token_indices[0] < 0
         ):
             raise ValueError("Attention token indices must be ordered and unique.")
+        if self.head_token_indices and (
+            self.head_token_indices != tuple(sorted(set(self.head_token_indices)))
+            or not set(self.head_token_indices).issubset(self.token_indices)
+        ):
+            raise ValueError("Attention head tokens must be an ordered span subset.")
+
+    @property
+    def semantic_head_indices(self) -> tuple[int, ...]:
+        """Return explicit noun-head positions or a safe final-token fallback."""
+
+        return self.head_token_indices or self.token_indices[-1:]
 
     @property
     def display_label(self) -> str:
@@ -88,6 +101,9 @@ class CapturedAttentionMap:
     spatial_height: int | None = None
     spatial_width: int | None = None
     spatial_transforms: tuple[AttentionSpatialTransform, ...] = ()
+    concept_values: torch.Tensor | None = None
+    uniform_probability: float = 0.0
+    model_family: RegionalModelFamily = RegionalModelFamily.STANDARD_UNET
 
     def __post_init__(self) -> None:
         """Require a finite CPU spatial vector and normalized progress."""
@@ -126,6 +142,24 @@ class CapturedAttentionMap:
             for transform in self.spatial_transforms
         ):
             raise TypeError("Captured attention spatial transforms are invalid.")
+        if self.concept_values is not None and (
+            not isinstance(self.concept_values, torch.Tensor)
+            or self.concept_values.device.type != "cpu"
+            or self.concept_values.shape != self.values.shape
+            or not self.concept_values.is_floating_point()
+            or not torch.isfinite(self.concept_values).all().item()
+        ):
+            raise ValueError(
+                "Captured concept evidence must match its finite CPU attention map."
+            )
+        if (
+            isinstance(self.uniform_probability, bool)
+            or not isinstance(self.uniform_probability, int | float)
+            or not 0.0 <= float(self.uniform_probability) <= 1.0
+        ):
+            raise ValueError("Captured uniform probability must be within 0..1.")
+        if not isinstance(self.model_family, RegionalModelFamily):
+            raise TypeError("Captured attention model family has an invalid type.")
 
 
 @dataclass(frozen=True, slots=True)

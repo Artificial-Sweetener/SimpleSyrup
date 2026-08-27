@@ -30,6 +30,13 @@ class AttentionCaptureProfile(StrEnum):
     EXHAUSTIVE = "exhaustive"
 
 
+class AttentionEvidenceMode(StrEnum):
+    """Select honest inspection or derived concept-isolation evidence."""
+
+    CONCEPT = "concept isolation"
+    RAW = "raw attention"
+
+
 @dataclass(frozen=True, slots=True)
 class AttentionRegionControls:
     """Hold validated attention-native capture and region-shaping controls."""
@@ -46,6 +53,7 @@ class AttentionRegionControls:
     combine_segs: bool = False
     matte_solidity: float = 0.0
     edge_feather: int = 8
+    evidence_mode: AttentionEvidenceMode = AttentionEvidenceMode.CONCEPT
 
     def __post_init__(self) -> None:
         """Require normalized ranges and a non-empty capture interval."""
@@ -85,6 +93,8 @@ class AttentionRegionControls:
             raise ValueError("Attention edge feather must be non-negative.")
         if not isinstance(self.profile, AttentionCaptureProfile):
             raise TypeError("Attention capture profile has an invalid type.")
+        if not isinstance(self.evidence_mode, AttentionEvidenceMode):
+            raise TypeError("Attention evidence mode has an invalid type.")
 
 
 @dataclass(frozen=True, slots=True)

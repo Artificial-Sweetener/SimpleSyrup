@@ -102,6 +102,7 @@ class ConceptAttentionSEGSV3(_ComfyNodeBase):
         matte_solidity: float,
         edge_feather: int,
         capture_profile: str,
+        evidence_mode: str,
     ) -> tuple[object, object, object]:
         """Consume shared capture evidence and render requested concept SEGS."""
 
@@ -124,6 +125,7 @@ class ConceptAttentionSEGSV3(_ComfyNodeBase):
                 matte_solidity=matte_solidity,
                 edge_feather=edge_feather,
                 capture_profile=capture_profile,
+                evidence_mode=evidence_mode,
             ),
         )
         return result.image, result.segs, result.mask

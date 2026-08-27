@@ -119,6 +119,7 @@ class AttentionMaskedConditioningV3(_ComfyNodeBase):
         matte_solidity: float,
         edge_feather: int,
         capture_profile: str,
+        evidence_mode: str,
     ) -> tuple[object, object, object]:
         """Return later-pass conditioning masked by earlier-sampler attention."""
 
@@ -141,6 +142,7 @@ class AttentionMaskedConditioningV3(_ComfyNodeBase):
                 matte_solidity=matte_solidity,
                 edge_feather=edge_feather,
                 capture_profile=capture_profile,
+                evidence_mode=evidence_mode,
             ),
         )
         masked = ATTENTION_REGION_NODE_SERVICE.mask_conditioning(

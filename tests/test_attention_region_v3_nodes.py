@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, cast
 
 import torch
@@ -16,6 +17,7 @@ from simple_syrup.domain.attention_region_capture import (
 )
 from simple_syrup.domain.attention_region_maps import CapturedAttentionMap
 from simple_syrup.nodes_v3 import get_nodes
+from simple_syrup.nodes_v3.attention_capture_model import AttentionCaptureModelV3
 from simple_syrup.runtime.attention_region_store import ATTENTION_REGION_CAPTURE_STORE
 from simple_syrup.services.attention_capture_model_service import (
     EmptyAttentionCaptureSession,
@@ -58,6 +60,7 @@ def test_v3_registry_exposes_four_public_nodes_and_internal_capture_node() -> No
     assert "queries" not in concept_inputs
     assert {
         "sampler_stage",
+        "evidence_mode",
         "keep_only",
         "keep_by",
         "combine_segs",
@@ -70,10 +73,23 @@ def test_v3_registry_exposes_four_public_nodes_and_internal_capture_node() -> No
         if hasattr(item, "default")
     }
     assert concept_defaults["minimum_strength"] == 0.15
-    assert concept_defaults["split_sensitivity"] == 0.35
+    assert concept_defaults["evidence_mode"] == "concept isolation"
+    assert concept_defaults["split_sensitivity"] == 0.0
     assert concept_defaults["minimum_region_size"] == 512
     assert concept_defaults["keep_only"] == 1
     assert concept_defaults["matte_solidity"] == 0.75
+    all_prompt_defaults = {
+        item.id: item.default
+        for item in schemas["SimpleSyrup.AllPromptAttentionSEGS"].inputs
+        if hasattr(item, "default")
+    }
+    assert all_prompt_defaults["evidence_mode"] == "raw attention"
+
+
+def test_internal_capture_model_is_never_reused_across_prompt_executions() -> None:
+    """Republish ephemeral capture state even when graph inputs are unchanged."""
+
+    assert math.isnan(AttentionCaptureModelV3.fingerprint_inputs())
 
 
 def test_image_service_preserves_pixels_and_returns_batch_segs_and_soft_masks() -> None:

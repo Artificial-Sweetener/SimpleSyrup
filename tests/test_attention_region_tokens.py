@@ -38,6 +38,9 @@ def test_sdxl_catalog_preserves_repeated_readable_prompt_occurrences() -> None:
         "pink hair #2",
     )
     assert catalog.spans[1].token_indices != catalog.spans[2].token_indices
+    assert tuple(
+        catalog.token_ids[index] for index in catalog.spans[1].semantic_head_indices
+    ) == tuple(ord(character) for character in "hair")
 
 
 def test_anima_catalog_selects_adapted_t5_token_positions() -> None:
@@ -83,6 +86,9 @@ def test_distributed_query_uses_complete_native_spans_in_any_prompt_order() -> N
     assert all(
         ord(character) in resolved_ids for character in "1girlpinkhairblackdress"
     )
+    assert tuple(
+        catalog.token_ids[index] for index in spans[0].semantic_head_indices
+    ) == tuple(ord(character) for character in "dress")
 
 
 def test_distributed_query_requires_complete_native_coverage() -> None:

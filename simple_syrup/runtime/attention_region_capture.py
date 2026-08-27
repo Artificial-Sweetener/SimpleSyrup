@@ -17,6 +17,7 @@ from ..domain.attention_geometry import factor_spatial_geometry
 from ..domain.attention_region_capture import (
     AttentionCapturePlan,
     AttentionCaptureProfile,
+    AttentionEvidenceMode,
     AttentionRegionRequest,
 )
 from ..domain.attention_region_maps import (
@@ -31,8 +32,11 @@ from .attention_region_affinity import (
     ATTENTION_AFFINITY_CALCULATOR,
     PendingAttentionMap,
 )
-from .denoising_progress import DENOISING_PROGRESS_RESOLVER
-from .regional_attention_model_call_values import uniform_model_call_sigma
+from .attention_region_cadence import AttentionCaptureCadence
+from .attention_region_self_completion import (
+    MAXIMUM_SELF_COMPLETION_TOKENS,
+    SpatialSelfAttention,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -43,6 +47,17 @@ class _RequestTargets:
 
     request: AttentionRegionRequest
     spans: tuple[AttentionTokenSpan, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingSelfAttention:
+    """Retain one spatial self-attention projection until its paired cross call."""
+
+    query: torch.Tensor
+    key: torch.Tensor
+    heads: int
+    skip_reshape: bool
+    branches: object
 
 
 class AttentionRegionCaptureSession:
@@ -70,12 +85,17 @@ class AttentionRegionCaptureSession:
         self._pending_maps: list[PendingAttentionMap] = []
         self._materialized_maps: tuple[CapturedAttentionMap, ...] | None = None
         self._pending_open_keys: tuple[tuple[str, torch.Tensor], ...] = ()
-        self._call_index = 0
+        self._pending_self_attention: dict[str, _PendingSelfAttention] = {}
+        self._captured_call_index = 0
         self._geometry_logged = False
         self._geometry_unavailable = False
         self._lock = RLock()
         profiles = tuple(target.request.controls.profile for target in self._targets)
         self._stride = min(_profile_stride(profile) for profile in profiles)
+        self._cadence = AttentionCaptureCadence(self._stride)
+        self._self_completion_stride = min(
+            _profile_self_completion_stride(profile) for profile in profiles
+        )
         self._denominator_token_budget = max(
             _profile_denominator_tokens(profile) for profile in profiles
         )
@@ -101,6 +121,7 @@ class AttentionRegionCaptureSession:
         self,
         query: torch.Tensor,
         key: torch.Tensor,
+        value: torch.Tensor,
         heads: int,
         transformer_options: Mapping[str, object],
         *,
@@ -118,28 +139,42 @@ class AttentionRegionCaptureSession:
             self.token_catalog.sequence_length,
             skip_reshape,
         ):
+            self._stage_self_attention(
+                query,
+                key,
+                heads,
+                transformer_options,
+                skip_reshape=skip_reshape,
+            )
             return
         open_keys = self._take_open_vocabulary_keys()
-        progress = _progress(transformer_options)
-        if progress < self._capture_start or progress > self._capture_end:
+        layer_key = _layer_key(transformer_options)
+        pending_self_attention = self._take_self_attention(layer_key)
+        step_index = self._cadence.sample(layer_key)
+        if step_index is None:
             return
-        with self._lock:
-            call_index = self._call_index
-            self._call_index += 1
-        if call_index % self._stride != 0:
+        progress = self._cadence.progress(step_index, transformer_options)
+        if progress < self._capture_start or progress > self._capture_end:
             return
         if not self._has_resolvable_geometry(transformer_options):
             return
         q_heads, k_heads = ATTENTION_AFFINITY_CALCULATOR.head_tensors(
             query, key, heads, skip_reshape
         )
-        q_positive, k_positive = ATTENTION_AFFINITY_CALCULATOR.positive_rows(
-            q_heads,
-            k_heads,
-            transformer_options.get("cond_or_uncond"),
+        v_heads = ATTENTION_AFFINITY_CALCULATOR.head_tensor(value, heads, skip_reshape)
+        q_positive, k_positive, v_positive = (
+            ATTENTION_AFFINITY_CALCULATOR.positive_rows(
+                q_heads,
+                k_heads,
+                v_heads,
+                transformer_options.get("cond_or_uncond"),
+            )
         )
-        layer_key = _layer_key(transformer_options)
         spans = _unique_spans(self._targets)
+        derive_concept_values = self.model_family is RegionalModelFamily.STANDARD_UNET
+        contextual_spans = (
+            _contextual_spans(self._targets) if derive_concept_values else ()
+        )
         denominator = ATTENTION_AFFINITY_CALCULATOR.log_denominator(
             q_positive,
             k_positive,
@@ -159,12 +194,25 @@ class AttentionRegionCaptureSession:
         captured = ATTENTION_AFFINITY_CALCULATOR.capture_spans(
             q_positive,
             k_positive,
+            v_positive,
             spans,
             progress,
             layer_key,
             denominator,
             spatial_height,
             spatial_width,
+            contextual_targets=contextual_spans,
+            context_candidates=self.token_catalog.spans,
+            self_attention=(
+                self._prepare_self_attention(
+                    pending_self_attention,
+                    expected_batch=int(q_positive.shape[0]),
+                    expected_tokens=int(q_positive.shape[-2]),
+                )
+                if self._use_self_completion()
+                else None
+            ),
+            derive_concept_values=derive_concept_values,
         )
         open_captured = tuple(
             captured_map
@@ -177,6 +225,7 @@ class AttentionRegionCaptureSession:
                 progress,
                 layer_key,
                 k_positive,
+                v_positive,
                 self._denominator_token_budget,
                 spatial_height,
                 spatial_width,
@@ -184,6 +233,80 @@ class AttentionRegionCaptureSession:
         )
         with self._lock:
             self._pending_maps.extend((*captured, *open_captured))
+
+    def _stage_self_attention(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        heads: int,
+        transformer_options: Mapping[str, object],
+        *,
+        skip_reshape: bool,
+    ) -> None:
+        """Stage bounded SDXL spatial projections for concept isolation."""
+
+        if (
+            self.model_family is not RegionalModelFamily.STANDARD_UNET
+            or not _contextual_spans(self._targets)
+            or not _is_bounded_self_attention(query, key, skip_reshape)
+        ):
+            return
+        pending = _PendingSelfAttention(
+            query=query,
+            key=key,
+            heads=heads,
+            skip_reshape=skip_reshape,
+            branches=transformer_options.get("cond_or_uncond"),
+        )
+        with self._lock:
+            self._pending_self_attention[_layer_key(transformer_options)] = pending
+
+    def _take_self_attention(
+        self,
+        layer_key: str,
+    ) -> _PendingSelfAttention | None:
+        """Consume only a self-attention projection paired with this layer and step."""
+
+        with self._lock:
+            return self._pending_self_attention.pop(layer_key, None)
+
+    @staticmethod
+    def _prepare_self_attention(
+        pending: _PendingSelfAttention | None,
+        *,
+        expected_batch: int,
+        expected_tokens: int,
+    ) -> SpatialSelfAttention | None:
+        """Normalize and select the positive rows of staged spatial projections."""
+
+        if pending is None:
+            return None
+        query, key = ATTENTION_AFFINITY_CALCULATOR.head_tensors(
+            pending.query,
+            pending.key,
+            pending.heads,
+            pending.skip_reshape,
+        )
+        query, key, _unused = ATTENTION_AFFINITY_CALCULATOR.positive_rows(
+            query,
+            key,
+            key,
+            pending.branches,
+        )
+        if (
+            int(query.shape[0]) != expected_batch
+            or int(query.shape[-2]) != expected_tokens
+        ):
+            return None
+        return SpatialSelfAttention(query=query, key=key)
+
+    def _use_self_completion(self) -> bool:
+        """Subsample expensive spatial completion according to capture quality."""
+
+        with self._lock:
+            index = self._captured_call_index
+            self._captured_call_index += 1
+        return index % self._self_completion_stride == 0
 
     def _has_resolvable_geometry(
         self,
@@ -288,24 +411,25 @@ class AttentionRegionCaptureSession:
         )
 
     def _materialize_maps(self) -> tuple[CapturedAttentionMap, ...]:
-        """Batch compact device transfers once after denoising has completed."""
+        """Materialize shared observations exactly once across sibling consumers."""
 
         with self._lock:
             if self._materialized_maps is not None:
                 return self._materialized_maps
             pending = tuple(self._pending_maps)
             self._pending_maps.clear()
-        materialized = ATTENTION_AFFINITY_CALCULATOR.materialize(pending)
-        with self._lock:
-            self._materialized_maps = materialized
-        return materialized
+            self._materialized_maps = ATTENTION_AFFINITY_CALCULATOR.materialize(
+                pending,
+                self.model_family,
+            )
+            return self._materialized_maps
 
 
 def _profile_stride(profile: AttentionCaptureProfile) -> int:
     """Return deterministic attention-call subsampling for one capture profile."""
 
     if profile is AttentionCaptureProfile.FAST:
-        return 16
+        return 32
     if profile is AttentionCaptureProfile.BALANCED:
         return 4
     return 1
@@ -321,19 +445,14 @@ def _profile_denominator_tokens(profile: AttentionCaptureProfile) -> int:
     return 512
 
 
-def _progress(options: Mapping[str, object]) -> float:
-    """Resolve exact denoising progress from Comfy's sampler metadata."""
+def _profile_self_completion_stride(profile: AttentionCaptureProfile) -> int:
+    """Return the profile's model-native spatial completion cadence."""
 
-    sample_sigmas = options.get("sample_sigmas")
-    current_sigmas = options.get("sigmas")
-    if not isinstance(sample_sigmas, torch.Tensor):
-        raise TypeError("Attention capture requires tensor sample_sigmas.")
-    if not isinstance(current_sigmas, torch.Tensor):
-        raise TypeError("Attention capture requires tensor sigmas.")
-    return DENOISING_PROGRESS_RESOLVER.resolve(
-        sample_sigmas,
-        uniform_model_call_sigma(current_sigmas),
-    )
+    if profile is AttentionCaptureProfile.FAST:
+        return 16
+    if profile is AttentionCaptureProfile.BALANCED:
+        return 2
+    return 1
 
 
 def _unique_spans(
@@ -342,6 +461,21 @@ def _unique_spans(
     """Deduplicate coalesced target spans while preserving prompt order."""
 
     return tuple(dict.fromkeys(span for target in targets for span in target.spans))
+
+
+def _contextual_spans(
+    targets: tuple[_RequestTargets, ...],
+) -> tuple[AttentionTokenSpan, ...]:
+    """Return spans requested by at least one concept-isolation consumer."""
+
+    return tuple(
+        dict.fromkeys(
+            span
+            for target in targets
+            if target.request.controls.evidence_mode is AttentionEvidenceMode.CONCEPT
+            for span in target.spans
+        )
+    )
 
 
 def _layer_key(options: Mapping[str, object]) -> str:
@@ -401,3 +535,18 @@ def _has_expected_cross_attention_context(
         else mapped_token_count
     )
     return context_tokens == expected
+
+
+def _is_bounded_self_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    skip_reshape: bool,
+) -> bool:
+    """Return whether an attention call is a safe spatial self-attention source."""
+
+    expected_rank = 4 if skip_reshape else 3
+    if query.ndim != expected_rank or key.ndim != expected_rank:
+        return False
+    query_tokens = int(query.shape[-2] if skip_reshape else query.shape[1])
+    key_tokens = int(key.shape[-2] if skip_reshape else key.shape[1])
+    return 1 < query_tokens == key_tokens <= MAXIMUM_SELF_COMPLETION_TOKENS

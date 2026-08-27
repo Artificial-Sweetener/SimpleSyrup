@@ -13,6 +13,18 @@ from dataclasses import dataclass
 import torch
 
 from ..domain.attention_region_maps import AttentionTokenSpan, CapturedAttentionMap
+from ..domain.regional_model_capabilities import RegionalModelFamily
+from .attention_region_contextual_spans import (
+    ATTENTION_CONTEXTUAL_SPAN_SELECTOR,
+    MAXIMUM_RELATED_WEIGHT,
+)
+from .attention_region_logits import scaled_attention_logits
+from .attention_region_self_completion import (
+    ATTENTION_REGION_SELF_COMPLETION,
+    SpatialSelfAttention,
+)
+
+ANIMA_MODIFIER_INFLUENCE = 0.2
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +38,16 @@ class PendingAttentionMap:
     batch_index: int
     spatial_height: int
     spatial_width: int
+    concept_values: torch.Tensor
+    uniform_probability: float
+
+
+@dataclass(frozen=True, slots=True)
+class _ConceptSeeds:
+    """Separate exact concept evidence from contextual recall candidates."""
+
+    exact: torch.Tensor
+    contextual: torch.Tensor | None
 
 
 class AttentionAffinityCalculator:
@@ -40,28 +62,40 @@ class AttentionAffinityCalculator:
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Normalize Comfy's standard and pre-shaped attention tensor layouts."""
 
+        return (
+            self.head_tensor(query, heads, skip_reshape),
+            self.head_tensor(key, heads, skip_reshape),
+        )
+
+    def head_tensor(
+        self,
+        value: torch.Tensor,
+        heads: int,
+        skip_reshape: bool,
+    ) -> torch.Tensor:
+        """Return one attention tensor in batch-head-sequence-channel layout."""
+
         if type(heads) is not int or heads < 1:
             raise ValueError("Attention capture head count must be positive.")
-        if skip_reshape and query.ndim == 4 and key.ndim == 4:
-            return query, key
-        if query.ndim != 3 or key.ndim != 3:
-            raise ValueError("Attention capture received unsupported Q/K tensor ranks.")
-        if int(query.shape[-1]) % heads or int(key.shape[-1]) % heads:
-            raise ValueError("Attention Q/K channels must divide evenly across heads.")
-        q = query.view(query.shape[0], query.shape[1], heads, -1).permute(0, 2, 1, 3)
-        k = key.view(key.shape[0], key.shape[1], heads, -1).permute(0, 2, 1, 3)
-        return q, k
+        if skip_reshape and value.ndim == 4:
+            return value
+        if value.ndim != 3:
+            raise ValueError("Attention capture received an unsupported tensor rank.")
+        if int(value.shape[-1]) % heads:
+            raise ValueError("Attention channels must divide evenly across heads.")
+        return value.view(value.shape[0], value.shape[1], heads, -1).permute(0, 2, 1, 3)
 
     def positive_rows(
         self,
         query: torch.Tensor,
         key: torch.Tensor,
+        value: torch.Tensor,
         raw_branches: object,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Select positive CFG rows while retaining ordinary batch members."""
 
         if not isinstance(raw_branches, list) or not raw_branches:
-            return query, key
+            return query, key, value
         if any(type(branch) is not int for branch in raw_branches):
             raise TypeError("Attention cond_or_uncond entries must be integers.")
         if int(query.shape[0]) % len(raw_branches):
@@ -77,9 +111,13 @@ class AttentionAffinityCalculator:
             )
         ]
         if not row_indices:
-            return query[:0], key[:0]
+            return query[:0], key[:0], value[:0]
         indices = torch.tensor(row_indices, device=query.device, dtype=torch.int64)
-        return query.index_select(0, indices), key.index_select(0, indices)
+        return (
+            query.index_select(0, indices),
+            key.index_select(0, indices),
+            value.index_select(0, indices),
+        )
 
     def log_denominator(
         self,
@@ -89,7 +127,6 @@ class AttentionAffinityCalculator:
     ) -> torch.Tensor:
         """Estimate softmax normalization from a deterministic bounded key sample."""
 
-        scale = math.sqrt(float(query.shape[-1]))
         context_tokens = int(key.shape[-2])
         sample_count = min(context_tokens, token_budget)
         if sample_count < context_tokens:
@@ -105,8 +142,8 @@ class AttentionAffinityCalculator:
             )
             key = key.index_select(-2, indices)
         denominator: torch.Tensor | None = None
-        for key_chunk in torch.split(key.float(), 32, dim=-2):
-            logits = torch.einsum("bhqd,bhkd->bhqk", query.float(), key_chunk) / scale
+        for key_chunk in torch.split(key, 32, dim=-2):
+            logits = scaled_attention_logits(query, key_chunk)
             chunk_denominator = torch.logsumexp(logits, dim=-1)
             denominator = (
                 chunk_denominator
@@ -122,24 +159,44 @@ class AttentionAffinityCalculator:
         self,
         query: torch.Tensor,
         key: torch.Tensor,
+        value: torch.Tensor,
         spans: tuple[AttentionTokenSpan, ...],
         progress: float,
         layer_key: str,
         denominator: torch.Tensor,
         spatial_height: int,
         spatial_width: int,
+        contextual_targets: tuple[AttentionTokenSpan, ...] = (),
+        context_candidates: tuple[AttentionTokenSpan, ...] = (),
+        self_attention: SpatialSelfAttention | None = None,
+        derive_concept_values: bool = True,
     ) -> tuple[PendingAttentionMap, ...]:
         """Compute all native span maps from one unioned selected-key projection."""
 
+        contextual = ATTENTION_CONTEXTUAL_SPAN_SELECTOR.select(
+            key=key,
+            targets=contextual_targets,
+            candidates=context_candidates,
+        )
         union_indices = tuple(
-            sorted({index for span in spans for index in span.token_indices})
+            sorted(
+                {
+                    index
+                    for span in spans
+                    for index in (
+                        contextual[span].token_indices
+                        if span in contextual
+                        else span.token_indices
+                    )
+                }
+            )
         )
         if not union_indices:
             return ()
         indices = torch.tensor(union_indices, device=key.device, dtype=torch.int64)
         selected = key.index_select(-2, indices)
-        logits = torch.einsum("bhqd,bhkd->bhqk", query.float(), selected.float())
-        logits = logits / math.sqrt(float(query.shape[-1]))
+        selected_value = value.index_select(-2, indices)
+        logits = scaled_attention_logits(query, selected)
         log_probability = (logits - denominator.unsqueeze(-1)).clamp_max(0.0)
         probability = torch.exp(log_probability)
         union_positions = {
@@ -158,6 +215,46 @@ class AttentionAffinityCalculator:
                 .detach()
                 .to(dtype=torch.float16)
             )
+            concept_values = _anima_concept_values(
+                probability=probability,
+                span=span,
+                union_positions=union_positions,
+            )
+            if derive_concept_values:
+                selection = contextual.get(span)
+                concept_indices = (
+                    selection.token_indices
+                    if selection is not None
+                    else span.token_indices
+                )
+                concept_positions = torch.tensor(
+                    tuple(union_positions[index] for index in concept_indices),
+                    device=probability.device,
+                    dtype=torch.int64,
+                )
+                token_priors = (
+                    torch.tensor(
+                        selection.token_weights,
+                        device=probability.device,
+                        dtype=probability.dtype,
+                    )
+                    if selection is not None
+                    else None
+                )
+                concept_seeds = _concept_values(
+                    probability.index_select(-1, concept_positions),
+                    selected_value.index_select(-2, concept_positions),
+                    value,
+                    token_priors,
+                )
+                concept_values = ATTENTION_REGION_SELF_COMPLETION.complete(
+                    concept_seeds.exact,
+                    self_attention,
+                    spatial_height,
+                    spatial_width,
+                    related_seed=concept_seeds.contextual,
+                )
+            concept_values = concept_values.detach().to(dtype=torch.float16)
             pending.extend(
                 PendingAttentionMap(
                     span.display_label,
@@ -167,6 +264,8 @@ class AttentionAffinityCalculator:
                     batch_index,
                     spatial_height,
                     spatial_width,
+                    concept_values[batch_index],
+                    1.0 / float(key.shape[-2]),
                 )
                 for batch_index, values in enumerate(compact_values)
             )
@@ -181,6 +280,7 @@ class AttentionAffinityCalculator:
         progress: float,
         layer_key: str,
         native_key: torch.Tensor,
+        native_value: torch.Tensor,
         denominator_token_budget: int,
         spatial_height: int,
         spatial_width: int,
@@ -203,8 +303,9 @@ class AttentionAffinityCalculator:
             denominator_token_budget,
         )
         span = AttentionTokenSpan(label, 1, tuple(range(int(key_heads.shape[-2]))))
-        return self.capture_spans(
+        captured = self.capture_spans(
             query,
+            key_heads,
             key_heads,
             (span,),
             progress,
@@ -213,10 +314,27 @@ class AttentionAffinityCalculator:
             spatial_height,
             spatial_width,
         )
+        combined_token_count = int(native_key.shape[-2]) + int(key_heads.shape[-2])
+        del native_value
+        return tuple(
+            PendingAttentionMap(
+                label=value.label,
+                values=value.values,
+                progress=value.progress,
+                layer_key=value.layer_key,
+                batch_index=value.batch_index,
+                spatial_height=value.spatial_height,
+                spatial_width=value.spatial_width,
+                concept_values=value.values,
+                uniform_probability=1.0 / float(combined_token_count),
+            )
+            for value in captured
+        )
 
     def materialize(
         self,
         pending: tuple[PendingAttentionMap, ...],
+        model_family: RegionalModelFamily,
     ) -> tuple[CapturedAttentionMap, ...]:
         """Transfer compatible maps together and calculate concentration on CPU."""
 
@@ -237,6 +355,9 @@ class AttentionAffinityCalculator:
             cpu_values = torch.stack(tuple(value.values for _index, value in group)).to(
                 device="cpu", dtype=torch.float16
             )
+            cpu_concept_values = torch.stack(
+                tuple(value.concept_values for _index, value in group)
+            ).to(device="cpu", dtype=torch.float16)
             maxima = cpu_values.float().amax(dim=1)
             means = cpu_values.float().mean(dim=1)
             peak_ratios = maxima / means.clamp_min(1e-12)
@@ -245,18 +366,196 @@ class AttentionAffinityCalculator:
             ).clamp(0.0, 1.0)
             for group_index, (original_index, attention_map) in enumerate(group):
                 ordered[original_index] = CapturedAttentionMap(
-                    attention_map.label,
-                    cpu_values[group_index],
-                    attention_map.progress,
-                    attention_map.layer_key,
-                    attention_map.batch_index,
-                    float(confidences[group_index].item()),
-                    attention_map.spatial_height,
-                    attention_map.spatial_width,
+                    label=attention_map.label,
+                    values=cpu_values[group_index],
+                    progress=attention_map.progress,
+                    layer_key=attention_map.layer_key,
+                    batch_index=attention_map.batch_index,
+                    confidence=float(confidences[group_index].item()),
+                    spatial_height=attention_map.spatial_height,
+                    spatial_width=attention_map.spatial_width,
+                    concept_values=cpu_concept_values[group_index],
+                    uniform_probability=attention_map.uniform_probability,
+                    model_family=model_family,
                 )
         if any(value is None for value in ordered):
             raise RuntimeError("Attention map materialization lost an observation.")
         return tuple(value for value in ordered if value is not None)
+
+
+def _concept_values(
+    probability: torch.Tensor,
+    selected_value: torch.Tensor,
+    full_value: torch.Tensor,
+    token_priors: torch.Tensor | None = None,
+) -> _ConceptSeeds:
+    """Return exact concept evidence and a separately gated contextual candidate."""
+
+    selected_energy = selected_value.float().square().mean(dim=-1).sqrt()
+    context_energy = (
+        full_value.float().square().mean(dim=-1).sqrt().mean(dim=-1, keepdim=True)
+    )
+    contribution = (selected_energy / context_energy.clamp_min(1e-12)).clamp(0.25, 4.0)
+    token_maps, raw_token_maps = _select_relevant_head_maps(
+        probability,
+        contribution,
+        exact_token_mask=(
+            token_priors > MAXIMUM_RELATED_WEIGHT if token_priors is not None else None
+        ),
+    )
+    if token_priors is None:
+        return _ConceptSeeds(
+            _fuse_concept_tokens(token_maps, raw_token_maps, None),
+            None,
+        )
+    exact_mask = token_priors > MAXIMUM_RELATED_WEIGHT
+    exact = _fuse_concept_tokens(
+        token_maps[..., exact_mask],
+        raw_token_maps[..., exact_mask],
+        token_priors[exact_mask],
+    )
+    if exact_mask.all().item():
+        return _ConceptSeeds(exact, None)
+    contextual = _fuse_concept_tokens(token_maps, raw_token_maps, token_priors)
+    return _ConceptSeeds(exact, contextual)
+
+
+def _anima_concept_values(
+    *,
+    probability: torch.Tensor,
+    span: AttentionTokenSpan,
+    union_positions: dict[int, int],
+) -> torch.Tensor:
+    """Anchor Anima phrases on their contextualized semantic-head evidence."""
+
+    positions = tuple(union_positions[index] for index in span.token_indices)
+    indices = torch.tensor(
+        positions,
+        device=probability.device,
+        dtype=torch.int64,
+    )
+    tokens = probability.index_select(-1, indices).float()
+    semantic_heads = set(span.semantic_head_indices)
+    head_mask = torch.tensor(
+        tuple(index in semantic_heads for index in span.token_indices),
+        device=tokens.device,
+        dtype=torch.bool,
+    )
+    head_by_attention = tokens[..., head_mask].mean(dim=-1)
+    head_weights = _specific_attention_head_weights(head_by_attention)
+    head = (head_by_attention * head_weights.unsqueeze(-1)).sum(dim=1)
+    if head_mask.all().item():
+        return head.detach().to(dtype=torch.float16)
+    modifiers = (tokens[..., ~head_mask].mean(dim=-1) * head_weights.unsqueeze(-1)).sum(
+        dim=1
+    )
+    relative_modifiers = modifiers / modifiers.amax(
+        dim=1,
+        keepdim=True,
+    ).clamp_min(1e-12)
+    modulation = (1.0 - ANIMA_MODIFIER_INFLUENCE) + (
+        relative_modifiers * ANIMA_MODIFIER_INFLUENCE
+    )
+    return (head * modulation).detach().to(dtype=torch.float16)
+
+
+def _specific_attention_head_weights(head_values: torch.Tensor) -> torch.Tensor:
+    """Select Anima heads whose semantic-object response is spatially specific."""
+
+    head_count = int(head_values.shape[1])
+    if head_count == 1:
+        return torch.ones_like(head_values[..., 0])
+    means = head_values.mean(dim=-1)
+    peak_ratios = head_values.amax(dim=-1) / means.clamp_min(1e-12)
+    specificity = 1.0 - torch.exp(-(peak_ratios - 1.0).clamp_min(0.0) / 4.0)
+    relative_response = means / means.mean(dim=1, keepdim=True).clamp_min(1e-12)
+    scores = specificity * (0.5 + 0.5 * relative_response.clamp(0.0, 2.0))
+    selected_count = max(1, math.ceil(head_count * 0.25))
+    selected = scores.topk(selected_count, dim=1).indices
+    selection = torch.zeros_like(scores).scatter(1, selected, 1.0)
+    weights = scores * selection
+    return weights / weights.sum(dim=1, keepdim=True).clamp_min(1e-12)
+
+
+def _fuse_concept_tokens(
+    token_maps: torch.Tensor,
+    raw_token_maps: torch.Tensor,
+    token_priors: torch.Tensor | None,
+) -> torch.Tensor:
+    """Fuse one selected set of token maps by specificity and agreement."""
+
+    peak_ratio = raw_token_maps.amax(dim=1) / raw_token_maps.mean(dim=1).clamp_min(
+        1e-12
+    )
+    specificity = (1.0 - torch.exp(-(peak_ratio - 1.0).clamp_min(0.0) / 4.0)).clamp_min(
+        0.05
+    )
+    if token_priors is not None:
+        specificity = specificity * token_priors.reshape(1, -1)
+    token_weights = specificity / specificity.sum(dim=-1, keepdim=True)
+    fused = (token_maps * token_weights.unsqueeze(1)).sum(dim=-1)
+    normalized_tokens = raw_token_maps / raw_token_maps.amax(
+        dim=1, keepdim=True
+    ).clamp_min(1e-12)
+    agreement = (normalized_tokens * token_weights.unsqueeze(1)).sum(dim=-1)
+    return fused * (0.5 + 0.5 * agreement)
+
+
+def _select_relevant_head_maps(
+    probability: torch.Tensor,
+    contribution: torch.Tensor,
+    exact_token_mask: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Aggregate concept heads and admit related tokens through those same heads."""
+
+    head_count = int(probability.shape[1])
+    if head_count == 1:
+        return (
+            (probability * contribution.unsqueeze(-2))[:, 0],
+            probability[:, 0],
+        )
+    reference = probability.mean(dim=1)
+    numerator = (probability * reference.unsqueeze(1)).sum(dim=2)
+    denominator = probability.square().sum(dim=2).sqrt() * reference.square().sum(
+        dim=1
+    ).sqrt().unsqueeze(1)
+    agreement = (numerator / denominator.clamp_min(1e-12)).clamp(0.0, 1.0)
+    head_means = probability.mean(dim=2)
+    peak_ratios = probability.amax(dim=2) / head_means.clamp_min(1e-12)
+    specificity = 1.0 - torch.exp(-(peak_ratios - 1.0).clamp_min(0.0) / 4.0)
+    relative_response = head_means / head_means.mean(dim=1, keepdim=True).clamp_min(
+        1e-12
+    )
+    scores = (
+        agreement.square()
+        * (0.25 + 0.75 * specificity)
+        * (0.5 + 0.5 * relative_response.clamp(0.0, 2.0))
+    )
+    if exact_token_mask is not None:
+        if (
+            exact_token_mask.ndim != 1
+            or int(exact_token_mask.shape[0]) != int(scores.shape[-1])
+            or not exact_token_mask.any().item()
+        ):
+            raise ValueError("Exact concept-token mask must select aligned positions.")
+        exact = exact_token_mask.to(device=scores.device, dtype=scores.dtype)
+        exact_scores = (scores * exact.reshape(1, 1, -1)).sum(dim=-1)
+        exact_scores = exact_scores / exact.sum().clamp_min(1.0)
+        scores = torch.where(
+            exact_token_mask.to(device=scores.device).reshape(1, 1, -1),
+            scores,
+            exact_scores.unsqueeze(-1),
+        )
+    selected_count = max(1, math.ceil(head_count * 0.25))
+    selected_indices = scores.topk(selected_count, dim=1).indices
+    selection = torch.zeros_like(scores).scatter(1, selected_indices, 1.0)
+    weights = scores * selection
+    weights = weights / weights.sum(dim=1, keepdim=True).clamp_min(1e-12)
+    weighted_probability = probability * weights.unsqueeze(2)
+    return (
+        (weighted_probability * contribution.unsqueeze(-2)).sum(dim=1),
+        weighted_probability.sum(dim=1),
+    )
 
 
 ATTENTION_AFFINITY_CALCULATOR = AttentionAffinityCalculator()

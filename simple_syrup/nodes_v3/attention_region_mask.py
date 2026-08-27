@@ -97,6 +97,7 @@ class AttentionRegionMaskV3(_ComfyNodeBase):
         matte_solidity: float,
         edge_feather: int,
         capture_profile: str,
+        evidence_mode: str,
     ) -> tuple[object, object]:
         """Consume matching maps and return a reusable latent-resolution mask."""
 
@@ -119,6 +120,7 @@ class AttentionRegionMaskV3(_ComfyNodeBase):
                 matte_solidity=matte_solidity,
                 edge_feather=edge_feather,
                 capture_profile=capture_profile,
+                evidence_mode=evidence_mode,
             ),
         )
         return result.latent, result.mask
