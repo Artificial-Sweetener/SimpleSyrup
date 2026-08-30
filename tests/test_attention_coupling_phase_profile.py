@@ -12,6 +12,7 @@ from typing import Any, ClassVar
 
 import torch
 
+from simple_syrup.domain.conditioning_batch import ConditioningBatch
 from simple_syrup.domain.regional_attention_execution import (
     RegionalAttentionExecutionMode,
 )
@@ -82,6 +83,8 @@ def test_profiled_service_preserves_two_call_delegation_and_emits_phases(
     _SamplingService.calls = []
     latent = {"samples": torch.zeros((1, 4, 2, 2))}
     model = SimpleNamespace(load_device=torch.device("cpu"))
+    positive = ConditioningBatch(("global-positive", "regional-positive"))
+    negative = ConditioningBatch(("global-negative", "regional-negative"))
     try:
         with caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME):
             output = ProfiledAttentionCouplingSamplingService().sample(
@@ -91,8 +94,8 @@ def test_profiled_service_preserves_two_call_delegation_and_emits_phases(
                 cfg=5.0,
                 sampler_name="sampler",
                 scheduler="scheduler",
-                positive="positive",
-                negative="negative",
+                positive=positive,
+                negative=negative,
                 region_masks="masks",
                 regional_prompt_weight=1.0,
                 region_mask_feather=0,
@@ -121,3 +124,65 @@ def test_profiled_service_preserves_two_call_delegation_and_emits_phases(
         if hasattr(record, "cold_path_diagnostics")
     ]
     assert stages == ["model_preparation_total", "ksampler_delegate_total"]
+
+
+def test_profiled_service_bypasses_preparation_and_times_only_sampling(
+    caplog: Any,
+) -> None:
+    """Keep benchmark routing behavior identical to the production service."""
+
+    class _PreparationService(AttentionCouplingModelPreparationService):
+        """Reject preparation for an ordinary request."""
+
+        def prepare(self, **arguments: object) -> PreparedAttentionCouplingModel:
+            """Fail if the bypass enters the regional preparation owner."""
+
+            raise AssertionError(f"unexpected preparation: {arguments}")
+
+    original_preparation = (
+        ProfiledAttentionCouplingSamplingService.model_preparation_service_class
+    )
+    original_sampling = ProfiledAttentionCouplingSamplingService.sampling_service_class
+    ProfiledAttentionCouplingSamplingService.model_preparation_service_class = (
+        _PreparationService
+    )
+    ProfiledAttentionCouplingSamplingService.sampling_service_class = _SamplingService  # type: ignore[assignment]
+    _SamplingService.calls = []
+    latent = {"samples": torch.zeros((1, 4, 2, 2))}
+    model = SimpleNamespace(load_device=torch.device("cpu"))
+    try:
+        with caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME):
+            output = ProfiledAttentionCouplingSamplingService().sample(
+                model=model,
+                seed=11,
+                steps=20,
+                cfg=4.0,
+                sampler_name="sampler",
+                scheduler="scheduler",
+                positive="positive",
+                negative="negative",
+                region_masks=None,
+                regional_prompt_weight=0.5,
+                region_mask_feather=0,
+                latent_image=latent,
+                denoise=0.6,
+            )
+    finally:
+        ProfiledAttentionCouplingSamplingService.model_preparation_service_class = (
+            original_preparation
+        )
+        ProfiledAttentionCouplingSamplingService.sampling_service_class = (
+            original_sampling
+        )
+
+    assert output is _SamplingService.output
+    assert _SamplingService.calls[0]["model"] is model
+    assert _SamplingService.calls[0]["positive"] == "positive"
+    assert _SamplingService.calls[0]["negative"] == "negative"
+    assert _SamplingService.calls[0]["denoise"] == 0.6
+    stages = [
+        record.cold_path_diagnostics["stage"]
+        for record in caplog.records
+        if hasattr(record, "cold_path_diagnostics")
+    ]
+    assert stages == ["ksampler_delegate_total"]

@@ -21,12 +21,12 @@ EXPECTED_INPUTS = (
     "scheduler",
     "positive",
     "negative",
-    "region_masks",
     "regional_prompt_weight",
     "region_mask_feather",
     "latent_image",
     "denoise",
 )
+EXPECTED_OPTIONAL_INPUTS = ("region_masks",)
 
 
 def validate_public_node_metadata(metadata: JsonObject) -> None:
@@ -38,25 +38,36 @@ def validate_public_node_metadata(metadata: JsonObject) -> None:
         raise ValueError("Live Attention Coupling display name does not match P5.8.")
     if metadata.get("category") != "SimpleSyrup/Sampling":
         raise ValueError("Live Attention Coupling category does not match P5.8.")
-    order = _object(metadata.get("input_order"), "input_order").get("required")
-    if not isinstance(order, list) or tuple(order) != EXPECTED_INPUTS:
+    input_order = _object(metadata.get("input_order"), "input_order")
+    order = input_order.get("required")
+    optional_order = input_order.get("optional")
+    if (
+        not isinstance(order, list)
+        or tuple(order) != EXPECTED_INPUTS
+        or not isinstance(optional_order, list)
+        or tuple(optional_order) != EXPECTED_OPTIONAL_INPUTS
+    ):
         raise ValueError("Live Attention Coupling input order does not match P5.8.")
-    required = _object(
-        _object(metadata.get("input"), "input").get("required"), "required"
-    )
+    inputs = _object(metadata.get("input"), "input")
+    required = _object(inputs.get("required"), "required")
+    optional = _object(inputs.get("optional"), "optional")
     if tuple(required) != EXPECTED_INPUTS:
         raise ValueError("Live Attention Coupling required inputs do not match P5.8.")
+    if tuple(optional) != EXPECTED_OPTIONAL_INPUTS:
+        raise ValueError("Live Attention Coupling optional inputs do not match P5.8.")
     expected_types = {
         "model": "MODEL",
         "positive": "CONDITIONING,CONDITIONING_BATCH",
         "negative": "CONDITIONING,CONDITIONING_BATCH",
-        "region_masks": "MASK",
         "latent_image": "LATENT",
     }
     for name, expected_type in expected_types.items():
         descriptor = required[name]
         if not isinstance(descriptor, list) or descriptor[0] != expected_type:
             raise ValueError(f"Live input {name!r} does not expose {expected_type}.")
+    region_masks = optional["region_masks"]
+    if not isinstance(region_masks, list) or region_masks[0] != "MASK":
+        raise ValueError("Live optional input 'region_masks' does not expose MASK.")
     if metadata.get("output") != ["LATENT"]:
         raise ValueError("Live Attention Coupling output type does not match P5.8.")
     description = metadata.get("description")
@@ -64,8 +75,13 @@ def validate_public_node_metadata(metadata: JsonObject) -> None:
         word in description.lower() for word in ("lora", "schedule", "overlap")
     ):
         raise ValueError("Live description omits required regional LoRA guidance.")
-    for name in ("model", "positive", "negative", "region_masks"):
-        descriptor = cast(list[object], required[name])
+    for name, descriptor_source in (
+        ("model", required),
+        ("positive", required),
+        ("negative", required),
+        ("region_masks", optional),
+    ):
+        descriptor = cast(list[object], descriptor_source[name])
         options = _object(descriptor[1], f"{name} options")
         tooltip = options.get("tooltip")
         if not isinstance(tooltip, str) or "lora" not in tooltip.lower():

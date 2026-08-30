@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from simple_syrup.domain.attention_coupling_request import (
+    AttentionCouplingRequestMode,
+    classify_attention_coupling_request,
+)
 from simple_syrup.domain.regional_attention_execution import (
     RegionalAttentionExecutionMode,
 )
@@ -46,15 +50,34 @@ class ProfiledAttentionCouplingSamplingService(AttentionCouplingSamplingService)
         scheduler: str,
         positive: object,
         negative: object,
-        region_masks: object,
+        region_masks: object | None,
         regional_prompt_weight: float,
         region_mask_feather: int,
         latent_image: dict[str, Any],
         denoise: float,
     ) -> dict[str, Any]:
-        """Return the exact production result after timing its two owners."""
+        """Time only the production owners selected by request routing."""
 
         device = model_device(model)
+        mode = classify_attention_coupling_request(
+            positive=positive,
+            negative=negative,
+            region_masks=region_masks,
+        )
+        if mode is AttentionCouplingRequestMode.BYPASS:
+            with measure_synchronized_phase("ksampler_delegate_total", device=device):
+                return self.sampling_service_class().sample(
+                    model=model,
+                    seed=seed,
+                    steps=steps,
+                    cfg=cfg,
+                    sampler_name=sampler_name,
+                    scheduler=scheduler,
+                    positive=positive,
+                    negative=negative,
+                    latent_image=latent_image,
+                    denoise=denoise,
+                )
         with measure_synchronized_phase("model_preparation_total", device=device):
             prepared = self.model_preparation_service_class().prepare(
                 model=model,

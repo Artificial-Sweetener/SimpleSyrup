@@ -49,7 +49,10 @@ class ProfiledKSamplerAttentionCouplingV3(_ComfyNodeBase):
             node_id="SimpleSyrupBenchmark.ProfiledKSamplerAttentionCoupling",
             display_name="Benchmark Profiled KSampler Attention Coupling",
             category="SimpleSyrup/Benchmark",
-            inputs=attention_coupling_ksampler_inputs(_comfy_io),
+            inputs=attention_coupling_ksampler_inputs(
+                _comfy_io,
+                region_masks_optional=True,
+            ),
             outputs=[_comfy_io.Latent.Output("latent")],
             is_dev_only=True,
         )
@@ -65,11 +68,11 @@ class ProfiledKSamplerAttentionCouplingV3(_ComfyNodeBase):
         scheduler: str,
         positive: object,
         negative: object,
-        region_masks: object,
-        regional_prompt_weight: float,
-        region_mask_feather: int,
         latent_image: dict[str, Any],
         denoise: float,
+        region_masks: object | None = None,
+        regional_prompt_weight: float = 0.5,
+        region_mask_feather: int = 0,
     ) -> tuple[dict[str, Any]]:
         """Bridge canonical host batches, then run the inherited exact delegate."""
 

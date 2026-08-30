@@ -62,6 +62,7 @@ def test_schema_exposes_stable_tiled_attention_coupling_contract() -> None:
         "latent_tile_overlap",
         "latent_tile_batch_size",
     ]
+    assert inputs["region_masks"].optional is True
     assert [output.id for output in schema.outputs] == ["latent"]
     assert inputs["diffusion_mode"].options == [
         "multidiffusion",
@@ -154,6 +155,46 @@ def test_node_delegates_every_tiled_attention_input_once(
             "differential_diffusion": False,
         }
     ]
+
+
+def test_node_forwards_disconnected_masks_to_the_tiled_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Allow ordinary image-to-image tiling without a mask connection."""
+
+    monkeypatch.setattr(
+        KSamplerTiledAttentionCouplingV3,
+        "sampling_service_class",
+        _RecordingTiledAttentionService,
+    )
+    _RecordingTiledAttentionService.calls = []
+    _RecordingTiledAttentionService.failure = None
+    latent = {"samples": torch.zeros((1, 16, 1, 6, 10))}
+
+    KSamplerTiledAttentionCouplingV3.execute(
+        model="model",
+        seed=8,
+        steps=22,
+        cfg=3.5,
+        sampler_name="euler",
+        scheduler="normal",
+        positive="positive",
+        negative="negative",
+        latent_image=latent,
+        denoise=0.4,
+        diffusion_mode="multidiffusion",
+        latent_tile_width=80,
+        latent_tile_height=64,
+        latent_tile_overlap=12,
+        latent_tile_batch_size=2,
+    )
+
+    call = _RecordingTiledAttentionService.calls[0]
+    assert call["region_masks"] is None
+    assert call["latent_image"] is latent
+    assert call["denoise"] == 0.4
+    assert call["latent_tile_width"] == 80
+    assert call["latent_tile_height"] == 64
 
 
 def test_node_preserves_actionable_service_failure(

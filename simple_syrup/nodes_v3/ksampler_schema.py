@@ -233,8 +233,12 @@ def regional_ksampler_inputs(comfy_io: Any) -> list[Any]:
     ]
 
 
-def attention_coupling_ksampler_inputs(comfy_io: Any) -> list[Any]:
-    """Return full-context Attention Coupling inputs with LoRA-specific guidance."""
+def attention_coupling_ksampler_inputs(
+    comfy_io: Any,
+    *,
+    region_masks_optional: bool = False,
+) -> list[Any]:
+    """Return Attention Coupling inputs with caller-owned bypass availability."""
 
     base = ksampler_inputs(comfy_io, steps_default=20, cfg_default=8.0)
     conditioning_batch = comfy_io.Custom("CONDITIONING_BATCH")
@@ -268,10 +272,12 @@ def attention_coupling_ksampler_inputs(comfy_io: Any) -> list[Any]:
         ),
         comfy_io.Mask.Input(
             "region_masks",
+            optional=region_masks_optional,
             tooltip=(
-                "Ordered masks paired with conditioning entries 1 onward. In "
-                "overlaps, prompt contributions are normalized while Anima regional "
-                "LoRA deltas add in declared adapter and region order."
+                "Optional ordered masks paired with conditioning entries 1 onward. "
+                "Leave disconnected with ordinary conditioning to bypass Attention "
+                "Coupling. In overlaps, prompt contributions are normalized while "
+                "Anima regional LoRA deltas add in declared adapter and region order."
             ),
         ),
         comfy_io.Float.Input(
