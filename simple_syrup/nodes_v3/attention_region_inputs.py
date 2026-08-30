@@ -79,6 +79,17 @@ def attention_region_control_inputs(
             ),
         ),
         io.Float.Input(
+            "geometry_recall",
+            default=0.85,
+            min=0.0,
+            max=1.0,
+            step=0.01,
+            tooltip=(
+                "Higher values recover fainter connected object extent from exact "
+                "attention, preserving tails and shafts but admitting more halos."
+            ),
+        ),
+        io.Float.Input(
             "split_sensitivity",
             default=0.0,
             min=0.0,
@@ -87,6 +98,17 @@ def attention_region_control_inputs(
             tooltip=(
                 "Sensitivity to divide one connected region around separate peaks; "
                 "higher values can split a soft silhouette into multiple instances."
+            ),
+        ),
+        io.Float.Input(
+            "instance_recall",
+            default=0.65,
+            min=0.0,
+            max=1.0,
+            step=0.01,
+            tooltip=(
+                "Higher values retain weaker disconnected instances relative to "
+                "the strongest one, which helps repeated sparse concepts."
             ),
         ),
         io.Int.Input(
@@ -164,7 +186,9 @@ def attention_region_controls(
     capture_end: float,
     minimum_strength: float,
     minimum_consensus: float,
+    geometry_recall: float,
     split_sensitivity: float,
+    instance_recall: float,
     minimum_region_size: int,
     keep_only: int,
     keep_by: str,
@@ -184,6 +208,8 @@ def attention_region_controls(
         split_sensitivity=split_sensitivity,
         minimum_region_size=minimum_region_size,
         profile=AttentionCaptureProfile(capture_profile),
+        instance_recall=instance_recall,
+        geometry_recall=geometry_recall,
         keep_only=keep_only,
         keep_by=keep_by,
         combine_segs=combine_segs,

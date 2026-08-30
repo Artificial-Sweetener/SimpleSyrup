@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from typing import Any
 
+import pytest
 import torch
 
 from simple_syrup.domain.attention_region_capture import (
@@ -28,7 +29,6 @@ from simple_syrup.domain.regional_model_capabilities import RegionalModelFamily
 from simple_syrup.runtime.attention_region_affinity import (
     ATTENTION_AFFINITY_CALCULATOR,
     _select_relevant_head_maps,
-    _specific_attention_head_weights,
 )
 from simple_syrup.runtime.attention_region_capture import AttentionRegionCaptureSession
 from simple_syrup.runtime.attention_region_capture_backend import (
@@ -41,12 +41,48 @@ from simple_syrup.runtime.attention_region_contextual_spans import (
 from simple_syrup.runtime.attention_region_open_vocabulary import (
     OpenVocabularyKeyProjector,
 )
+from simple_syrup.runtime.attention_region_phrase_evidence import (
+    ANIMA_PHRASE_EVIDENCE_SERVICE,
+    specific_attention_head_weights,
+)
 from simple_syrup.runtime.attention_region_self_completion import (
     ATTENTION_REGION_SELF_COMPLETION,
     MAXIMUM_SELF_COMPLETION_ANCHORS,
     SpatialSelfAttention,
     _grid_anchor_indices,
 )
+
+
+def test_attention_controls_reject_invalid_instance_recall() -> None:
+    """Reject disconnected-instance recall outside its normalized range."""
+
+    with pytest.raises(ValueError, match="instance recall"):
+        AttentionRegionControls(
+            0.0,
+            1.0,
+            0.15,
+            0.25,
+            0.0,
+            1,
+            AttentionCaptureProfile.FAST,
+            instance_recall=1.01,
+        )
+
+
+def test_attention_controls_reject_invalid_geometry_recall() -> None:
+    """Reject connected-geometry recall outside its normalized range."""
+
+    with pytest.raises(ValueError, match="geometry recall"):
+        AttentionRegionControls(
+            0.0,
+            1.0,
+            0.15,
+            0.25,
+            0.0,
+            1,
+            AttentionCaptureProfile.FAST,
+            geometry_recall=-0.01,
+        )
 
 
 def test_capture_selects_positive_rows_and_exact_prompt_tokens() -> None:
@@ -158,6 +194,111 @@ def test_contextual_span_selector_uses_object_head_instead_of_modifier_color() -
 
     assert selection.token_indices == (1, 2, 4)
     assert selection.token_weights[0] < selection.token_weights[1]
+
+
+def test_anima_compound_phrase_uses_specific_modifier_to_constrain_its_head() -> None:
+    """Keep a small compound concept local when its noun head is spatially broad."""
+
+    probability = torch.tensor(
+        [
+            [
+                [
+                    [0.8, 1.0, 1.0],
+                    [0.8, 0.9, 0.9],
+                    [0.8, 0.05, 0.7],
+                    [0.8, 0.05, 0.7],
+                ]
+            ]
+        ]
+    )
+    span = AttentionTokenSpan(
+        "blue butterfly ornaments",
+        1,
+        (0, 1, 2),
+        (2,),
+    )
+
+    concept = ANIMA_PHRASE_EVIDENCE_SERVICE.derive(
+        probability=probability,
+        span=span,
+        union_positions={0: 0, 1: 1, 2: 2},
+    )
+
+    assert concept[0, 0] > 0.8
+    assert concept[0, 1] > 0.7
+    assert concept[0, 2] < concept[0, 0] * 0.5
+    assert concept[0, 3] < concept[0, 0] * 0.5
+
+
+def test_anima_broad_modifier_does_not_erase_extended_head_geometry() -> None:
+    """Preserve a noun silhouette when its only modifier carries no locality."""
+
+    probability = torch.tensor(
+        [
+            [
+                [
+                    [0.6, 1.0],
+                    [0.6, 0.8],
+                    [0.6, 0.5],
+                    [0.6, 0.3],
+                ]
+            ]
+        ]
+    )
+    span = AttentionTokenSpan("pink hair", 1, (0, 1), (1,))
+
+    concept = ANIMA_PHRASE_EVIDENCE_SERVICE.derive(
+        probability=probability,
+        span=span,
+        union_positions={0: 0, 1: 1},
+    )
+
+    assert torch.allclose(concept[0], probability[0, 0, :, 1].to(torch.float16))
+
+
+def test_anima_single_token_concept_uses_noun_head_evidence_directly() -> None:
+    """Handle noun-only prompt segments without requiring modifier positions."""
+
+    probability = torch.tensor([[[[1.0], [0.8], [0.3], [0.0]]]])
+    span = AttentionTokenSpan("twintails", 1, (0,), (0,))
+
+    concept = ANIMA_PHRASE_EVIDENCE_SERVICE.derive(
+        probability=probability,
+        span=span,
+        union_positions={0: 0},
+    )
+
+    assert torch.equal(concept[0], probability[0, 0, :, 0].to(torch.float16))
+
+
+def test_anima_related_prompt_head_recovers_a_disjoint_concept_part() -> None:
+    """Admit a related prompt noun at reduced strength without replacing the core."""
+
+    probability = torch.tensor(
+        [
+            [
+                [
+                    [0.5, 1.0, 0.0],
+                    [0.5, 0.2, 0.0],
+                    [0.5, 0.0, 0.9],
+                    [0.5, 0.0, 0.8],
+                ]
+            ]
+        ]
+    )
+    span = AttentionTokenSpan("pink hair", 1, (0, 1), (1,))
+
+    concept = ANIMA_PHRASE_EVIDENCE_SERVICE.derive(
+        probability=probability,
+        span=span,
+        union_positions={0: 0, 1: 1, 2: 2},
+        contextual_token_indices=(0, 1, 2),
+        contextual_token_weights=(0.45, 1.0, 0.3),
+    )
+
+    assert concept[0, 0] == 1.0
+    assert concept[0, 2] > 0.25
+    assert concept[0, 3] > 0.2
 
 
 def test_concept_head_selection_rejects_a_spatially_disagreeing_head() -> None:
@@ -371,7 +512,7 @@ def test_anima_object_head_selection_rejects_diffuse_attention_heads() -> None:
         ]
     )
 
-    weights = _specific_attention_head_weights(values)
+    weights = specific_attention_head_weights(values)
 
     assert weights.shape == (1, 4)
     assert weights[0, 0].item() == 1.0

@@ -140,7 +140,9 @@ def test_post_render_controls_do_not_invalidate_sampler_capture_cache() -> None:
         {
             "minimum_strength": 0.91,
             "minimum_consensus": 0.82,
+            "geometry_recall": 0.24,
             "split_sensitivity": 0.73,
+            "instance_recall": 0.91,
             "minimum_region_size": 99,
             "keep_only": 2,
             "keep_by": "highest confidence",

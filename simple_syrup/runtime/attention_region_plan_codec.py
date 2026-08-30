@@ -73,6 +73,8 @@ def _request(value: object) -> AttentionRegionRequest:
         minimum_consensus=_float(controls_value, "minimum_consensus"),
         split_sensitivity=_float(controls_value, "split_sensitivity"),
         minimum_region_size=_integer(controls_value, "minimum_region_size"),
+        instance_recall=_float(controls_value, "instance_recall"),
+        geometry_recall=_float(controls_value, "geometry_recall"),
         keep_only=_integer(controls_value, "keep_only"),
         keep_by=_string(controls_value, "keep_by"),
         combine_segs=_boolean(controls_value, "combine_segs"),

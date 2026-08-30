@@ -63,6 +63,8 @@ def test_v3_registry_exposes_four_public_nodes_and_internal_capture_node() -> No
         "evidence_mode",
         "keep_only",
         "keep_by",
+        "instance_recall",
+        "geometry_recall",
         "combine_segs",
         "matte_solidity",
         "edge_feather",
@@ -75,6 +77,8 @@ def test_v3_registry_exposes_four_public_nodes_and_internal_capture_node() -> No
     assert concept_defaults["minimum_strength"] == 0.15
     assert concept_defaults["evidence_mode"] == "concept isolation"
     assert concept_defaults["split_sensitivity"] == 0.0
+    assert concept_defaults["instance_recall"] == 0.65
+    assert concept_defaults["geometry_recall"] == 0.85
     assert concept_defaults["minimum_region_size"] == 512
     assert concept_defaults["keep_only"] == 1
     assert concept_defaults["matte_solidity"] == 0.75

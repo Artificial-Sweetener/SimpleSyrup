@@ -172,9 +172,7 @@ class AttentionRegionCaptureSession:
         )
         spans = _unique_spans(self._targets)
         derive_concept_values = self.model_family is RegionalModelFamily.STANDARD_UNET
-        contextual_spans = (
-            _contextual_spans(self._targets) if derive_concept_values else ()
-        )
+        contextual_spans = _contextual_spans(self._targets)
         denominator = ATTENTION_AFFINITY_CALCULATOR.log_denominator(
             q_positive,
             k_positive,
