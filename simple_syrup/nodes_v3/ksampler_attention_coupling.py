@@ -45,7 +45,10 @@ class KSamplerAttentionCouplingV3(_ComfyNodeBase):
             display_name="KSampler (Attention Coupling)",
             category="SimpleSyrup/Sampling",
             description=(
-                "Denoises supported Anima and standard SD/SDXL models through one "
+                "With ordinary conditioning and no masks, denoises through the "
+                "normal KSampler path without Attention Coupling preparation. "
+                "With conditioning batches and masks, denoises supported Anima "
+                "and standard SD/SDXL models through one "
                 "shared trajectory while coupling global and masked regional "
                 "cross-attention. The input MODEL may carry a global LoRA. Anima "
                 "regions may also carry ordered, independently scheduled Prompt "
@@ -60,7 +63,10 @@ class KSamplerAttentionCouplingV3(_ComfyNodeBase):
                 "anima regional prompt",
                 "sdxl regional prompt",
             ],
-            inputs=attention_coupling_ksampler_inputs(_comfy_io),
+            inputs=attention_coupling_ksampler_inputs(
+                _comfy_io,
+                region_masks_optional=True,
+            ),
             outputs=[
                 _comfy_io.Latent.Output(
                     "latent",
@@ -80,13 +86,13 @@ class KSamplerAttentionCouplingV3(_ComfyNodeBase):
         scheduler: str,
         positive: object,
         negative: object,
-        region_masks: object,
-        regional_prompt_weight: float,
-        region_mask_feather: int,
         latent_image: dict[str, Any],
         denoise: float,
+        region_masks: object | None = None,
+        regional_prompt_weight: float = 0.5,
+        region_mask_feather: int = 0,
     ) -> tuple[dict[str, Any]]:
-        """Delegate the complete request to the Attention Coupling service."""
+        """Delegate ordinary or regional sampling to the routing service."""
 
         output = cls.sampling_service_class().sample(
             model=model,

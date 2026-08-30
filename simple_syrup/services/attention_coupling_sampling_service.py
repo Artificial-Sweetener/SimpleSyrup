@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from ..domain.attention_coupling_request import (
+    AttentionCouplingRequestMode,
+    classify_attention_coupling_request,
+)
 from ..domain.regional_attention_execution import RegionalAttentionExecutionMode
 from .attention_coupling_model_preparation_service import (
     AttentionCouplingModelPreparationService,
@@ -36,13 +40,32 @@ class AttentionCouplingSamplingService:
         scheduler: str,
         positive: object,
         negative: object,
-        region_masks: object,
+        region_masks: object | None,
         regional_prompt_weight: float,
         region_mask_feather: int,
         latent_image: dict[str, Any],
         denoise: float,
     ) -> dict[str, Any]:
-        """Prepare once and delegate one ordinary full-latent sample."""
+        """Bypass ordinary requests or prepare one complete regional request."""
+
+        mode = classify_attention_coupling_request(
+            positive=positive,
+            negative=negative,
+            region_masks=region_masks,
+        )
+        if mode is AttentionCouplingRequestMode.BYPASS:
+            return self.sampling_service_class().sample(
+                model=model,
+                seed=seed,
+                steps=steps,
+                cfg=cfg,
+                sampler_name=sampler_name,
+                scheduler=scheduler,
+                positive=positive,
+                negative=negative,
+                latent_image=latent_image,
+                denoise=denoise,
+            )
 
         prepared = self.model_preparation_service_class().prepare(
             model=model,

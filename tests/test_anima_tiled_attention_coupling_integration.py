@@ -34,6 +34,7 @@ from tools.anima_tiled_attention_coupling_integration.results import (
 )
 from tools.anima_tiled_attention_coupling_integration.schema import (
     EXPECTED_INPUTS,
+    EXPECTED_OPTIONAL_INPUTS,
     validate_public_node_metadata,
 )
 from tools.anima_tiled_attention_coupling_integration.workflow import (
@@ -223,12 +224,14 @@ def _metadata() -> JsonObject:
         "model": "MODEL",
         "positive": "CONDITIONING,CONDITIONING_BATCH",
         "negative": "CONDITIONING,CONDITIONING_BATCH",
-        "region_masks": "MASK",
         "latent_image": "LATENT",
     }
     required = {
         name: [types.get(name, "INT"), {"tooltip": f"{name} regional LoRA guidance"}]
         for name in EXPECTED_INPUTS
+    }
+    optional = {
+        "region_masks": ["MASK", {"tooltip": "region_masks regional LoRA guidance"}]
     }
     required["diffusion_mode"] = [
         "COMBO",
@@ -244,8 +247,11 @@ def _metadata() -> JsonObject:
         "description": (
             "Regional LoRA schedule behavior with MultiDiffusion and Mixture fusion."
         ),
-        "input": {"required": required},
-        "input_order": {"required": list(EXPECTED_INPUTS)},
+        "input": {"required": required, "optional": optional},
+        "input_order": {
+            "required": list(EXPECTED_INPUTS),
+            "optional": list(EXPECTED_OPTIONAL_INPUTS),
+        },
         "output": ["LATENT"],
     }
 
