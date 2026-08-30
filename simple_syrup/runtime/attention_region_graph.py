@@ -217,6 +217,8 @@ def _request(
         minimum_consensus=float(inputs.get("minimum_consensus", 0.25)),
         split_sensitivity=float(inputs.get("split_sensitivity", 0.35)),
         minimum_region_size=int(inputs.get("minimum_region_size", 512)),
+        instance_recall=float(inputs.get("instance_recall", 0.65)),
+        geometry_recall=float(inputs.get("geometry_recall", 0.85)),
         keep_only=int(inputs.get("keep_only", 1)),
         keep_by=str(inputs.get("keep_by", "largest size")),
         combine_segs=bool(inputs.get("combine_segs", False)),

@@ -198,13 +198,15 @@ def test_anima_concept_mode_uses_validated_probability_aggregation() -> None:
 def test_anima_concept_mode_recovers_connected_exact_token_geometry() -> None:
     """Keep a raw-attention appendage attached to the semantic concept core."""
 
+    raw = [0.0] * 5 + [1.0, 1.0, 0.8, 0.7, 0.0] + [0.0] * 5
+    concept = [0.0] * 5 + [1.0, 1.0, 0.0, 0.0, 0.0] + [0.0] * 5
     maps = tuple(
         _map(
             "cat",
-            [1.0, 1.0, 0.8, 0.7, 0.0],
+            raw,
             progress,
             family=RegionalModelFamily.ANIMA,
-            concept_values=[1.0, 1.0, 0.0, 0.0, 0.0],
+            concept_values=concept,
         )
         for progress in (0.2, 0.7)
     )
@@ -216,12 +218,12 @@ def test_anima_concept_mode_recovers_connected_exact_token_geometry() -> None:
             consensus=0.25,
             evidence_mode=AttentionEvidenceMode.CONCEPT,
         ),
-        height=1,
+        height=3,
         width=5,
     )
 
-    assert mask[0, 0, :4].count_nonzero().item() == 4
-    assert mask[0, 0, 4].item() == 0.0
+    assert mask[0, 1, :4].count_nonzero().item() == 4
+    assert mask.count_nonzero().item() == 4
 
 
 def test_anima_concept_mode_rejects_detached_exact_token_noise() -> None:
@@ -253,12 +255,41 @@ def test_anima_concept_mode_rejects_detached_exact_token_noise() -> None:
     assert mask[0, 0, 4].item() == 0.0
 
 
-def test_anima_concept_mode_rejects_globally_expansive_raw_geometry() -> None:
-    """Fall back to semantic support when raw evidence floods the image."""
+def test_anima_concept_mode_preserves_complete_expansive_anchored_geometry() -> None:
+    """Keep the complete attached object while dropping its weak global bridge."""
 
     maps = tuple(
         _map(
-            "outfit",
+            "mage staff",
+            [1.0, 1.0, 0.8, 0.8, 0.8, 0.2, 0.2, 0.2, 0.2, 0.2],
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=[1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        )
+        for progress in (0.2, 0.7)
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.25,
+            evidence_mode=AttentionEvidenceMode.CONCEPT,
+        ),
+        height=1,
+        width=10,
+    )
+
+    assert mask[0, 0, :5].count_nonzero().item() == 5
+    assert mask[0, 0, 5:].count_nonzero().item() == 0
+
+
+def test_anima_concept_mode_favors_recall_when_expansion_is_ambiguous() -> None:
+    """Keep attached geometry when no tighter support extends beyond the core."""
+
+    maps = tuple(
+        _map(
+            "close subject",
             [1.0, 1.0, 0.8, 0.8, 0.8],
             progress,
             family=RegionalModelFamily.ANIMA,
@@ -270,7 +301,7 @@ def test_anima_concept_mode_rejects_globally_expansive_raw_geometry() -> None:
     _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
         maps=maps,
         controls=_controls(
-            strength=0.5,
+            strength=0.15,
             consensus=0.25,
             evidence_mode=AttentionEvidenceMode.CONCEPT,
         ),
@@ -278,8 +309,412 @@ def test_anima_concept_mode_rejects_globally_expansive_raw_geometry() -> None:
         width=5,
     )
 
-    assert mask[0, 0, :2].count_nonzero().item() == 2
-    assert mask[0, 0, 2:].count_nonzero().item() == 0
+    assert mask.count_nonzero().item() == 5
+
+
+def test_anima_concept_mode_rejects_weak_broad_field_around_compact_peak() -> None:
+    """Keep a compact semantic peak without absorbing its weak connected field."""
+
+    raw = [0.0] * 100
+    for row in range(3, 7):
+        for column in range(10):
+            raw[row * 10 + column] = 0.2
+    raw[44] = 1.0
+    raw[45] = 1.0
+    concept = [0.0] * 100
+    concept[44] = 1.0
+    concept[45] = 1.0
+    maps = tuple(
+        _map(
+            "compact feature",
+            raw,
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=concept,
+        )
+        for progress in (0.2, 0.7)
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.25,
+            geometry_recall=0.85,
+        ),
+        height=10,
+        width=10,
+    )
+
+    assert mask.count_nonzero().item() == 2
+
+
+def test_anima_concept_mode_rejects_global_reference_geometry_for_local_core() -> None:
+    """Do not expand localized evidence through a near-global exact-token field."""
+
+    raw = [0.3] * 100
+    concept = [0.0] * 100
+    for row in range(3, 7):
+        for column in range(10):
+            raw[row * 10 + column] = 0.4
+    for column in range(3, 8):
+        concept[4 * 10 + column] = 1.0
+    maps = tuple(
+        _map(
+            "localized feature",
+            raw,
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=concept,
+        )
+        for progress in (0.2, 0.7)
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.25,
+            geometry_recall=0.85,
+        ),
+        height=10,
+        width=10,
+    )
+
+    assert mask.count_nonzero().item() == 5
+
+
+def test_anima_concept_mode_prefers_concentrated_geometry_for_moderate_core() -> None:
+    """Use stricter geometry consensus when a moderate core anchors a broad field."""
+
+    raw = [0.0] * 100
+    for row in range(3, 7):
+        for column in range(10):
+            raw[row * 10 + column] = 0.2
+    concept = [0.0] * 100
+    for column in range(10):
+        raw[4 * 10 + column] = 1.0
+        concept[4 * 10 + column] = 1.0
+    maps = tuple(
+        _map(
+            "moderate compact feature",
+            raw,
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=concept,
+        )
+        for progress in (0.2, 0.7)
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.25,
+            geometry_recall=0.85,
+        ),
+        height=10,
+        width=10,
+    )
+
+    assert mask.count_nonzero().item() == 10
+
+
+def test_anima_concept_mode_tightens_compact_geometry_below_frame_threshold() -> None:
+    """Use the stable core when a compact weak field occupies under 15% of a frame."""
+
+    raw = [0.0] * 400
+    for row in range(6, 13):
+        for column in range(6, 13):
+            raw[row * 20 + column] = 0.2
+    concept = [0.0] * 400
+    for row in range(8, 11):
+        for column in range(8, 11):
+            raw[row * 20 + column] = 1.0
+            concept[row * 20 + column] = 1.0
+    maps = tuple(
+        _map(
+            "compact sub-frame feature",
+            raw,
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=concept,
+        )
+        for progress in (0.2, 0.7)
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.25,
+            geometry_recall=0.85,
+        ),
+        height=20,
+        width=20,
+    )
+
+    assert mask.count_nonzero().item() == 9
+
+
+def test_full_geometry_recall_preserves_weak_broad_field_around_compact_peak() -> None:
+    """Let an explicit maximum-recall choice bypass adaptive compactness."""
+
+    raw = [0.0] * 100
+    for row in range(3, 7):
+        for column in range(10):
+            raw[row * 10 + column] = 0.2
+    raw[44] = 1.0
+    raw[45] = 1.0
+    concept = [0.0] * 100
+    concept[44] = 1.0
+    concept[45] = 1.0
+    maps = tuple(
+        _map(
+            "compact feature",
+            raw,
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=concept,
+        )
+        for progress in (0.2, 0.7)
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.25,
+            geometry_recall=1.0,
+        ),
+        height=10,
+        width=10,
+    )
+
+    assert mask.count_nonzero().item() == 40
+
+
+def test_anima_concept_mode_tightens_peak_dominated_semantic_field() -> None:
+    """Tighten broad support when strength belongs mainly to a small core."""
+
+    values = [0.05] * 100
+    for row in range(3, 7):
+        for column in range(10):
+            values[row * 10 + column] = 0.3
+    values[44] = 1.0
+    values[45] = 1.0
+    maps = tuple(
+        _map(
+            "compact semantic feature",
+            values,
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=values,
+        )
+        for progress in (0.2, 0.7)
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.25,
+            geometry_recall=0.85,
+        ),
+        height=10,
+        width=10,
+    )
+
+    assert mask.count_nonzero().item() == 2
+
+
+def test_anima_concept_mode_preserves_broad_high_strength_semantic_region() -> None:
+    """Keep a genuinely broad concept whose support remains strong across its area."""
+
+    values = [0.05] * 100
+    for row in range(2, 8):
+        for column in range(10):
+            values[row * 10 + column] = 0.8
+    values[44] = 1.0
+    values[45] = 1.0
+    maps = tuple(
+        _map(
+            "broad semantic region",
+            values,
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=values,
+        )
+        for progress in (0.2, 0.7)
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.25,
+            geometry_recall=0.85,
+        ),
+        height=10,
+        width=10,
+    )
+
+    assert mask.count_nonzero().item() == 60
+
+
+def test_geometry_recall_controls_faint_connected_exact_token_extent() -> None:
+    """Let users trade faint attached geometry for a tighter semantic core."""
+
+    maps = tuple(
+        _map(
+            "cat tail",
+            [
+                1.0,
+                1.0,
+                0.6,
+                0.6,
+                0.4,
+                0.4,
+                0.2,
+                0.2,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=[1.0, 1.0] + [0.0] * 14,
+        )
+        for progress in (0.2, 0.7)
+    )
+
+    _recalled_segs, recalled = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.25,
+            geometry_recall=1.0,
+        ),
+        height=1,
+        width=16,
+    )
+    _tight_segs, tight = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.25,
+            geometry_recall=0.0,
+        ),
+        height=1,
+        width=16,
+    )
+
+    assert recalled.count_nonzero().item() == 8
+    assert tight.count_nonzero().item() == 6
+
+
+def test_anima_concept_mode_rejects_below_baseline_late_residue() -> None:
+    """Do not normalize negligible late-step Anima residue into full support."""
+
+    maps = tuple(
+        _map(
+            "cuffs",
+            [0.01, 0.01, 0.01, 0.01],
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=[0.0010, 0.0012, 0.0011, 0.0010],
+            baseline=0.01,
+        )
+        for progress in (0.75, 0.9)
+    )
+
+    segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.25,
+            evidence_mode=AttentionEvidenceMode.CONCEPT,
+        ),
+        height=2,
+        width=2,
+    )
+
+    assert segs[1] == ()
+    assert mask.count_nonzero().item() == 0
+
+
+def test_anima_concept_mode_removes_a_broad_contextual_field() -> None:
+    """Keep local lift without treating a broadly elevated phrase as full-frame."""
+
+    maps = tuple(
+        _map(
+            "swept bangs",
+            [0.1, 0.1, 0.1, 0.1],
+            progress,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=[0.11, 0.11, 0.11, 0.14],
+            baseline=0.1,
+        )
+        for progress in (0.2, 0.6)
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.25,
+            evidence_mode=AttentionEvidenceMode.CONCEPT,
+        ),
+        height=2,
+        width=2,
+    )
+
+    assert mask.count_nonzero().item() == 1
+    assert mask[0, 1, 1].item() == 1.0
+
+
+def test_anima_concept_mode_prefers_resolved_mid_pass_evidence() -> None:
+    """Prevent an endpoint observation from tying resolved middle evidence."""
+
+    maps = (
+        _map(
+            "boots",
+            [0.1, 0.1, 0.1, 0.1],
+            0.0,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=[0.9, 0.1, 0.1, 0.1],
+            baseline=0.1,
+            layer="shared",
+        ),
+        _map(
+            "boots",
+            [0.1, 0.1, 0.1, 0.1],
+            0.5,
+            family=RegionalModelFamily.ANIMA,
+            concept_values=[0.1, 0.1, 0.1, 0.9],
+            baseline=0.1,
+            layer="shared",
+        ),
+    )
+
+    _segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.4,
+            evidence_mode=AttentionEvidenceMode.CONCEPT,
+        ),
+        height=2,
+        width=2,
+    )
+
+    assert mask.count_nonzero().item() == 1
+    assert mask[0, 1, 1].item() == 1.0
 
 
 def test_concept_isolation_prefers_repeated_support_over_transient_peak() -> None:
@@ -404,6 +839,137 @@ def test_disconnected_attention_islands_become_separate_instances() -> None:
     assert len(segs[1]) == 2
     assert tuple(segment.label for segment in segs[1]) == ("outdoors", "outdoors")
     assert mask.count_nonzero().item() == 2
+
+
+def test_concept_isolation_rejects_weak_disconnected_context() -> None:
+    """Drop a weak contextual island while retaining raw inspection evidence."""
+
+    maps = (_map("bangs", [1.0, 0.9, 0.0, 0.3, 0.3], 0.5),)
+    concept_segs, _concept_mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(strength=0.15, consensus=0.0),
+        height=1,
+        width=5,
+    )
+    raw_segs, _raw_mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=maps,
+        controls=_controls(
+            strength=0.15,
+            consensus=0.0,
+            evidence_mode=AttentionEvidenceMode.RAW,
+        ),
+        height=1,
+        width=5,
+    )
+
+    assert len(concept_segs[1]) == 1
+    assert concept_segs[1][0].bbox == (0, 0, 2, 1)
+    assert len(raw_segs[1]) == 2
+
+
+def test_concept_isolation_retains_multiple_confident_regions() -> None:
+    """Keep plural concept instances when each has substantial evidence."""
+
+    segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=(_map("cuffs", [1.0, 0.9, 0.0, 0.7, 0.65], 0.5),),
+        controls=_controls(strength=0.15, consensus=0.0),
+        height=1,
+        width=5,
+    )
+
+    assert len(segs[1]) == 2
+    assert mask.count_nonzero().item() == 4
+
+
+def test_concept_isolation_retains_sparse_instances_by_peak_evidence() -> None:
+    """Keep small repeated instances without rewarding a larger region for area."""
+
+    values = [0.6] * 16 + [0.0, 1.0, 0.0, 0.7]
+    segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=(_map("falling petals", values, 0.5),),
+        controls=_controls(strength=0.15, consensus=0.0),
+        height=1,
+        width=len(values),
+    )
+
+    assert len(segs[1]) == 3
+    assert mask[0, 0, 17].item() > 0.0
+    assert mask[0, 0, 19].item() > 0.0
+
+
+def test_instance_recall_can_restrict_sparse_results_to_the_strongest_peak() -> None:
+    """Let users remove weaker disconnected instances without an area heuristic."""
+
+    values = [0.6] * 16 + [0.0, 1.0, 0.0, 0.7]
+    segs, _mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=(_map("falling petals", values, 0.5),),
+        controls=_controls(
+            strength=0.15,
+            consensus=0.0,
+            instance_recall=0.2,
+        ),
+        height=1,
+        width=len(values),
+    )
+
+    assert len(segs[1]) == 1
+    assert segs[1][0].bbox == (17, 0, 18, 1)
+
+
+def test_concept_isolation_does_not_prefer_a_tiny_sharp_island() -> None:
+    """Keep broad supported evidence when a disconnected pixel peaks higher."""
+
+    values = [0.4] * 25 + [0.0, 1.0]
+    segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=(_map("hair", values, 0.5),),
+        controls=_controls(strength=0.15, consensus=0.0),
+        height=1,
+        width=len(values),
+    )
+
+    assert any(segment.bbox == (0, 0, 25, 1) for segment in segs[1])
+    assert mask[0, 0, :25].count_nonzero().item() == 25
+
+
+def test_concept_isolation_rejects_pockmarks_around_a_compact_dominant_region() -> None:
+    """Keep one compact body when much smaller disconnected peaks surround it."""
+
+    values = torch.zeros(11, 11)
+    values[3:8, 3:8] = 0.6
+    values[0:2, 0:2] = 0.8
+    values[0, 10] = 1.0
+    segs, mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=(_map("torso", values.flatten().tolist(), 0.5),),
+        controls=_controls(strength=0.15, consensus=0.0, feather=0),
+        height=11,
+        width=11,
+    )
+
+    assert len(segs[1]) == 1
+    assert segs[1][0].bbox == (3, 3, 8, 8)
+    assert mask.count_nonzero().item() == 25
+
+
+def test_full_instance_recall_preserves_pockmarks_around_a_compact_region() -> None:
+    """Honor an explicit request to retain every supported disconnected instance."""
+
+    values = torch.zeros(11, 11)
+    values[3:8, 3:8] = 0.6
+    values[0:2, 0:2] = 0.8
+    values[0, 10] = 1.0
+    segs, _mask = ATTENTION_REGION_RENDERING_SERVICE.render(
+        maps=(_map("torso", values.flatten().tolist(), 0.5),),
+        controls=_controls(
+            strength=0.15,
+            consensus=0.0,
+            feather=0,
+            instance_recall=1.0,
+        ),
+        height=11,
+        width=11,
+    )
+
+    assert len(segs[1]) == 3
 
 
 def test_split_sensitivity_preserves_the_complete_concept_union() -> None:
@@ -590,8 +1156,8 @@ def test_full_matte_solidity_fills_only_enclosed_holes() -> None:
     assert torch.equal(mask, torch.ones_like(mask))
 
 
-def test_full_matte_solidity_closes_a_narrow_exterior_connected_channel() -> None:
-    """Remove thin attention squiggles without filling broad exterior space."""
+def test_full_matte_solidity_preserves_a_narrow_exterior_connected_channel() -> None:
+    """Flatten alpha without inventing support inside an exterior channel."""
 
     support = torch.zeros(7, 7, dtype=torch.bool)
     support[1:6, 1:6] = True
@@ -604,13 +1170,13 @@ def test_full_matte_solidity_closes_a_narrow_exterior_connected_channel() -> Non
         edge_feather=0,
     )
 
-    assert matte[3, 3].item() == 1.0
+    assert matte[3, 3].item() == 0.0
     assert matte[0].count_nonzero().item() == 0
     assert matte[:, 0].count_nonzero().item() == 0
 
 
-def test_full_matte_solidity_removes_a_winding_channel_from_a_large_opening() -> None:
-    """Smooth thin branches while preserving the large excluded exterior area."""
+def test_full_matte_solidity_preserves_a_winding_exterior_channel() -> None:
+    """Keep exterior-connected exclusions regardless of their shape or width."""
 
     support = torch.ones(100, 100, dtype=torch.bool)
     support[55:, 25:75] = False
@@ -624,8 +1190,8 @@ def test_full_matte_solidity_removes_a_winding_channel_from_a_large_opening() ->
         edge_feather=0,
     )
 
-    assert matte[38, 50].item() == 1.0
-    assert matte[43, 44].item() == 1.0
+    assert matte[38, 50].item() == 0.0
+    assert matte[43, 44].item() == 0.0
     assert matte[80, 50].item() == 0.0
 
 
@@ -708,6 +1274,8 @@ def _controls(
     solidity: float = 0.0,
     feather: int = 8,
     split: float = 0.0,
+    instance_recall: float = 0.65,
+    geometry_recall: float = 0.85,
     evidence_mode: AttentionEvidenceMode = AttentionEvidenceMode.CONCEPT,
 ) -> AttentionRegionControls:
     """Return representative balanced rendering controls."""
@@ -720,6 +1288,8 @@ def _controls(
         split,
         minimum_size,
         AttentionCaptureProfile.BALANCED,
+        instance_recall=instance_recall,
+        geometry_recall=geometry_recall,
         keep_only=keep_only,
         combine_segs=combine,
         matte_solidity=solidity,

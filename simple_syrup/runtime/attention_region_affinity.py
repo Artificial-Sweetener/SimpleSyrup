@@ -19,12 +19,11 @@ from .attention_region_contextual_spans import (
     MAXIMUM_RELATED_WEIGHT,
 )
 from .attention_region_logits import scaled_attention_logits
+from .attention_region_phrase_evidence import ANIMA_PHRASE_EVIDENCE_SERVICE
 from .attention_region_self_completion import (
     ATTENTION_REGION_SELF_COMPLETION,
     SpatialSelfAttention,
 )
-
-ANIMA_MODIFIER_INFLUENCE = 0.2
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,6 +203,7 @@ class AttentionAffinityCalculator:
         }
         pending: list[PendingAttentionMap] = []
         for span in spans:
+            selection = contextual.get(span)
             positions = torch.tensor(
                 tuple(union_positions[index] for index in span.token_indices),
                 device=probability.device,
@@ -215,13 +215,18 @@ class AttentionAffinityCalculator:
                 .detach()
                 .to(dtype=torch.float16)
             )
-            concept_values = _anima_concept_values(
+            concept_values = ANIMA_PHRASE_EVIDENCE_SERVICE.derive(
                 probability=probability,
                 span=span,
                 union_positions=union_positions,
+                contextual_token_indices=(
+                    selection.token_indices if selection is not None else ()
+                ),
+                contextual_token_weights=(
+                    selection.token_weights if selection is not None else ()
+                ),
             )
             if derive_concept_values:
-                selection = contextual.get(span)
                 concept_indices = (
                     selection.token_indices
                     if selection is not None
@@ -418,63 +423,6 @@ def _concept_values(
         return _ConceptSeeds(exact, None)
     contextual = _fuse_concept_tokens(token_maps, raw_token_maps, token_priors)
     return _ConceptSeeds(exact, contextual)
-
-
-def _anima_concept_values(
-    *,
-    probability: torch.Tensor,
-    span: AttentionTokenSpan,
-    union_positions: dict[int, int],
-) -> torch.Tensor:
-    """Anchor Anima phrases on their contextualized semantic-head evidence."""
-
-    positions = tuple(union_positions[index] for index in span.token_indices)
-    indices = torch.tensor(
-        positions,
-        device=probability.device,
-        dtype=torch.int64,
-    )
-    tokens = probability.index_select(-1, indices).float()
-    semantic_heads = set(span.semantic_head_indices)
-    head_mask = torch.tensor(
-        tuple(index in semantic_heads for index in span.token_indices),
-        device=tokens.device,
-        dtype=torch.bool,
-    )
-    head_by_attention = tokens[..., head_mask].mean(dim=-1)
-    head_weights = _specific_attention_head_weights(head_by_attention)
-    head = (head_by_attention * head_weights.unsqueeze(-1)).sum(dim=1)
-    if head_mask.all().item():
-        return head.detach().to(dtype=torch.float16)
-    modifiers = (tokens[..., ~head_mask].mean(dim=-1) * head_weights.unsqueeze(-1)).sum(
-        dim=1
-    )
-    relative_modifiers = modifiers / modifiers.amax(
-        dim=1,
-        keepdim=True,
-    ).clamp_min(1e-12)
-    modulation = (1.0 - ANIMA_MODIFIER_INFLUENCE) + (
-        relative_modifiers * ANIMA_MODIFIER_INFLUENCE
-    )
-    return (head * modulation).detach().to(dtype=torch.float16)
-
-
-def _specific_attention_head_weights(head_values: torch.Tensor) -> torch.Tensor:
-    """Select Anima heads whose semantic-object response is spatially specific."""
-
-    head_count = int(head_values.shape[1])
-    if head_count == 1:
-        return torch.ones_like(head_values[..., 0])
-    means = head_values.mean(dim=-1)
-    peak_ratios = head_values.amax(dim=-1) / means.clamp_min(1e-12)
-    specificity = 1.0 - torch.exp(-(peak_ratios - 1.0).clamp_min(0.0) / 4.0)
-    relative_response = means / means.mean(dim=1, keepdim=True).clamp_min(1e-12)
-    scores = specificity * (0.5 + 0.5 * relative_response.clamp(0.0, 2.0))
-    selected_count = max(1, math.ceil(head_count * 0.25))
-    selected = scores.topk(selected_count, dim=1).indices
-    selection = torch.zeros_like(scores).scatter(1, selected, 1.0)
-    weights = scores * selection
-    return weights / weights.sum(dim=1, keepdim=True).clamp_min(1e-12)
 
 
 def _fuse_concept_tokens(

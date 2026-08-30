@@ -48,6 +48,8 @@ class AttentionRegionControls:
     split_sensitivity: float
     minimum_region_size: int
     profile: AttentionCaptureProfile
+    instance_recall: float = 0.65
+    geometry_recall: float = 0.85
     keep_only: int = 0
     keep_by: str = "largest size"
     combine_segs: bool = False
@@ -64,6 +66,8 @@ class AttentionRegionControls:
             self.minimum_strength,
             self.minimum_consensus,
             self.split_sensitivity,
+            self.instance_recall,
+            self.geometry_recall,
             self.matte_solidity,
         )
         if any(
@@ -79,6 +83,10 @@ class AttentionRegionControls:
             raise ValueError("Minimum attention consensus must be within 0..1.")
         if not 0.0 <= self.split_sensitivity <= 1.0:
             raise ValueError("Attention split sensitivity must be within 0..1.")
+        if not 0.0 <= self.instance_recall <= 1.0:
+            raise ValueError("Attention instance recall must be within 0..1.")
+        if not 0.0 <= self.geometry_recall <= 1.0:
+            raise ValueError("Attention geometry recall must be within 0..1.")
         if type(self.minimum_region_size) is not int or self.minimum_region_size < 1:
             raise ValueError("Minimum attention region size must be positive.")
         if type(self.keep_only) is not int or self.keep_only < 0:

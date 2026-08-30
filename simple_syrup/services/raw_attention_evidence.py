@@ -17,7 +17,10 @@ from .attention_region_geometry_recovery import (
 from .attention_region_observation_projection import (
     ATTENTION_OBSERVATION_PROJECTION_SERVICE,
 )
-from .attention_region_support import ATTENTION_CONCEPT_SUPPORT_SERVICE
+from .attention_region_support_topology import (
+    ATTENTION_REGION_SUPPORT_TOPOLOGY_POLICY,
+)
+from .concept_attention_evidence import CONCEPT_ATTENTION_EVIDENCE_POLICY
 
 
 class RawAttentionEvidencePolicy:
@@ -39,13 +42,68 @@ class RawAttentionEvidencePolicy:
             height,
             width,
         )
+        return self._aggregate_resized(
+            label,
+            resized,
+            controls.minimum_strength,
+            controls.minimum_consensus,
+            height,
+            width,
+        )
+
+    def aggregate_with_reference(
+        self,
+        label: str,
+        observations: tuple[CapturedAttentionMap, ...],
+        controls: AttentionRegionControls,
+        height: int,
+        width: int,
+        reference_strength: float,
+    ) -> tuple[AttentionConceptEvidence, AttentionConceptEvidence]:
+        """Return permissive and concentrated evidence from one projected stack."""
+
+        resized = ATTENTION_OBSERVATION_PROJECTION_SERVICE.stack(
+            observations,
+            self._values,
+            height,
+            width,
+        )
+        primary = self._aggregate_resized(
+            label,
+            resized,
+            controls.minimum_strength,
+            controls.minimum_consensus,
+            height,
+            width,
+        )
+        reference = self._aggregate_resized(
+            label,
+            resized,
+            reference_strength,
+            controls.minimum_consensus,
+            height,
+            width,
+        )
+        return primary, reference
+
+    def _aggregate_resized(
+        self,
+        label: str,
+        resized: torch.Tensor,
+        minimum_strength: float,
+        minimum_consensus: float,
+        height: int,
+        width: int,
+    ) -> AttentionConceptEvidence:
+        """Aggregate one already-projected observation stack."""
+
         normalized = resized / resized.amax(dim=(1, 2), keepdim=True).clamp_min(1e-12)
         strength = resized.mean(dim=0)
         strength = strength / strength.amax().clamp_min(1e-12)
-        consensus = (normalized >= controls.minimum_strength).float().mean(dim=0)
+        consensus = (normalized >= minimum_strength).float().mean(dim=0)
         confidence = strength * consensus
         persistent = torch.where(
-            consensus >= controls.minimum_consensus,
+            consensus >= minimum_consensus,
             confidence,
             torch.zeros_like(confidence),
         )
@@ -56,7 +114,7 @@ class RawAttentionEvidencePolicy:
         )
         maximum = restored.amax()
         alpha = restored if maximum <= 0.0 else restored / maximum
-        support = self._support(alpha, controls.minimum_strength)
+        support = self._support(alpha, minimum_strength)
         restored_confidence = ATTENTION_OBSERVATION_PROJECTION_SERVICE.restore(
             confidence,
             height,
@@ -88,7 +146,7 @@ RAW_ATTENTION_EVIDENCE_POLICY = RawAttentionEvidencePolicy()
 
 
 class AnimaConceptAttentionEvidencePolicy(RawAttentionEvidencePolicy):
-    """Aggregate Anima's contextualized semantic-head probabilities."""
+    """Isolate Anima semantic evidence and recover anchored token geometry."""
 
     def aggregate(
         self,
@@ -100,44 +158,35 @@ class AnimaConceptAttentionEvidencePolicy(RawAttentionEvidencePolicy):
     ) -> AttentionConceptEvidence:
         """Anchor exact prompt-token geometry to the semantic concept core."""
 
-        semantic = super().aggregate(
+        semantic = CONCEPT_ATTENTION_EVIDENCE_POLICY.aggregate_anima(
             label,
             observations,
             controls,
             height,
             width,
         )
-        geometry = RAW_ATTENTION_EVIDENCE_POLICY.aggregate(
-            label,
-            observations,
-            controls,
-            height,
-            width,
+        reference_strength = (
+            ATTENTION_REGION_SUPPORT_TOPOLOGY_POLICY.reference_strength(
+                controls.minimum_strength
+            )
+        )
+        geometry, concentrated_geometry = (
+            RAW_ATTENTION_EVIDENCE_POLICY.aggregate_with_reference(
+                label,
+                observations,
+                controls,
+                height,
+                width,
+                reference_strength,
+            )
         )
         return ATTENTION_REGION_GEOMETRY_RECOVERY_SERVICE.recover(
             semantic=semantic,
             geometry=geometry,
+            concentrated_geometry=concentrated_geometry,
+            minimum_strength=controls.minimum_strength,
+            geometry_recall=controls.geometry_recall,
         )
-
-    def _values(self, observation: CapturedAttentionMap) -> torch.Tensor:
-        """Return phrase agreement above its observation-local spatial baseline."""
-
-        values = (
-            observation.concept_values
-            if observation.concept_values is not None
-            else observation.values
-        )
-        values = values.float()
-        return (values - values.mean()).clamp_min(0.0)
-
-    def _support(
-        self,
-        alpha: torch.Tensor,
-        minimum_strength: float,
-    ) -> torch.Tensor:
-        """Retain weak contextualized extent attached to a strong semantic core."""
-
-        return ATTENTION_CONCEPT_SUPPORT_SERVICE.select(alpha, minimum_strength)
 
 
 ANIMA_CONCEPT_ATTENTION_EVIDENCE_POLICY = AnimaConceptAttentionEvidencePolicy()

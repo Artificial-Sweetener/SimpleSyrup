@@ -19,6 +19,7 @@ class AttentionReliabilityCalibration:
     agreement_power: float
     consensus_influence: float
     detail_influence: float
+    temporal_center_influence: float
 
 
 class AttentionRegionModelReliability:
@@ -31,8 +32,8 @@ class AttentionRegionModelReliability:
         """Return calibrated weighting without introducing model inference."""
 
         if family is RegionalModelFamily.ANIMA:
-            return AttentionReliabilityCalibration(0.75, 2.0, 0.75, 0.25)
-        return AttentionReliabilityCalibration(1.0, 2.0, 0.8, 0.25)
+            return AttentionReliabilityCalibration(0.75, 2.0, 0.75, 0.25, 0.9)
+        return AttentionReliabilityCalibration(1.0, 2.0, 0.8, 0.25, 0.0)
 
 
 ATTENTION_REGION_MODEL_RELIABILITY = AttentionRegionModelReliability()

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from collections import defaultdict
 from dataclasses import dataclass
@@ -19,9 +20,14 @@ from .attention_region_model_reliability import ATTENTION_REGION_MODEL_RELIABILI
 from .attention_region_observation_projection import (
     ATTENTION_OBSERVATION_PROJECTION_SERVICE,
 )
+from .attention_region_support_topology import (
+    ATTENTION_REGION_SUPPORT_TOPOLOGY_POLICY,
+)
 
 AUTOMATIC_SUPPORT_FLOOR = 0.1
 MINIMUM_DETAIL_OBSERVATIONS = 2
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +53,46 @@ class ConceptAttentionEvidencePolicy:
     ) -> AttentionConceptEvidence:
         """Suppress uniform and transient activation without morphology."""
 
+        return self._aggregate(
+            label,
+            observations,
+            controls,
+            height,
+            width,
+            adaptive_spatial_baseline=False,
+        )
+
+    def aggregate_anima(
+        self,
+        label: str,
+        observations: tuple[CapturedAttentionMap, ...],
+        controls: AttentionRegionControls,
+        height: int,
+        width: int,
+    ) -> AttentionConceptEvidence:
+        """Suppress Anima's broad contextual field and below-baseline residue."""
+
+        return self._aggregate(
+            label,
+            observations,
+            controls,
+            height,
+            width,
+            adaptive_spatial_baseline=True,
+        )
+
+    def _aggregate(
+        self,
+        label: str,
+        observations: tuple[CapturedAttentionMap, ...],
+        controls: AttentionRegionControls,
+        height: int,
+        width: int,
+        *,
+        adaptive_spatial_baseline: bool,
+    ) -> AttentionConceptEvidence:
+        """Aggregate one model family with its explicit spatial baseline policy."""
+
         family = observations[0].model_family
         if any(value.model_family is not family for value in observations):
             raise ValueError(
@@ -63,8 +109,9 @@ class ConceptAttentionEvidencePolicy:
             height,
             width,
         )
-        baselines = torch.tensor(
-            [float(value.uniform_probability) for value in observations],
+        baselines = _observation_baselines(
+            observations,
+            adaptive_spatial_baseline=adaptive_spatial_baseline,
             dtype=resized.dtype,
         ).reshape(-1, 1, 1)
         excess = torch.where(
@@ -80,6 +127,7 @@ class ConceptAttentionEvidencePolicy:
             maxima,
             baselines.flatten(),
             calibration.lift_scale,
+            calibration.temporal_center_influence,
         )
         observation_threshold = max(
             AUTOMATIC_SUPPORT_FLOOR,
@@ -104,13 +152,61 @@ class ConceptAttentionEvidencePolicy:
             height,
             width,
         )
-        maximum = restored.amax()
-        alpha = restored if maximum <= 0.0 else restored / maximum
-        support = (alpha > 0.0) & (alpha >= controls.minimum_strength)
         restored_confidence = ATTENTION_OBSERVATION_PROJECTION_SERVICE.restore(
             confidence,
             height,
             width,
+        )
+        support_strength = controls.minimum_strength
+        reference_threshold = (
+            ATTENTION_REGION_SUPPORT_TOPOLOGY_POLICY.reference_strength(
+                controls.minimum_strength
+            )
+        )
+        if adaptive_spatial_baseline and reference_threshold > observation_threshold:
+            concentrated_layers = _aggregate_layers(
+                observations,
+                normalized,
+                base_weights,
+                reference_threshold,
+                controls.minimum_consensus,
+                calibration.agreement_power,
+                calibration.consensus_influence,
+            )
+            concentrated_confidence, concentrated_persistent = _fuse_layers(
+                concentrated_layers,
+                calibration.agreement_power,
+                calibration.detail_influence,
+            )
+            concentrated_restored = ATTENTION_OBSERVATION_PROJECTION_SERVICE.restore(
+                concentrated_persistent,
+                height,
+                width,
+            )
+            if ATTENTION_REGION_SUPPORT_TOPOLOGY_POLICY.prefers_concentrated_evidence(
+                restored,
+                concentrated_restored,
+                controls.minimum_strength,
+                adaptive=True,
+            ):
+                logger.debug(
+                    "Selected concentrated semantic attention for %s at %.3f strength",
+                    label,
+                    reference_threshold,
+                )
+                restored = concentrated_restored
+                restored_confidence = ATTENTION_OBSERVATION_PROJECTION_SERVICE.restore(
+                    concentrated_confidence,
+                    height,
+                    width,
+                )
+                support_strength = reference_threshold
+        maximum = restored.amax()
+        alpha = restored if maximum <= 0.0 else restored / maximum
+        support = ATTENTION_REGION_SUPPORT_TOPOLOGY_POLICY.select(
+            alpha,
+            support_strength,
+            adaptive=adaptive_spatial_baseline,
         )
         return AttentionConceptEvidence(
             label,
@@ -118,6 +214,28 @@ class ConceptAttentionEvidencePolicy:
             support,
             restored_confidence,
         )
+
+
+def _observation_baselines(
+    observations: tuple[CapturedAttentionMap, ...],
+    *,
+    adaptive_spatial_baseline: bool,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Return absolute floors with optional contextual spatial centering."""
+
+    values: list[float] = []
+    for observation in observations:
+        baseline = float(observation.uniform_probability)
+        if adaptive_spatial_baseline:
+            concept = (
+                observation.concept_values
+                if observation.concept_values is not None
+                else observation.values
+            )
+            baseline = max(baseline, float(concept.float().mean().item()))
+        values.append(baseline)
+    return torch.tensor(values, dtype=dtype)
 
 
 def _aggregate_layers(
@@ -232,8 +350,9 @@ def _base_weights(
     maxima: torch.Tensor,
     baselines: torch.Tensor,
     lift_scale: float,
+    temporal_center_influence: float,
 ) -> torch.Tensor:
-    """Weight spatial specificity, signal lift, and captured concentration."""
+    """Weight spatial specificity, signal lift, capture, and denoising phase."""
 
     means = excess.mean(dim=(1, 2))
     peak_ratios = maxima / means.clamp_min(1e-12)
@@ -248,7 +367,15 @@ def _base_weights(
         [value.confidence for value in observations],
         dtype=excess.dtype,
     )
-    weights = (0.1 + 0.9 * specificity) * lift * (0.25 + 0.75 * captured)
+    progress = torch.tensor(
+        [value.progress for value in observations],
+        dtype=excess.dtype,
+    )
+    centered_phase = torch.sin(progress * math.pi).square()
+    temporal = (1.0 - temporal_center_influence) + (
+        temporal_center_influence * centered_phase
+    )
+    weights = (0.1 + 0.9 * specificity) * lift * (0.25 + 0.75 * captured) * temporal
     return torch.where(maxima > 0.0, weights, torch.zeros_like(weights))
 
 
