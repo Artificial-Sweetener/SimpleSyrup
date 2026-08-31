@@ -25,6 +25,7 @@ from ..runtime.comfy_conditioning_model_loader import ComfyConditioningModelLoad
 from ..runtime.comfy_conditioning_processing import (
     ComfyRegionalConditioningProcessor,
 )
+from ..runtime.comfy_latent_normalization import ComfyLatentNormalizer
 from ..runtime.regional_lora_conditioning_adapter import (
     RegionalLoraConditioningAdapter,
 )
@@ -78,6 +79,9 @@ class AttentionCouplingModelPreparationService:
     interop_validator_class: ClassVar[type[RegionalModelPatchInteropValidator]] = (
         RegionalModelPatchInteropValidator
     )
+    latent_normalizer_class: ClassVar[type[ComfyLatentNormalizer]] = (
+        ComfyLatentNormalizer
+    )
     model_family_selector_class: ClassVar[
         type[AttentionCouplingModelFamilySelector]
     ] = AttentionCouplingModelFamilySelector
@@ -113,6 +117,18 @@ class AttentionCouplingModelPreparationService:
         interop_validator = self.interop_validator_class()
         interop_report = interop_validator.validate(model, capabilities)
         model_family = self.model_family_selector_class().select(capabilities)
+        samples = self.latent_normalizer_class().normalize(
+            model=model,
+            samples=samples,
+            spatial_downscale_ratio=latent_image.get(
+                "downscale_ratio_spacial",
+                None,
+            ),
+            temporal_downscale_ratio=latent_image.get(
+                "downscale_ratio_temporal",
+                None,
+            ),
+        )
         model_family.validate_latent(samples)
 
         def prepare_uncached() -> PreparedAttentionCouplingModel:
