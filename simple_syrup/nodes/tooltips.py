@@ -115,6 +115,20 @@ SAMPLING_SEED = (
     "Seed used to create sampling noise. Reusing it with matching settings makes "
     "results repeatable."
 )
+SEED_VARIATION_MODEL_INPUT = (
+    "Model whose sampler-provided initial noise will receive seed variation."
+)
+VARIATION_SEED = (
+    "Seed for the second noise pattern. Change it to explore another variation "
+    "direction from the sampler's seed."
+)
+VARIATION_STRENGTH = (
+    "Noise interpolation strength. 0 keeps the sampler seed unchanged; 1 uses the "
+    "variation seed for initial noise."
+)
+SEED_VARIATION_MODEL_OUTPUT = (
+    "Model that interpolates initial sampling noise toward the variation seed."
+)
 SAMPLING_STEPS = (
     "Number of denoising steps. More steps can add refinement but take longer."
 )

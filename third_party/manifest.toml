@@ -76,7 +76,7 @@ vendored_files = [
 ]
 
 [[component]]
-name = "AUTOMATIC1111 Euler a sampler integration"
+name = "AUTOMATIC1111 sampling integration"
 license = "AGPL-3.0"
 license_file = "third_party/licenses/automatic1111.LICENSE.txt"
 source = "https://github.com/AUTOMATIC1111/stable-diffusion-webui"
@@ -91,6 +91,7 @@ vendored_files = [
   "simple_syrup/runtime/a1111_sampling.py",
   "simple_syrup/runtime/sampling_samplers.py",
   "simple_syrup/runtime/sampling_schedulers.py",
+  "simple_syrup/runtime/seed_variation.py",
 ]
 
 [[component]]

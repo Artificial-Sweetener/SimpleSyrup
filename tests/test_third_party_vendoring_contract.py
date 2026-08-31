@@ -91,7 +91,7 @@ def test_automatic1111_sampler_integration_provenance_is_recorded() -> None:
     )
     components = {component["name"]: component for component in manifest["component"]}
 
-    automatic1111 = components["AUTOMATIC1111 Euler a sampler integration"]
+    automatic1111 = components["AUTOMATIC1111 sampling integration"]
     license_path = REPO_ROOT / automatic1111["license_file"]
 
     assert automatic1111["license"] == "AGPL-3.0"
@@ -111,6 +111,7 @@ def test_automatic1111_sampler_integration_provenance_is_recorded() -> None:
         "simple_syrup/runtime/a1111_sampling.py",
         "simple_syrup/runtime/sampling_samplers.py",
         "simple_syrup/runtime/sampling_schedulers.py",
+        "simple_syrup/runtime/seed_variation.py",
     ]
 
 
@@ -187,7 +188,7 @@ def test_notice_records_sampler_and_tiled_diffusion_provenance() -> None:
 
     notice = (REPO_ROOT / "third_party" / "NOTICE.md").read_text(encoding="utf-8")
 
-    assert "AUTOMATIC1111 Euler a sampler integration" in notice
+    assert "AUTOMATIC1111 sampling integration" in notice
     assert "k-diffusion Euler ancestral sampler" in notice
     assert "Mixture of Diffusers and MultiDiffusion tiled diffusion behavior" in notice
     assert "regional prompt mask blending" in notice
