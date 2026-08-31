@@ -57,6 +57,7 @@ BASE_NODE_IDS = [
     "SimpleSyrup.ScaleFactor",
     "SimpleSyrup.ConceptAttentionSEGS",
     "SimpleSyrup.Seed",
+    "SimpleSyrup.SeedVariation",
     "SimpleSyrup.SimpleLoadAnima",
     "SimpleSyrup.SimplePreviewSEGS",
     "SimpleSyrup.SimpleLoadCheckpoint",

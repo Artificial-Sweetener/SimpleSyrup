@@ -25,12 +25,13 @@ The preset uses ComfyUI's beta scheduler with `alpha=0.5` and `beta=0.7`.
 SimpleSyrup resolves the preset locally for `KSampler (Extras)` and does not
 patch ComfyUI's global scheduler registry.
 
-## AUTOMATIC1111 Euler a sampler integration
+## AUTOMATIC1111 sampling integration
 
 SimpleSyrup vendors selected AUTOMATIC1111 WebUI sampler integration behavior
 under AGPL-3.0. This provenance covers the `Euler a` sampler mapping, the
-`Automatic` scheduler fallback behavior, and the documented decision not to
-port AUTOMATIC1111 ENSD or RNG hijacking behavior.
+`Automatic` scheduler fallback behavior, and seed-variation interpolation at
+ComfyUI's model-carried outer sampling boundary. SimpleSyrup does not port
+AUTOMATIC1111 ENSD or global RNG hijacking behavior.
 
 ## k-diffusion Euler ancestral sampler
 

@@ -18,7 +18,7 @@ The pack now covers model loading, regional prompting and segmentation, high-res
 - ADetailer-style `[SEP]` prompt batches, masked conditioning, and regional samplers, with optional Prompt Control scheduling and LoRA hooks.
 - WD14 and external vision LLM tagging that stays aligned with the right regions.
 - Ordered image and mask loading, GPU Lanczos resizing, tiled VAE options, and provenance-aware latent tools.
-- WebUI-inspired sampler and scheduler extras including A1111 Euler ancestral behavior, AYS, GITS, `automatic_a1111`, and beta57.
+- WebUI-inspired sampling extras including seed variation, A1111 Euler ancestral behavior, AYS, GITS, `automatic_a1111`, and beta57.
 
 ## Contents
 
@@ -151,6 +151,8 @@ The external LLM nodes use a configured OpenAI-compatible provider. **Tag SEGS w
 **Simple VAE Encode** can reuse the source latent when the graph proves that its image came directly from an unmodified `VAEDecode`. **Upscale Latent From Image** uses the same provenance to find and resize the original latent. Loading, editing, cropping, detailing, or resizing the image breaks that provenance. These nodes follow the graph instead of trying to identify a latent from the finished tensor.
 
 **KSampler (Extras)** adds the A1111/k-diffusion-style `euler_a_a1111` sampler, AYS SD1 and SDXL schedules, GITS, the `automatic_a1111` scheduler, and a local implementation of the RES4LYF beta57 preset. It keeps Comfy's regular seed handling, partial denoise behavior, progress callbacks, and conditioning inputs.
+
+**Seed Variation** patches a MODEL so Comfy-native samplers mix their normal initial noise toward a second deterministic seed. Strength `0` keeps the sampler seed unchanged, while strength `1` uses variation-seed initial noise. Ancestral and SDE samplers continue to use the sampler seed for additional noise introduced after initialization.
 
 The remaining utilities are **Latent Diagnostics**, **Scale Factor**, and **Seed**. Latent Diagnostics reports the latent shape, dtype, device, and tiled-sampling compatibility while passing it through unchanged.
 

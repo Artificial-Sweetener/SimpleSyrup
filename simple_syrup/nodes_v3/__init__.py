@@ -63,6 +63,7 @@ def get_nodes() -> list[type[object]]:
     from .load_mask_batch import LoadMaskBatchV3
     from .mask_to_segs import MaskToSEGSV3
     from .scale_factor import ScaleFactorV3
+    from .seed_variation import SeedVariationV3
     from .simple_load_checkpoint import SimpleLoadCheckpointV3
     from .simple_load_flux import SimpleLoadFluxV3
     from .simple_load_flux2 import SimpleLoadFlux2V3
@@ -114,6 +115,7 @@ def get_nodes() -> list[type[object]]:
         ScaleFactorV3,
         ConceptAttentionSEGSV3,
         SeedV3,
+        SeedVariationV3,
         SimpleLoadAnimaV3,
         SimplePreviewSEGSV3,
         SimpleLoadCheckpointV3,
