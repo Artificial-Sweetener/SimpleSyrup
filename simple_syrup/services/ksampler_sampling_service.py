@@ -13,6 +13,7 @@ import torch
 
 from ..domain.conditioning_batch import ConditioningBatch, select_conditioning
 from ..runtime import sampling_samplers, sampling_schedulers
+from ..runtime.comfy_latent_normalization import COMFY_LATENT_NORMALIZER
 from ..shared.logging import get_logger
 
 Latent: TypeAlias = dict[str, Any]
@@ -45,15 +46,18 @@ class KSamplerSamplingService:
 
         comfy_sample = import_module("comfy.sample")
         comfy_utils = import_module("comfy.utils")
-        latent_samples = comfy_sample.fix_empty_latent_channels(
-            model,
-            latent_samples,
-            latent_image.get("downscale_ratio_spacial", None),
+        latent_samples = COMFY_LATENT_NORMALIZER.normalize(
+            model=model,
+            samples=latent_samples,
+            spatial_downscale_ratio=latent_image.get(
+                "downscale_ratio_spacial",
+                None,
+            ),
+            temporal_downscale_ratio=latent_image.get(
+                "downscale_ratio_temporal",
+                None,
+            ),
         )
-        if not isinstance(latent_samples, torch.Tensor):
-            raise TypeError(
-                "KSampler normalized latent samples must be a torch.Tensor."
-            )
         sigmas = sampling_schedulers.calculate_sigmas(
             model=model,
             scheduler_name=scheduler,

@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 from uuid import uuid4
 
 import pytest
@@ -212,6 +212,33 @@ class _ModelFamilySelector:
         return _ModelFamily()
 
 
+class _IdentityLatentNormalizer:
+    """Preserve synthetic test latents outside normalization-specific coverage."""
+
+    def normalize(self, **kwargs: object) -> torch.Tensor:
+        """Return the supplied tensor unchanged."""
+
+        samples = kwargs["samples"]
+        if not isinstance(samples, torch.Tensor):
+            raise TypeError("test latent samples must be a tensor")
+        return samples
+
+
+class _AnimaLatentNormalizer:
+    """Adapt an ordinary image latent to the installed Anima layout."""
+
+    calls: ClassVar[list[dict[str, object]]] = []
+
+    def normalize(self, **kwargs: object) -> torch.Tensor:
+        """Record the request and add Anima's singleton temporal axis."""
+
+        type(self).calls.append(kwargs)
+        samples = kwargs["samples"]
+        if not isinstance(samples, torch.Tensor):
+            raise TypeError("test latent samples must be a tensor")
+        return samples.unsqueeze(2)
+
+
 def test_model_preparation_runs_each_shared_owner_once() -> None:
     """Prepare masks, contexts, model residency, and one selected backend once."""
 
@@ -258,6 +285,50 @@ def test_model_preparation_runs_each_shared_owner_once() -> None:
     assert _ModelFamily.derive_calls[0]["region_strengths"] == (0.75,)
     assert _ModelFamily.derive_calls[0]["latent_batch_size"] == 2
     assert _ModelFamily.derive_calls[0]["interop_report"] is _InteropValidator.report
+
+
+def test_normalizes_standard_image_latent_before_anima_family_validation() -> None:
+    """Preparation presents BCHW empty latents to Anima as BC1HW tensors."""
+
+    originals = _install_fakes()
+    original_normalizer = (
+        AttentionCouplingModelPreparationService.latent_normalizer_class
+    )
+    AttentionCouplingModelPreparationService.latent_normalizer_class = cast(
+        Any,
+        _AnimaLatentNormalizer,
+    )
+    samples = torch.zeros((1, 4, 8, 12))
+    _reset_calls()
+    try:
+        AttentionCouplingModelPreparationService().prepare(
+            model=SimpleNamespace(model=object(), load_device="cpu"),
+            positive=ConditioningBatch((_conditioning(1.0), _conditioning(2.0))),
+            negative=ConditioningBatch((_conditioning(-1.0), _conditioning(-2.0))),
+            region_masks=torch.ones((1, 8, 12)),
+            regional_prompt_weight=1.0,
+            region_mask_feather=0,
+            latent_image={
+                "samples": samples,
+                "downscale_ratio_spacial": 8,
+            },
+            execution_mode=RegionalAttentionExecutionMode.FULL,
+        )
+    finally:
+        AttentionCouplingModelPreparationService.latent_normalizer_class = (
+            original_normalizer
+        )
+        _restore_fakes(originals)
+
+    assert _AnimaLatentNormalizer.calls == [
+        {
+            "model": _AnimaLatentNormalizer.calls[0]["model"],
+            "samples": samples,
+            "spatial_downscale_ratio": 8,
+            "temporal_downscale_ratio": None,
+        }
+    ]
+    assert _ModelFamily.latent_calls[0].shape == (1, 4, 1, 8, 12)
 
 
 def test_source_model_is_restored_before_adapter_graph_discovery() -> None:
@@ -389,6 +460,7 @@ def _install_fakes() -> tuple[type[Any], ...]:
         service.conditioning_processor_class,
         service.model_family_selector_class,
         service.interop_validator_class,
+        service.latent_normalizer_class,
     )
     service.capability_service_class = _CapabilityService  # type: ignore[assignment]
     service.lora_adapter_class = _LoraAdapter  # type: ignore[assignment]
@@ -397,6 +469,7 @@ def _install_fakes() -> tuple[type[Any], ...]:
     service.conditioning_processor_class = _ConditioningProcessor  # type: ignore[assignment]
     service.model_family_selector_class = _ModelFamilySelector  # type: ignore[assignment]
     service.interop_validator_class = _InteropValidator  # type: ignore[assignment]
+    service.latent_normalizer_class = _IdentityLatentNormalizer  # type: ignore[assignment]
     return originals
 
 
@@ -411,6 +484,7 @@ def _restore_fakes(originals: tuple[type[Any], ...]) -> None:
     service.conditioning_processor_class = originals[4]
     service.model_family_selector_class = originals[5]
     service.interop_validator_class = originals[6]
+    service.latent_normalizer_class = originals[7]
 
 
 def _reset_calls() -> None:
@@ -429,4 +503,5 @@ def _reset_calls() -> None:
     _ModelFamily.derive_calls = []
     _ModelFamily.latent_error = None
     _ModelFamily.adaptation_error = None
+    _AnimaLatentNormalizer.calls = []
     _PREPARATION_EVENTS.clear()
