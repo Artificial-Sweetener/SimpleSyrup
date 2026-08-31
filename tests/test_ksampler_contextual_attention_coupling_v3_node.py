@@ -86,6 +86,7 @@ def test_schema_exposes_stable_contextual_attention_coupling_contract() -> None:
     assert inputs["global_weight"].default == 1.0
     assert inputs["global_steps"].default == 1
     assert inputs["global_decay"].default == 0.5
+    assert inputs["regional_prompt_weight"].default == 1.0
     assert all(item.tooltip for item in (*schema.inputs, *schema.outputs))
     guidance = " ".join(
         [schema.description, *(item.tooltip for item in schema.inputs)]

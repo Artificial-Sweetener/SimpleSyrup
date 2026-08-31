@@ -13,7 +13,10 @@ from ..nodes import tooltips
 from ..services.attention_coupling_sampling_service import (
     AttentionCouplingSamplingService,
 )
-from .ksampler_schema import attention_coupling_ksampler_inputs
+from .ksampler_schema import (
+    ATTENTION_COUPLING_REGIONAL_PROMPT_WEIGHT_DEFAULT,
+    attention_coupling_ksampler_inputs,
+)
 
 if TYPE_CHECKING:
 
@@ -89,7 +92,9 @@ class KSamplerAttentionCouplingV3(_ComfyNodeBase):
         latent_image: dict[str, Any],
         denoise: float,
         region_masks: object | None = None,
-        regional_prompt_weight: float = 0.5,
+        regional_prompt_weight: float = (
+            ATTENTION_COUPLING_REGIONAL_PROMPT_WEIGHT_DEFAULT
+        ),
         region_mask_feather: int = 0,
     ) -> tuple[dict[str, Any]]:
         """Delegate ordinary or regional sampling to the routing service."""

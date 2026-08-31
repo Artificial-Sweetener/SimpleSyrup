@@ -15,6 +15,7 @@ from ..runtime import sampling_samplers, sampling_schedulers
 
 MAX_LATENT_TILE_SIZE = 512
 MAX_LATENT_CONTEXT_SIZE = 512
+ATTENTION_COUPLING_REGIONAL_PROMPT_WEIGHT_DEFAULT = 1.0
 
 
 def ksampler_inputs(
@@ -282,7 +283,7 @@ def attention_coupling_ksampler_inputs(
         ),
         comfy_io.Float.Input(
             "regional_prompt_weight",
-            default=0.5,
+            default=ATTENTION_COUPLING_REGIONAL_PROMPT_WEIGHT_DEFAULT,
             min=0.0,
             max=MAX_REGIONAL_PROMPT_WEIGHT,
             step=0.01,
