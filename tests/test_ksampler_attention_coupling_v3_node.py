@@ -52,6 +52,7 @@ def test_schema_exposes_stable_full_context_contract_and_guidance() -> None:
     ]
     inputs = {item.id: item for item in schema.inputs}
     assert inputs["region_masks"].optional is True
+    assert inputs["regional_prompt_weight"].default == 1.0
     assert [output.id for output in schema.outputs] == ["latent"]
     guidance = " ".join(
         [schema.description, *(item.tooltip for item in schema.inputs)]

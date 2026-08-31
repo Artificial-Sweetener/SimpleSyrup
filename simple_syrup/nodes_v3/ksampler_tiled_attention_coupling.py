@@ -14,6 +14,7 @@ from ..services.tiled_attention_coupling_sampling_service import (
     TiledAttentionCouplingSamplingService,
 )
 from .ksampler_schema import (
+    ATTENTION_COUPLING_REGIONAL_PROMPT_WEIGHT_DEFAULT,
     attention_coupling_ksampler_inputs,
     tiled_diffusion_inputs,
 )
@@ -102,7 +103,9 @@ class KSamplerTiledAttentionCouplingV3(_ComfyNodeBase):
         latent_tile_overlap: int = 16,
         latent_tile_batch_size: int = 4,
         region_masks: object | None = None,
-        regional_prompt_weight: float = 0.5,
+        regional_prompt_weight: float = (
+            ATTENTION_COUPLING_REGIONAL_PROMPT_WEIGHT_DEFAULT
+        ),
         region_mask_feather: int = 0,
     ) -> tuple[dict[str, Any]]:
         """Delegate ordinary or regional tiled sampling to the routing service."""

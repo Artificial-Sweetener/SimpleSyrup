@@ -63,6 +63,7 @@ def test_schema_exposes_stable_tiled_attention_coupling_contract() -> None:
         "latent_tile_batch_size",
     ]
     assert inputs["region_masks"].optional is True
+    assert inputs["regional_prompt_weight"].default == 1.0
     assert [output.id for output in schema.outputs] == ["latent"]
     assert inputs["diffusion_mode"].options == [
         "multidiffusion",
