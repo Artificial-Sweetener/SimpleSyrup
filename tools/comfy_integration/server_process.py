@@ -17,6 +17,10 @@ from .loopback_port import validate_loopback_port
 
 TASKKILL_ATTEMPTS = 3
 TASKKILL_RETRY_DELAY_SECONDS = 0.2
+WINDOWS_CREATE_NEW_PROCESS_GROUP = int(
+    getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+)
+WINDOWS_CTRL_BREAK_EVENT = int(getattr(signal, "CTRL_BREAK_EVENT", 0))
 
 
 @dataclass(frozen=True)
@@ -94,7 +98,7 @@ class WindowsComfyProcess:
                 stdin=subprocess.DEVNULL,
                 stdout=stdout,
                 stderr=stderr,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+                creationflags=WINDOWS_CREATE_NEW_PROCESS_GROUP,
             )
         except BaseException:
             stdout.close()
@@ -122,7 +126,7 @@ class WindowsComfyProcess:
         try:
             if self.is_running:
                 try:
-                    self._process.send_signal(signal.CTRL_BREAK_EVENT)
+                    self._process.send_signal(WINDOWS_CTRL_BREAK_EVENT)
                 except OSError:
                     if self.is_running:
                         self._force_stop_if_running()
