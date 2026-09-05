@@ -159,6 +159,27 @@ class DetailSEGSByScaleFactorService:
                         max(segment.crop_region.width, segment.crop_region.height)
                     ),
                 )
+            LOGGER.info(
+                "Preparing detail segment index=%s label=%s bbox=%s crop_region=%s "
+                "planned_size=%sx%s scale=%s",
+                index,
+                segment.label,
+                tuple(segment.bbox),
+                tuple(segment.crop_region),
+                plan.width,
+                plan.height,
+                plan.scale,
+                extra={
+                    "operation": "detail_segment_prepare",
+                    "segment_index": index,
+                    "segment_label": segment.label,
+                    "bbox": tuple(segment.bbox),
+                    "crop_region": tuple(segment.crop_region),
+                    "planned_width": plan.width,
+                    "planned_height": plan.height,
+                    "scale": plan.scale,
+                },
+            )
             working_image = self._detail_segment(
                 working_image=working_image,
                 segment=segment,
@@ -251,6 +272,45 @@ class DetailSEGSByScaleFactorService:
                 work_mask=mask_crop,
             ),
         )
+        sampled_tensor = sampled.get("samples")
+        sampled_shape = (
+            tuple(int(dimension) for dimension in sampled_tensor.shape)
+            if isinstance(sampled_tensor, torch.Tensor)
+            else ()
+        )
+        sampled_device = (
+            str(sampled_tensor.device)
+            if isinstance(sampled_tensor, torch.Tensor)
+            else "unknown"
+        )
+        vae_device = getattr(vae, "device", None)
+        cuda_allocated, cuda_reserved, cuda_free, cuda_total = _cuda_memory_state(
+            vae_device
+        )
+        LOGGER.info(
+            "Decoding detail segment latent_shape=%s device=%s vae_device=%s "
+            "tiled_decode=%s "
+            "cuda_allocated=%s cuda_reserved=%s cuda_free=%s cuda_total=%s",
+            sampled_shape,
+            sampled_device,
+            vae_device,
+            tiled_decode,
+            cuda_allocated,
+            cuda_reserved,
+            cuda_free,
+            cuda_total,
+            extra={
+                "operation": "detail_segment_decode",
+                "latent_shape": sampled_shape,
+                "device": sampled_device,
+                "vae_device": str(vae_device),
+                "tiled_decode": tiled_decode,
+                "cuda_allocated_bytes": cuda_allocated,
+                "cuda_reserved_bytes": cuda_reserved,
+                "cuda_free_bytes": cuda_free,
+                "cuda_total_bytes": cuda_total,
+            },
+        )
         decoded = self._sampler.decode(vae, sampled, tiled_decode)
         resized_detail = self._image_resizer.resize_down_lanczos(
             decoded,
@@ -305,3 +365,18 @@ class DetailSEGSByScaleFactorService:
             raise ValueError("feather must be greater than or equal to 0.")
         if noise_mask_feather < 0:
             raise ValueError("noise_mask_feather must be greater than or equal to 0.")
+
+
+def _cuda_memory_state(device: object) -> tuple[int, int, int, int]:
+    """Return allocator and physical CUDA memory for the VAE execution device."""
+
+    if (
+        not isinstance(device, torch.device)
+        or device.type != "cuda"
+        or not torch.cuda.is_available()
+    ):
+        return 0, 0, 0, 0
+    allocated = torch.cuda.memory_allocated(device)
+    reserved = torch.cuda.memory_reserved(device)
+    free, total = torch.cuda.mem_get_info(device)
+    return allocated, reserved, free, total
