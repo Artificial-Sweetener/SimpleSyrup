@@ -52,6 +52,7 @@ jobs:
       - name: Verify GroundingDINO BERT compatibility
         run: >-
           python -m pytest -q
+          --noconftest
           --rootdir=tests
           --confcutdir=tests
           tests/test_grounding_dino_bert_adapter.py
