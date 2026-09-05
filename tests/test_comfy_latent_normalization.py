@@ -26,6 +26,7 @@ class _AnimaModel:
             latent_dimensions=3,
             spacial_downscale_ratio=8,
             temporal_downscale_ratio=4,
+            fix_empty_latent=lambda latent: latent,
         )
 
 

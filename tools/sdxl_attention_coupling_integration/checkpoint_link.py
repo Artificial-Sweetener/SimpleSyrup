@@ -11,6 +11,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from tools.comfy_integration.selection_path import comfy_selection_path
+
 
 @dataclass(frozen=True, slots=True)
 class CheckpointArtifactIdentity:
@@ -36,7 +38,12 @@ class ManagedCheckpointLink:
         """Retain exact link inputs without changing filesystem state."""
 
         self._source = source.resolve()
-        self._source_checkpoint_name = Path(source_checkpoint_name)
+        try:
+            self._source_checkpoint_name = comfy_selection_path(source_checkpoint_name)
+        except ValueError:
+            raise ValueError(
+                "Source checkpoint name must be a safe relative Comfy selection."
+            ) from None
         self._identity = identity
         self._model_root = self._derive_model_root()
         self._directory = self._model_root / self._DIRECTORY_NAME
@@ -110,12 +117,7 @@ class ManagedCheckpointLink:
         """Derive the configured checkpoint root from a trusted relative name."""
 
         relative = self._source_checkpoint_name
-        if (
-            relative.is_absolute()
-            or not relative.parts
-            or any(part in {"", ".", ".."} for part in relative.parts)
-            or relative.name != self._identity.stable_name
-        ):
+        if relative.name != self._identity.stable_name:
             raise ValueError(
                 "Source checkpoint name must be a safe relative Comfy selection."
             )
