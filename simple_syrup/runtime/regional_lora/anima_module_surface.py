@@ -15,6 +15,7 @@ from comfy.ldm.anima.model import Anima
 from comfy.ldm.cosmos.predict2 import Attention, Block, GPT2FeedForward
 from torch import nn
 
+from .anima_attention_qkv import AnimaAttentionQkvAdapter
 from .anima_targets import (
     ANIMA_BLOCK_COUNT,
     AnimaLoraTargetFamily,
@@ -100,6 +101,7 @@ class AnimaBlockModuleSurface:
     block_index: int
     block: Block
     self_attention: Attention
+    self_attention_qkv: AnimaAttentionQkvAdapter
     cross_attention: Attention
     mlp: GPT2FeedForward
     adaln_self_attention: nn.Sequential
@@ -297,6 +299,11 @@ class AnimaModuleSurfaceDiscovery:
                 _ATTENTION_FORWARD,
                 issues,
             )
+        self_attention_qkv = self._discover_attention_qkv(
+            block_path,
+            self_attention,
+            issues,
+        )
         if cross_attention is not None:
             self._validate_forward(
                 f"{block_path}.cross_attn.forward",
@@ -312,6 +319,7 @@ class AnimaModuleSurfaceDiscovery:
         targets = self._discover_targets(block_index, block, issues)
         if (
             self_attention is None
+            or self_attention_qkv is None
             or cross_attention is None
             or mlp is None
             or adaln_self is None
@@ -323,6 +331,7 @@ class AnimaModuleSurfaceDiscovery:
             block_index=block_index,
             block=block,
             self_attention=self_attention,
+            self_attention_qkv=self_attention_qkv,
             cross_attention=cross_attention,
             mlp=mlp,
             adaln_self_attention=adaln_self,
@@ -330,6 +339,27 @@ class AnimaModuleSurfaceDiscovery:
             adaln_mlp=adaln_mlp,
             lora_targets=targets,
         )
+
+    @staticmethod
+    def _discover_attention_qkv(
+        block_path: str,
+        attention: Attention | None,
+        issues: list[AnimaModuleSurfaceIssue],
+    ) -> AnimaAttentionQkvAdapter | None:
+        """Bind the installed private QKV helper through its public adapter."""
+
+        if attention is None:
+            return None
+        try:
+            return AnimaAttentionQkvAdapter.discover(attention)
+        except ValueError as error:
+            issues.append(
+                AnimaModuleSurfaceIssue(
+                    f"{block_path}.self_attn.compute_qkv",
+                    str(error),
+                )
+            )
+            return None
 
     @staticmethod
     def _exact_owner(

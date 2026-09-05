@@ -14,6 +14,9 @@ from comfy.ldm.anima.model import Anima
 from comfy.ldm.cosmos.predict2 import Attention, Block, GPT2FeedForward
 from torch import nn
 
+from simple_syrup.runtime.regional_lora.anima_attention_qkv import (
+    AnimaAttentionQkvCapability,
+)
 from simple_syrup.runtime.regional_lora.anima_module_surface import (
     ANIMA_MODULE_SURFACE_DISCOVERY,
     AnimaModuleSurfaceError,
@@ -55,6 +58,11 @@ def test_discovers_all_installed_blocks_and_lora_targets_read_only(
     assert surface.diffusion_model is installed_anima
     assert len(surface.blocks) == ANIMA_BLOCK_COUNT
     assert len(surface.lora_targets) == 448
+    assert all(
+        block.self_attention_qkv.capability
+        is AnimaAttentionQkvCapability.TRANSFORMER_OPTIONS
+        for block in surface.blocks
+    )
     assert [target.target_name for target in surface.lora_targets] == [
         anima_lora_target_name(block_index, family)
         for block_index in range(ANIMA_BLOCK_COUNT)
@@ -207,6 +215,47 @@ def test_aggregates_every_patch_relevant_forward_signature_drift(
     assert "diffusion_model.blocks.3.self_attn.q_proj.forward" in message
 
 
+def test_discovers_legacy_attention_qkv_capability(
+    installed_anima: nn.Module,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Adapt hosts whose QKV helper predates transformer options."""
+
+    surface = ANIMA_MODULE_SURFACE_DISCOVERY.discover(installed_anima)
+    for block in surface.blocks:
+        monkeypatch.setattr(
+            block.self_attention,
+            "compute_qkv",
+            MethodType(_legacy_compute_qkv, block.self_attention),
+        )
+
+    legacy_surface = ANIMA_MODULE_SURFACE_DISCOVERY.discover(installed_anima)
+
+    assert all(
+        block.self_attention_qkv.capability is AnimaAttentionQkvCapability.LEGACY
+        for block in legacy_surface.blocks
+    )
+
+
+def test_rejects_unsupported_attention_qkv_signature(
+    installed_anima: nn.Module,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fail before patching when the private QKV boundary cannot be invoked."""
+
+    surface = ANIMA_MODULE_SURFACE_DISCOVERY.discover(installed_anima)
+    monkeypatch.setattr(
+        surface.blocks[0].self_attention,
+        "compute_qkv",
+        MethodType(_incompatible_forward, surface.blocks[0].self_attention),
+    )
+
+    with pytest.raises(AnimaModuleSurfaceError) as captured:
+        ANIMA_MODULE_SURFACE_DISCOVERY.discover(installed_anima)
+
+    assert "diffusion_model.blocks.0.self_attn.compute_qkv" in str(captured.value)
+
+
 def _resolve_target(block: Block, family: AnimaLoraTargetFamily) -> nn.Module:
     """Resolve one expected target independently for descriptor identity checks."""
 
@@ -232,3 +281,15 @@ def _no_input_forward(self: object) -> None:
     """Provide an intentionally input-free target forward for guard tests."""
 
     del self
+
+
+def _legacy_compute_qkv(
+    self: object,
+    x: object,
+    context: object = None,
+    rope_emb: object = None,
+) -> tuple[object, object, object]:
+    """Expose the callable shape used by ComfyUI 0.28."""
+
+    del self, context, rope_emb
+    return x, x, x

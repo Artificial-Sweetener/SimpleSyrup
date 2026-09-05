@@ -18,6 +18,7 @@ from ..regional_self_attention_partition_execution import (
 )
 from .anima_activation_context import AnimaActivationContext
 from .anima_attention_execution import AnimaRegionalAttentionExecution
+from .anima_attention_qkv import AnimaAttentionQkvAdapter
 from .anima_composition_phase_context import AnimaCompositionPhaseContext
 from .anima_host_module_backing import AnimaHostModuleBacking
 from .anima_module_surface import AnimaModuleSurface
@@ -46,6 +47,7 @@ class AnimaRegionalSelfAttentionPatch(nn.Module):
         original: nn.Module,
         execution: AnimaRegionalAttentionExecution,
         *,
+        qkv_adapter: AnimaAttentionQkvAdapter,
         activation_context: AnimaActivationContext,
         phase_context: AnimaCompositionPhaseContext,
         query_activity: AnimaRegionalQueryActivityContext,
@@ -59,8 +61,11 @@ class AnimaRegionalSelfAttentionPatch(nn.Module):
         super().__init__()
         if not isinstance(original, nn.Module):
             raise TypeError("Original Anima self-attention must be a module.")
+        if not isinstance(qkv_adapter, AnimaAttentionQkvAdapter):
+            raise TypeError("Anima self-attention requires a QKV adapter.")
         self._backing = AnimaHostModuleBacking(original)
         self._backing.install_children(self, _SELF_ATTENTION_CHILD_ATTRIBUTES)
+        self._qkv_adapter = qkv_adapter
         self._execution = execution
         self._activation_context = activation_context
         self._phase_context = phase_context
@@ -128,14 +133,12 @@ class AnimaRegionalSelfAttentionPatch(nn.Module):
             width=geometry.query_width,
         )
         host = cast(Any, self._backing.module)
-        q, k, v = cast(
-            tuple[torch.Tensor, torch.Tensor, torch.Tensor],
-            host.compute_qkv(
-                x,
-                None,
-                rope_emb=rope_emb,
-                transformer_options=options,
-            ),
+        q, k, v = self._qkv_adapter.compute(
+            host,
+            x,
+            None,
+            rope_emb=rope_emb,
+            transformer_options=options,
         )
         attended = self._partition_execution.execute(
             q,
@@ -180,6 +183,7 @@ def anima_self_attention_mutations(
             replacement=AnimaRegionalSelfAttentionPatch(
                 block.self_attention,
                 execution,
+                qkv_adapter=block.self_attention_qkv,
                 activation_context=activation_context,
                 phase_context=phase_context,
                 query_activity=query_activity,
