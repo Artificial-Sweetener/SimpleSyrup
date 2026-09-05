@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import io
-import signal
 import subprocess
 from pathlib import Path
 from typing import cast
@@ -131,7 +130,7 @@ def test_stop_signals_only_the_created_group_and_closes_logs() -> None:
 
     process.stop(graceful_timeout=3.0)
 
-    assert fake.signals == [signal.CTRL_BREAK_EVENT]
+    assert fake.signals == [server_process.WINDOWS_CTRL_BREAK_EVENT]
     assert fake.wait_timeouts == [3.0]
     assert stdout.closed
     assert stderr.closed
