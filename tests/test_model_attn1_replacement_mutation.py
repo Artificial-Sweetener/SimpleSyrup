@@ -11,10 +11,11 @@ from typing import Any
 import pytest
 import torch
 from comfy.model_patcher import ModelPatcher
+from torch import nn
+
 from simple_syrup.runtime.model_attention_replacement_mutations import (
     ModelAttn1ReplacementsMutation,
 )
-from torch import nn
 
 
 def test_attn1_replacements_install_every_declared_key_atomically() -> None:
