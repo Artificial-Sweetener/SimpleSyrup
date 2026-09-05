@@ -34,7 +34,9 @@ def test_checkpoint_link_uses_normal_model_directory_and_cleans_exact_target(
         target = model_root / link.checkpoint_name
         assert target.is_file()
         assert os.path.samefile(source, target)
-        assert link.checkpoint_name == "simple_syrup_p8_5_sdxl\\fixture.safetensors"
+        assert link.checkpoint_name == str(
+            Path("simple_syrup_p8_5_sdxl") / "fixture.safetensors"
+        )
 
     assert link.cleaned
     assert not target.exists()

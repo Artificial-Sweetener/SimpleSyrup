@@ -55,7 +55,7 @@ class ManagedCheckpointLink:
     def checkpoint_name(self) -> str:
         """Return Comfy's stable relative checkpoint selection value."""
 
-        return f"{self._DIRECTORY_NAME}\\{self._identity.stable_name}"
+        return str(Path(self._DIRECTORY_NAME) / self._identity.stable_name)
 
     def __enter__(self) -> ManagedCheckpointLink:
         """Validate the source and create exactly one owned hard link."""
