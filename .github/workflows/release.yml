@@ -105,7 +105,7 @@ jobs:
         run: mypy --strict simple_syrup tests
 
       - name: Verify Python tests
-        run: pytest -n auto -q
+        run: pytest -n auto -q -m "not external_artifact"
 
       - name: Verify frontend
         run: npm run check:web

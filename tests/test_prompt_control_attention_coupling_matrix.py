@@ -4,6 +4,8 @@
 
 """Verify the immutable P9.1 matrix and validated P0.8 dependency."""
 
+import pytest
+
 from tools.prompt_control_attention_coupling_integration.baseline import load_baseline
 from tools.prompt_control_attention_coupling_integration.matrix import (
     CFG,
@@ -32,6 +34,7 @@ def test_matrix_wraps_all_p0_8_cases_without_redefining_schedule_values() -> Non
     assert definitions[-1].adapter_identities == ()
 
 
+@pytest.mark.external_artifact
 def test_baseline_revalidates_all_nine_pinned_observations() -> None:
     """Require the exact external P0.8 artifact before P9.1 acceptance."""
 

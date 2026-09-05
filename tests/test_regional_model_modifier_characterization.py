@@ -13,6 +13,7 @@ from types import ModuleType, SimpleNamespace
 from typing import cast
 from uuid import uuid4
 
+import pytest
 import torch
 from comfy.ldm.cosmos.predict2 import Attention
 from comfy.model_patcher import ModelPatcher
@@ -123,6 +124,7 @@ def test_core_cache_nodes_preserve_exact_state_through_attention_derivation() ->
     ]
 
 
+@pytest.mark.external_artifact
 def test_installed_negpip_mask_broadcasts_one_base_mask_to_regional_branches() -> None:
     """Expose why ordinary-batch NegPiP cannot enter branch-packed attention."""
 

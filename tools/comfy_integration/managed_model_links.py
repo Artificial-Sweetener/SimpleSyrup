@@ -10,6 +10,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from .selection_path import comfy_selection_path
+
 
 @dataclass(frozen=True, slots=True)
 class ManagedModelLink:
@@ -91,15 +93,12 @@ class ManagedComfyModelLinks:
                 raise FileNotFoundError(
                     f"Comfy model category does not exist: {link.category}"
                 )
-            relative = Path(link.selection_name)
-            if (
-                relative.is_absolute()
-                or len(relative.parts) < 2
-                or any(part in {"", ".", ".."} for part in relative.parts)
-            ):
+            try:
+                comfy_selection_path(link.selection_name, minimum_parts=2)
+            except ValueError:
                 raise ValueError(
                     "Managed model selections must be safe nested relative paths."
-                )
+                ) from None
             if target in targets:
                 raise ValueError("Managed Comfy model targets must be unique.")
             targets.add(target)
@@ -119,7 +118,14 @@ class ManagedComfyModelLinks:
     def _target(self, link: ManagedModelLink) -> Path:
         """Return one target beneath the declared Comfy model category."""
 
-        return self._model_root / link.category / Path(link.selection_name)
+        return (
+            self._model_root
+            / link.category
+            / comfy_selection_path(
+                link.selection_name,
+                minimum_parts=2,
+            )
+        )
 
     @staticmethod
     def _remove_owned(targets: list[Path], directories: list[Path]) -> None:

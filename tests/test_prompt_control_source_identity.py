@@ -15,6 +15,7 @@ from tools.prompt_control_characterization.source_identity import (
 )
 
 
+@pytest.mark.external_artifact
 def test_installed_prompt_control_matches_pinned_tracked_tree() -> None:
     """Pin version, path count, and canonical path-plus-content digest."""
 

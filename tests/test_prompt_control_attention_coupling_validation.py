@@ -20,6 +20,8 @@ from tools.prompt_control_attention_coupling_integration.workflow import (
     PromptControlAttentionWorkflowBuilder,
 )
 
+pytestmark = pytest.mark.external_artifact
+
 
 def test_every_case_accepts_exact_conditioning_selection_and_adapter_evidence() -> None:
     """Cover text, static, scheduled, stacked, overlap, and inactive behavior."""

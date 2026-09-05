@@ -31,6 +31,8 @@ from tools.prompt_control_characterization.source_identity import (
     PromptControlSourceIdentity,
 )
 
+pytestmark = pytest.mark.external_artifact
+
 
 def test_result_recorder_requires_complete_ordered_matrix_and_cleanup(
     tmp_path: Path,
