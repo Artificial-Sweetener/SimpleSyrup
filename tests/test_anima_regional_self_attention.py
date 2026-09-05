@@ -26,6 +26,9 @@ from simple_syrup.runtime.regional_lora.anima_activation_context import (
 from simple_syrup.runtime.regional_lora.anima_attention_execution import (
     AnimaRegionalAttentionExecution,
 )
+from simple_syrup.runtime.regional_lora.anima_attention_qkv import (
+    AnimaAttentionQkvAdapter,
+)
 from simple_syrup.runtime.regional_lora.anima_composition_phase import (
     AnimaCompositionPhase,
     AnimaCompositionStage,
@@ -50,8 +53,8 @@ from simple_syrup.runtime.regional_self_attention_coherence import (
 )
 
 
-class _DeterministicSelfAttention(nn.Module):
-    """Expose the installed attention surface with deterministic Q/K/V."""
+class _DeterministicSelfAttentionBase(nn.Module):
+    """Provide shared deterministic installed-attention behavior."""
 
     def __init__(self) -> None:
         """Install identity children and an empty global-call log."""
@@ -70,6 +73,7 @@ class _DeterministicSelfAttention(nn.Module):
             setattr(self, name, nn.Identity())
         self.n_heads = 1
         self.global_calls = 0
+        self.qkv_options: list[dict[str, Any] | None] = []
         self.attn_op = self._default_attention
 
     @staticmethod
@@ -85,19 +89,6 @@ class _DeterministicSelfAttention(nn.Module):
         del k, v, transformer_options
         return q.reshape(q.shape[0], q.shape[1], -1)
 
-    def compute_qkv(
-        self,
-        x: torch.Tensor,
-        context: torch.Tensor | None = None,
-        rope_emb: torch.Tensor | None = None,
-        transformer_options: dict[str, Any] | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Return one-head projections without changing token values."""
-
-        del context, rope_emb, transformer_options
-        projected = x.unsqueeze(2)
-        return projected, projected, projected
-
     def forward(
         self,
         x: torch.Tensor,
@@ -110,6 +101,41 @@ class _DeterministicSelfAttention(nn.Module):
         del context, rope_emb, transformer_options
         self.global_calls += 1
         return x + 10.0
+
+
+class _DeterministicSelfAttention(_DeterministicSelfAttentionBase):
+    """Expose the transformer-options-aware Comfy QKV boundary."""
+
+    def compute_qkv(
+        self,
+        x: torch.Tensor,
+        context: torch.Tensor | None = None,
+        rope_emb: torch.Tensor | None = None,
+        transformer_options: dict[str, Any] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return one-head projections without changing token values."""
+
+        del context, rope_emb
+        self.qkv_options.append(transformer_options)
+        projected = x.unsqueeze(2)
+        return projected, projected, projected
+
+
+class _LegacyDeterministicSelfAttention(_DeterministicSelfAttentionBase):
+    """Expose the pre-transformer-options Comfy QKV boundary."""
+
+    def compute_qkv(
+        self,
+        x: torch.Tensor,
+        context: torch.Tensor | None = None,
+        rope_emb: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return one-head projections through the legacy host signature."""
+
+        del context, rope_emb
+        self.qkv_options.append(None)
+        projected = x.unsqueeze(2)
+        return projected, projected, projected
 
 
 def test_restricted_path_executes_compact_owner_partitions() -> None:
@@ -139,6 +165,7 @@ def test_restricted_path_executes_compact_owner_partitions() -> None:
 
     assert torch.equal(output, query)
     assert original.global_calls == 0
+    assert original.qkv_options == [{"preserved": True}]
     assert calls == [
         (
             torch.Size([2, 2, 1, 1]),
@@ -153,6 +180,21 @@ def test_restricted_path_executes_compact_owner_partitions() -> None:
             {"preserved": True},
         ),
     ]
+
+
+def test_restricted_path_supports_legacy_compute_qkv_signature() -> None:
+    """Preserve regional attention on hosts without QKV transformer options."""
+
+    original = _LegacyDeterministicSelfAttention()
+    patch, activation, phase, _ = _patch(original=original)
+    query = torch.arange(4.0).reshape(1, 4, 1)
+
+    with activation.activate(_geometry()):
+        with phase.activate(_phase(restricted=True)):
+            output = patch(query, transformer_options={"preserved": True})
+
+    assert torch.equal(output, query)
+    assert original.qkv_options == [None]
 
 
 def test_reopened_path_delegates_exact_installed_attention() -> None:
@@ -182,12 +224,12 @@ def test_restricted_path_rejects_query_geometry_drift() -> None:
 
 def _patch(
     *,
-    original: _DeterministicSelfAttention | None = None,
+    original: _DeterministicSelfAttentionBase | None = None,
 ) -> tuple[
     AnimaRegionalSelfAttentionPatch,
     AnimaActivationContext,
     AnimaCompositionPhaseContext,
-    _DeterministicSelfAttention,
+    _DeterministicSelfAttentionBase,
 ]:
     """Build focused attention collaborators over a hard left/right split."""
 
@@ -215,6 +257,7 @@ def _patch(
         AnimaRegionalSelfAttentionPatch(
             original,
             execution,
+            qkv_adapter=AnimaAttentionQkvAdapter.discover(original),
             activation_context=activation,
             phase_context=phase,
             query_activity=AnimaRegionalQueryActivityContext(AnimaQueryMaskContext()),
