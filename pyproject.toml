@@ -43,6 +43,9 @@ extend-exclude = [
 select = ["E", "F", "I", "UP", "B", "C4", "ANN"]
 ignore = ["ANN401"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["simple_syrup"]
+
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true
