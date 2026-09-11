@@ -109,11 +109,6 @@ class RegionalPatchInteropCase:
 def cases() -> tuple[RegionalPatchInteropCase, ...]:
     """Return accepted and rejected cases in authoritative evidence order."""
 
-    negpip_error = (
-        "does not support NegPiP",
-        "ordinary conditioning batch",
-        "regional branch batch",
-    )
     return (
         _accepted("anima-full-baseline", "Anima full static PRIMARY_ADAPTER baseline"),
         _accepted(
@@ -183,24 +178,22 @@ def cases() -> tuple[RegionalPatchInteropCase, ...]:
             ("easycache", "Contextual spatial views", "view coordinates"),
         ),
         RegionalPatchInteropCase(
-            "anima-negpip-rejected",
-            "Reject Anima NegPiP before regional branch packing",
+            "anima-negpip",
+            "Anima NegPiP with aligned regional value masks",
             PatchInteropModelFamily.ANIMA,
             PatchInteropSpatialMode.FULL,
             PatchInteropModifier.NEGPIP,
-            PatchInteropOutcome.REJECTED,
+            PatchInteropOutcome.ACCEPTED,
             False,
-            negpip_error,
         ),
         RegionalPatchInteropCase(
-            "sdxl-negpip-rejected",
-            "Reject SDXL NegPiP before paired regional attention patches",
+            "sdxl-negpip",
+            "SDXL NegPiP with packed regional split-K/V conditioning",
             PatchInteropModelFamily.SDXL,
             PatchInteropSpatialMode.FULL,
             PatchInteropModifier.NEGPIP,
-            PatchInteropOutcome.REJECTED,
+            PatchInteropOutcome.ACCEPTED,
             False,
-            negpip_error,
         ),
     )
 

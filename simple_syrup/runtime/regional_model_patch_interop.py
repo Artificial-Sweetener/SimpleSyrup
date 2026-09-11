@@ -20,11 +20,13 @@ from ..domain.regional_model_capabilities import (
     RegionalModelFamily,
     RegionalPatchConflict,
 )
+from .ppm_negpip_interop import (
+    PPM_NEGPIP_INTEROP_VALIDATOR,
+    PpmNegpipInterop,
+)
 
 LOGGER = logging.getLogger(__name__)
 
-_NEGPIP_MODEL_OPTION = "ppm_negpip"
-_NEGPIP_ANIMA_WRAPPER_KEY = "ppm_negpip_anima"
 _EASYCACHE_OPTION = "easycache"
 _ATTN2_PATCH_CONFLICTS = {
     RegionalPatchConflict.ATTN2_INPUT_PATCH: "attn2_patch",
@@ -49,6 +51,7 @@ class RegionalModelPatchInteropReport:
 
     model_family: RegionalModelFamily
     preserved_modifiers: tuple[RegionalPreservedModelModifier, ...]
+    negpip: PpmNegpipInterop | None = None
 
     def __post_init__(self) -> None:
         """Require a typed family and canonical unique modifier order."""
@@ -62,6 +65,8 @@ class RegionalModelPatchInteropReport:
             raise TypeError("Regional interop report modifiers have invalid types.")
         if len(set(self.preserved_modifiers)) != len(self.preserved_modifiers):
             raise ValueError("Regional interop report modifiers must be unique.")
+        if self.negpip is not None and not isinstance(self.negpip, PpmNegpipInterop):
+            raise TypeError("Regional interop report NegPiP state has an invalid type.")
 
     @property
     def cache_modifier(self) -> RegionalPreservedModelModifier | None:
@@ -99,12 +104,22 @@ class RegionalModelPatchInteropValidator:
         model_weight_patches = _require_dictionary_attribute(model, "patches")
         patches = _require_optional_patch_state(transformer_options)
 
-        self._reject_negpip(model_options, wrappers)
+        negpip = PPM_NEGPIP_INTEROP_VALIDATOR.validate(
+            capabilities.model_family,
+            model_options=model_options,
+            wrappers=wrappers,
+            object_patches=object_patches,
+            transformer_patches=patches,
+        )
         cache_modifier = self._validate_cache_state(
             transformer_options,
             wrappers,
         )
-        self._reject_attention_collisions(patches, capabilities)
+        self._reject_attention_collisions(
+            patches,
+            capabilities,
+            admitted_negpip=negpip,
+        )
 
         modifiers: list[RegionalPreservedModelModifier] = []
         model_wrapper = model_options.get("model_function_wrapper")
@@ -135,6 +150,7 @@ class RegionalModelPatchInteropValidator:
         report = RegionalModelPatchInteropReport(
             capabilities.model_family,
             tuple(modifiers),
+            negpip,
         )
         LOGGER.info(
             "Regional MODEL patch interoperability admitted",
@@ -189,30 +205,6 @@ class RegionalModelPatchInteropValidator:
         )
 
     @staticmethod
-    def _reject_negpip(
-        model_options: dict[object, object],
-        wrappers: dict[str, dict[object, list[object]]],
-    ) -> None:
-        """Reject installed NegPiP before its mask can enter branch packing."""
-
-        marker = model_options.get(_NEGPIP_MODEL_OPTION, False)
-        if not isinstance(marker, bool):
-            raise TypeError("MODEL ppm_negpip marker must be boolean.")
-        negpip_wrapper = bool(
-            wrappers.get(WrappersMP.DIFFUSION_MODEL, {}).get(
-                _NEGPIP_ANIMA_WRAPPER_KEY,
-                (),
-            )
-        )
-        if marker or negpip_wrapper:
-            raise ValueError(
-                "Attention Coupling does not support NegPiP because its attention "
-                "mask is aligned to the ordinary conditioning batch rather than "
-                "SimpleSyrup's regional branch batch. Remove CLIP NegPip before "
-                "the Attention Coupling sampler."
-            )
-
-    @staticmethod
     def _validate_cache_state(
         transformer_options: dict[object, object],
         wrappers: dict[str, dict[object, list[object]]],
@@ -260,6 +252,8 @@ class RegionalModelPatchInteropValidator:
     def _reject_attention_collisions(
         patches: dict[str, list[object]],
         capabilities: RegionalModelCapabilities,
+        *,
+        admitted_negpip: PpmNegpipInterop | None,
     ) -> None:
         """Reject every populated attention surface owned by the backend."""
 
@@ -268,6 +262,11 @@ class RegionalModelPatchInteropValidator:
             for conflict, patch_name in _ATTN2_PATCH_CONFLICTS.items()
             if conflict in capabilities.known_patch_conflicts
             and patches.get(patch_name)
+            and not (
+                patch_name == "attn2_patch"
+                and admitted_negpip is not None
+                and patches[patch_name] == [admitted_negpip.attention_patch]
+            )
         )
         if conflicts:
             raise ValueError(

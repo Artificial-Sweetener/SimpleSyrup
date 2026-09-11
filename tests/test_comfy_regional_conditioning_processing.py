@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import comfy.conds
@@ -30,6 +30,10 @@ from simple_syrup.runtime.attention_coupling.unet_context import (
 )
 from simple_syrup.runtime.comfy_conditioning_processing import (
     COMFY_REGIONAL_CONDITIONING_PROCESSOR,
+)
+from simple_syrup.runtime.ppm_negpip_interop import (
+    PpmNegpipInterop,
+    PpmNegpipSemantics,
 )
 from simple_syrup.services.attention_coupling_preparation_service import (
     ATTENTION_COUPLING_PREPARATION_SERVICE,
@@ -89,6 +93,26 @@ class _LinearModelSampling:
         return 100.0 * (1.0 - float(percent))
 
 
+class _NegpipRecordingAnimaModel(_RecordingAnimaModel):
+    """Return a distinct PPM-style value mask for every processed context."""
+
+    def extra_conds(self, **kwargs: Any) -> dict[str, object]:
+        """Add a binary value mask beside the ordinary cross-attention output."""
+
+        result = super().extra_conds(**kwargs)
+        output = self.outputs[-1]
+        value = int(kwargs["negpip_value"])
+        result["c_ppm_negpip_mask"] = comfy.conds.CONDRegular(
+            torch.full(
+                (*output.shape[:2], 1),
+                value,
+                dtype=torch.int32,
+                device=output.device,
+            )
+        )
+        return result
+
+
 def test_processor_uses_comfy_conversion_and_model_post_adapter_contexts() -> None:
     """Retain weighted padded model outputs in exact positive/negative order."""
 
@@ -144,6 +168,47 @@ def test_processor_uses_comfy_conversion_and_model_post_adapter_contexts() -> No
     source_positive_context = positive_base[0][0]
     assert isinstance(source_positive_context, torch.Tensor)
     assert source_positive_context.shape == (1, 3, 1024)
+
+
+def test_processor_retains_each_anima_negpip_mask_with_its_scheduled_entry() -> None:
+    """Keep value semantics attached through Comfy conversion and UUID ownership."""
+
+    model = _NegpipRecordingAnimaModel()
+    preparation = _preparation(
+        positive=(
+            _conditioning(1.0, negpip_value=1),
+            _conditioning(2.0, negpip_value=-1),
+        ),
+        negative=(
+            _conditioning(-1.0, negpip_value=-1),
+            _conditioning(-2.0, negpip_value=1),
+        ),
+    )
+    negpip = PpmNegpipInterop(
+        PpmNegpipSemantics.ANIMA_VALUE_MASK,
+        lambda *args, **kwargs: (args, kwargs),
+    )
+
+    processed = COMFY_REGIONAL_CONDITIONING_PROCESSOR.process(
+        preparation,
+        model=SimpleNamespace(model=model),
+        noise=torch.zeros((1, 16, 8, 8)),
+        device=torch.device("cpu"),
+        context_validator=ANIMA_REGIONAL_CONTEXT_VALIDATOR,
+        negpip=negpip,
+    )
+
+    entries = (
+        processed.positive.base_context.entries[0],
+        processed.positive.regional_contexts[0].entries[0],
+        processed.negative.base_context.entries[0],
+        processed.negative.regional_contexts[0].entries[0],
+    )
+    assert all(entry.cross_attention_value_multiplier is not None for entry in entries)
+    assert [
+        int(cast(torch.Tensor, entry.cross_attention_value_multiplier)[0, 0, 0].item())
+        for entry in entries
+    ] == [1, -1, -1, 1]
 
 
 @pytest.mark.parametrize(
@@ -347,6 +412,7 @@ def _conditioning(
     strength: float | None = None,
     start_percent: float | None = None,
     end_percent: float | None = None,
+    negpip_value: int | None = None,
 ) -> list[list[object]]:
     """Build one small standard conditioning with model-consumed metadata."""
 
@@ -357,6 +423,8 @@ def _conditioning(
         metadata["start_percent"] = start_percent
     if end_percent is not None:
         metadata["end_percent"] = end_percent
+    if negpip_value is not None:
+        metadata["negpip_value"] = negpip_value
     return [
         [
             torch.full((1, 3, ANIMA_CONTEXT_FEATURE_WIDTH), value),

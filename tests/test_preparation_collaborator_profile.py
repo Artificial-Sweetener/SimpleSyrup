@@ -26,6 +26,7 @@ from simple_syrup.runtime.comfy_conditioning_model_loader import (
 from simple_syrup.runtime.comfy_conditioning_processing import (
     ComfyRegionalConditioningProcessor,
 )
+from simple_syrup.runtime.ppm_negpip_interop import PpmNegpipInterop
 from simple_syrup.runtime.regional_lora_conditioning_adapter import (
     RegionalLoraConditioningAdapter,
 )
@@ -135,6 +136,7 @@ def test_profiled_collaborators_preserve_arguments_results_and_stage_order(
         noise: torch.Tensor,
         device: torch.device,
         context_validator: RegionalContextValidator,
+        negpip: PpmNegpipInterop | None = None,
     ) -> ProcessedRegionalAttentionPlan:
         calls.append(
             (
@@ -145,6 +147,7 @@ def test_profiled_collaborators_preserve_arguments_results_and_stage_order(
                     "noise": noise,
                     "device": device,
                     "context_validator": context_validator,
+                    "negpip": negpip,
                 },
             )
         )
@@ -190,6 +193,7 @@ def test_profiled_collaborators_preserve_arguments_results_and_stage_order(
         "noise": noise,
         "device": device,
         "context_validator": validator,
+        "negpip": None,
     }
     assert _stages(caplog) == [
         "source_model_load",

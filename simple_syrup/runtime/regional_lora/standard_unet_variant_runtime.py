@@ -22,6 +22,7 @@ from ..model_patcher_mutations import (
     ModelKeyedCallbackMutation,
     ModelKeyedWrapperMutation,
 )
+from ..ppm_negpip_interop import PpmNegpipInterop
 from .standard_unet_cold_sampling import (
     StandardUnetColdSamplingDiagnosticsMutation,
 )
@@ -48,6 +49,7 @@ class StandardUnetVariantRuntimeMutation:
     admission: StandardUnetNativeLoraAdmission
     attention_phase: StandardUnetAttentionPhaseSession
     template: StandardUnetVariantTemplate
+    negpip: PpmNegpipInterop | None = None
 
     def apply(self, model: object) -> None:
         """Build persistent variants before installing the private root clone."""
@@ -69,7 +71,8 @@ class StandardUnetVariantRuntimeMutation:
             ),
             attention_phase=self.attention_phase,
             base_attention=StandardUnetVariantBaseAttention(
-                StandardUnetAttn2ExecutionResolver(self.state)
+                StandardUnetAttn2ExecutionResolver(self.state),
+                negpip=self.negpip,
             ),
         )
         execution.prime()

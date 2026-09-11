@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from ..patcher_lifecycle import ModelMutation
+from ..ppm_negpip_interop import PpmNegpipInterop
 from .anima_activation_context import (
     ANIMA_ACTIVATION_CONTEXT,
     AnimaActivationContext,
@@ -75,6 +76,7 @@ def anima_attention_coupling_mutations(
     ),
     phase_context: AnimaCompositionPhaseContext = (ANIMA_COMPOSITION_PHASE_CONTEXT),
     query_mask_context: AnimaQueryMaskContext = ANIMA_QUERY_MASK_CONTEXT,
+    negpip: PpmNegpipInterop | None = None,
 ) -> tuple[ModelMutation, ...]:
     """Return attention-only or complete regional-LoRA mutation composition."""
 
@@ -106,6 +108,7 @@ def anima_attention_coupling_mutations(
         invocation_context=cross_attention_context,
         phase_context=phase_context,
         query_activity=query_activity,
+        negpip=negpip,
     )
     phase_wrapper = anima_composition_phase_wrapper_mutation(
         surface,

@@ -23,13 +23,13 @@ from tools.regional_patch_interop_integration.workflow import (
 )
 
 
-def test_matrix_contains_five_acceptances_and_six_exact_rejections() -> None:
+def test_matrix_contains_seven_acceptances_and_four_exact_rejections() -> None:
     """Keep every required modifier, spatial, scheduled, and family case."""
 
     definitions = cases()
 
     assert len(definitions) == 11
-    assert sum(case.expect_success for case in definitions) == 5
+    assert sum(case.expect_success for case in definitions) == 7
     assert {case.modifier for case in definitions} == set(PatchInteropModifier)
     assert {case.spatial_mode for case in definitions} == set(PatchInteropSpatialMode)
     assert {case.model_family for case in definitions} == set(PatchInteropModelFamily)
@@ -154,11 +154,9 @@ def test_scheduled_cache_graph_authors_the_exact_regional_adapter_interval() -> 
 
 
 def test_sdxl_negpip_graph_uses_public_modifier_snapshot_and_sampler() -> None:
-    """Submit SDXL NegPiP through the same evidence and rejection boundary."""
+    """Submit SDXL NegPiP through the same evidence and execution boundary."""
 
-    definition = next(
-        case for case in cases() if case.case_id == "sdxl-negpip-rejected"
-    )
+    definition = next(case for case in cases() if case.case_id == "sdxl-negpip")
     workflow = RegionalPatchInteropWorkflowBuilder().build(
         definition,
         run_id="run",

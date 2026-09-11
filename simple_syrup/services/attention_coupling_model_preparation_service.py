@@ -218,6 +218,7 @@ class AttentionCouplingModelPreparationService:
             noise=samples.to(device),
             device=device,
             context_validator=model_family.context_validator,
+            negpip=interop_report.negpip,
         )
         interop_validator.validate_execution(
             interop_report,

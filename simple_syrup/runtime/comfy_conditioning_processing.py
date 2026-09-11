@@ -27,6 +27,7 @@ from ..services.attention_coupling_preparation_service import (
     AttentionCouplingPreparation,
 )
 from .attention_coupling.context_validation import RegionalContextValidator
+from .ppm_negpip_interop import PpmNegpipInterop
 
 
 class ComfyRegionalConditioningProcessor:
@@ -40,6 +41,7 @@ class ComfyRegionalConditioningProcessor:
         noise: torch.Tensor,
         device: torch.device,
         context_validator: RegionalContextValidator,
+        negpip: PpmNegpipInterop | None = None,
     ) -> ProcessedRegionalAttentionPlan:
         """Return model-ready positive and negative context banks."""
 
@@ -57,6 +59,8 @@ class ComfyRegionalConditioningProcessor:
             raise TypeError("Regional context processing device must be torch.device.")
         if not isinstance(context_validator, RegionalContextValidator):
             raise TypeError("Regional context validator has an invalid type.")
+        if negpip is not None and not isinstance(negpip, PpmNegpipInterop):
+            raise TypeError("Regional conditioning NegPiP state has an invalid type.")
         base_model = getattr(model, "model", None)
         extra_conds = getattr(base_model, "extra_conds", None)
         if not callable(extra_conds):
@@ -75,6 +79,7 @@ class ComfyRegionalConditioningProcessor:
             noise=noise,
             device=device,
             context_validator=context_validator,
+            negpip=negpip,
         )
         negative = self._process_branch(
             preparation.plan.negative,
@@ -84,6 +89,7 @@ class ComfyRegionalConditioningProcessor:
             noise=noise,
             device=device,
             context_validator=context_validator,
+            negpip=negpip,
         )
         return ProcessedRegionalAttentionPlan(
             positive=positive,
@@ -102,6 +108,7 @@ class ComfyRegionalConditioningProcessor:
         noise: torch.Tensor,
         device: torch.device,
         context_validator: RegionalContextValidator,
+        negpip: PpmNegpipInterop | None,
     ) -> ProcessedRegionalAttentionBranch:
         """Process one base plus its ordered regional context bank."""
 
@@ -115,6 +122,7 @@ class ComfyRegionalConditioningProcessor:
             noise=noise,
             device=device,
             context_validator=context_validator,
+            negpip=negpip,
         )
         regional = tuple(
             self._process_context(
@@ -127,6 +135,7 @@ class ComfyRegionalConditioningProcessor:
                 noise=noise,
                 device=device,
                 context_validator=context_validator,
+                negpip=negpip,
             )
             for context in branch.regional_contexts
         )
@@ -144,6 +153,7 @@ class ComfyRegionalConditioningProcessor:
         noise: torch.Tensor,
         device: torch.device,
         context_validator: RegionalContextValidator,
+        negpip: PpmNegpipInterop | None,
     ) -> ProcessedRegionalAttentionContext:
         """Convert and extract one exact post-adapter Anima context tensor."""
 
@@ -168,6 +178,7 @@ class ComfyRegionalConditioningProcessor:
                 conditioning_index=conditioning_index,
                 prompt_type=prompt_type,
                 context_validator=context_validator,
+                negpip=negpip,
             )
             for entry_index, encoded_item in enumerate(encoded)
         )
@@ -185,6 +196,7 @@ class ComfyRegionalConditioningProcessor:
         conditioning_index: int,
         prompt_type: str,
         context_validator: RegionalContextValidator,
+        negpip: PpmNegpipInterop | None,
     ) -> ProcessedRegionalAttentionEntry:
         """Extract one exact post-adapter Anima context and Comfy strength."""
 
@@ -233,6 +245,11 @@ class ComfyRegionalConditioningProcessor:
             ),
             cross_attention=context,
             strength=float(strength),
+            cross_attention_value_multiplier=(
+                None
+                if negpip is None
+                else negpip.extract_value_multiplier(model_conds, context)
+            ),
         )
 
     @staticmethod

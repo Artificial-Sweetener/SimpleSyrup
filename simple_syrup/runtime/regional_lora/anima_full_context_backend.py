@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from ...domain.processed_regional_attention import ProcessedRegionalAttentionPlan
 from ..patcher_lifecycle import PATCHER_LIFECYCLE
+from ..ppm_negpip_interop import PpmNegpipInterop
 from ..regional_attention_template import build_regional_attention_template
 from ..regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 from .anima_attention_context_wrapper import (
@@ -44,6 +45,7 @@ class FullContextAnimaAttentionBackend:
         adaptation: RegionalLoraPlanAdaptation,
         region_strengths: tuple[float, ...],
         latent_batch_size: int,
+        negpip: PpmNegpipInterop | None = None,
     ) -> FullContextAnimaAttentionModel:
         """Return one collision-safe clone prepared for dynamic sampler calls."""
 
@@ -51,6 +53,8 @@ class FullContextAnimaAttentionBackend:
             raise TypeError("Anima backend requires a processed attention plan.")
         if not isinstance(adaptation, RegionalLoraPlanAdaptation):
             raise TypeError("Anima backend requires a regional LoRA adaptation.")
+        if negpip is not None and not isinstance(negpip, PpmNegpipInterop):
+            raise TypeError("Anima backend NegPiP state has an invalid type.")
         admitted = ANIMA_REGIONAL_LORA_PLAN_ADMISSION_SERVICE.admit(adaptation)
         ANIMA_GLOBAL_REGIONAL_LORA_OVERLAP_VALIDATOR.validate(model, admitted)
         template = build_regional_attention_template(
@@ -89,6 +93,7 @@ class FullContextAnimaAttentionBackend:
                 surface,
                 attention,
                 composition=composition,
+                negpip=negpip,
             ),
         )
         derived = PATCHER_LIFECYCLE.derive_model(

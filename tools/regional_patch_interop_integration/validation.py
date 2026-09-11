@@ -133,7 +133,7 @@ def _validate_success(
     workflow: BuiltRegionalPatchInteropWorkflow,
     observed: RegionalPatchInteropSuccess,
 ) -> ValidatedRegionalPatchInterop:
-    """Require one exact single-trajectory regional PRIMARY_ADAPTER execution."""
+    """Require one exact single-trajectory regional execution."""
 
     metrics = observed.metrics
     if metrics.get("run_id") != workflow.metrics_run_id:
@@ -150,62 +150,26 @@ def _validate_success(
         raise ValueError("P9.7 diagnostics identity changed.")
     snapshots = _array(diagnostics.get("snapshots"), "diagnostic snapshots")
     record_count = _integer(diagnostics.get("record_count"), "record count")
-    if record_count != model_calls or len(snapshots) != record_count:
-        raise ValueError("P9.7 requires one diagnostic record per model call.")
+    expected_records = model_calls * _diagnostic_records_per_model_call(case)
+    if record_count != expected_records or len(snapshots) != record_count:
+        raise ValueError(
+            "P9.7 diagnostic records do not match the model-family execution shape."
+        )
     if record_count < 1:
         raise ValueError("P9.7 diagnostics must contain aligned model-call records.")
     spatial_modes: set[str] = set()
     adapter_tokens: set[str] = set()
     for item in snapshots:
         snapshot = _object(item, "diagnostic snapshot")
-        if (
-            snapshot.get("strategy") != "attention_coupling"
-            or snapshot.get("backend") != "comfy.ldm.anima.model.Anima"
-        ):
+        if snapshot.get("strategy") != "attention_coupling" or snapshot.get(
+            "backend"
+        ) != _expected_backend(case):
             raise ValueError("P9.7 diagnostic strategy or backend changed.")
         spatial_modes.add(_string(snapshot.get("spatial_mode"), "spatial mode"))
-        uses = _array(snapshot.get("adapter_uses"), "adapter uses")
-        if len(uses) != 2:
-            raise ValueError(
-                "P9.7 accepted cases require paired positive/negative adapter uses."
-            )
-        normalized_uses = tuple(_object(use, "adapter use") for use in uses)
-        if {
-            (_string(use.get("branch"), "adapter branch"), use.get("composition_index"))
-            for use in normalized_uses
-        } != {("positive", 0), ("negative", 1)}:
-            raise ValueError(
-                "P9.7 paired regional PRIMARY_ADAPTER branch ownership changed."
-            )
-        for use in normalized_uses:
-            if (
-                use.get("active") is not True
-                or use.get("region_index") != 0
-                or use.get("target_count") != 448
-            ):
-                raise ValueError(
-                    "P9.7 exact regional PRIMARY_ADAPTER execution changed."
-                )
-            if not math.isclose(
-                _number(use.get("effective_strength"), "effective strength"),
-                0.75,
-                abs_tol=1e-8,
-            ):
-                raise ValueError("P9.7 regional PRIMARY_ADAPTER strength changed.")
-            adapter_tokens.add(_string(use.get("adapter_token"), "adapter token"))
-        work = _object(snapshot.get("estimated_work"), "estimated work")
-        if (
-            work.get("active_adapter_uses") != 2
-            or work.get("active_target_count") != 448
-            or work.get("target_use_count") != 896
-        ):
-            raise ValueError("P9.7 paired LoRA target-use accounting changed.")
-        if not math.isclose(
-            _number(work.get("denoiser_call_multiplier"), "denoiser multiplier"),
-            1.0,
-            abs_tol=1e-8,
-        ):
-            raise ValueError("P9.7 denoiser trajectory multiplier changed.")
+        if case.model_family is PatchInteropModelFamily.ANIMA:
+            _validate_anima_snapshot(snapshot, adapter_tokens)
+        else:
+            _validate_sdxl_snapshot(snapshot)
     expected_modes = {
         PatchInteropSpatialMode.FULL: {"full"},
         PatchInteropSpatialMode.TILED: {"tile"},
@@ -213,7 +177,7 @@ def _validate_success(
     }[case.spatial_mode]
     if not expected_modes <= spatial_modes:
         raise ValueError("P9.7 spatial diagnostics are incomplete.")
-    if len(adapter_tokens) != 1:
+    if case.model_family is PatchInteropModelFamily.ANIMA and len(adapter_tokens) != 1:
         raise ValueError(
             "P9.7 regional PRIMARY_ADAPTER identity changed during sampling."
         )
@@ -223,6 +187,93 @@ def _validate_success(
         record_count,
         tuple(sorted(spatial_modes)),
     )
+
+
+def _validate_anima_snapshot(
+    snapshot: JsonObject,
+    adapter_tokens: set[str],
+) -> None:
+    """Require exact Anima regional-LoRA execution evidence."""
+
+    uses = _array(snapshot.get("adapter_uses"), "adapter uses")
+    if len(uses) != 2:
+        raise ValueError(
+            "P9.7 accepted cases require paired positive/negative adapter uses."
+        )
+    normalized_uses = tuple(_object(use, "adapter use") for use in uses)
+    if {
+        (_string(use.get("branch"), "adapter branch"), use.get("composition_index"))
+        for use in normalized_uses
+    } != {("positive", 0), ("negative", 1)}:
+        raise ValueError(
+            "P9.7 paired regional PRIMARY_ADAPTER branch ownership changed."
+        )
+    for use in normalized_uses:
+        if (
+            use.get("active") is not True
+            or use.get("region_index") != 0
+            or use.get("target_count") != 448
+        ):
+            raise ValueError("P9.7 exact regional PRIMARY_ADAPTER execution changed.")
+        if not math.isclose(
+            _number(use.get("effective_strength"), "effective strength"),
+            0.75,
+            abs_tol=1e-8,
+        ):
+            raise ValueError("P9.7 regional PRIMARY_ADAPTER strength changed.")
+        adapter_tokens.add(_string(use.get("adapter_token"), "adapter token"))
+    work = _object(snapshot.get("estimated_work"), "estimated work")
+    if (
+        work.get("active_adapter_uses") != 2
+        or work.get("active_target_count") != 448
+        or work.get("target_use_count") != 896
+    ):
+        raise ValueError("P9.7 paired LoRA target-use accounting changed.")
+    _validate_single_denoiser_trajectory(work)
+
+
+def _validate_sdxl_snapshot(snapshot: JsonObject) -> None:
+    """Require exact SDXL regional cross-attention execution evidence."""
+
+    if snapshot.get("region_count") != 2 or snapshot.get("active_region_indices") != [
+        0,
+        1,
+    ]:
+        raise ValueError("P9.7 SDXL regional branch execution changed.")
+    work = _object(snapshot.get("estimated_work"), "estimated work")
+    if (
+        work.get("cross_attention_branch_multiplier") != 3.0
+        or work.get("cross_attention_formula") != "base_plus_region_count"
+    ):
+        raise ValueError("P9.7 SDXL regional attention accounting changed.")
+    _validate_single_denoiser_trajectory(work)
+
+
+def _validate_single_denoiser_trajectory(work: JsonObject) -> None:
+    """Require regional work to retain one denoiser trajectory."""
+
+    if not math.isclose(
+        _number(work.get("denoiser_call_multiplier"), "denoiser multiplier"),
+        1.0,
+        abs_tol=1e-8,
+    ):
+        raise ValueError("P9.7 denoiser trajectory multiplier changed.")
+
+
+def _diagnostic_records_per_model_call(case: RegionalPatchInteropCase) -> int:
+    """Return the baseline diagnostic cardinality for one model family."""
+
+    if case.model_family is PatchInteropModelFamily.SDXL:
+        return 2
+    return 1
+
+
+def _expected_backend(case: RegionalPatchInteropCase) -> str:
+    """Return the exact Comfy denoiser backend identity for one family."""
+
+    if case.model_family is PatchInteropModelFamily.SDXL:
+        return "comfy.ldm.modules.diffusionmodules.openaimodel.UNetModel"
+    return "comfy.ldm.anima.model.Anima"
 
 
 def _validate_model_call_count(

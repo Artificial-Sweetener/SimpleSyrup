@@ -76,6 +76,7 @@ def test_anima_family_retains_single_frame_context_and_backend_policy() -> None:
             "adaptation": adaptation,
             "region_strengths": (0.75,),
             "latent_batch_size": 2,
+            "negpip": None,
         }
     ]
 

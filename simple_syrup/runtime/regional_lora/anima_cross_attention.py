@@ -18,6 +18,7 @@ from ...domain.regional_conditioning_output import (
     RegionalConditioningOutputCombiner,
 )
 from ..model_patcher_mutations import ModelExactObjectPatchMutation
+from ..ppm_negpip_interop import PpmNegpipInterop
 from .anima_activation_context import (
     ANIMA_ACTIVATION_CONTEXT,
     AnimaActivationContext,
@@ -26,6 +27,7 @@ from .anima_activation_context import (
 from .anima_attention_execution import AnimaRegionalAttentionExecution
 from .anima_branch_batch import (
     ANIMA_BASE_BRANCH_KEY,
+    AnimaRegionalBranchBatch,
     AnimaRegionalBranchKey,
 )
 from .anima_composition_phase_context import AnimaCompositionPhaseContext
@@ -71,6 +73,7 @@ class AnimaRegionalCrossAttentionPatch(nn.Module):
         ),
         weighting: RegionalAttentionWeightingPolicy | None = None,
         entry_combiner: RegionalConditioningOutputCombiner | None = None,
+        negpip: PpmNegpipInterop | None = None,
     ) -> None:
         """Retain the exact original attention owner and focused collaborators."""
 
@@ -92,6 +95,9 @@ class AnimaRegionalCrossAttentionPatch(nn.Module):
         self._query_activity = query_activity
         self._weighting = weighting or ANIMA_CROSS_ATTENTION_WEIGHTING_POLICY
         self._entry_combiner = entry_combiner or REGIONAL_CONDITIONING_OUTPUT_COMBINER
+        if negpip is not None and not isinstance(negpip, PpmNegpipInterop):
+            raise TypeError("Anima cross-attention NegPiP state has an invalid type.")
+        self._negpip = negpip
 
     def __setattr__(self, name: str, value: Any) -> None:
         """Keep later exact child patches synchronized with installed attention."""
@@ -143,14 +149,18 @@ class AnimaRegionalCrossAttentionPatch(nn.Module):
         branch_batch = activity.attention_branches
         branch_x = branch_batch.pack_source(x)
         branch_context = branch_batch.pack_branch_values(branch_values)
+        original_options = {} if transformer_options is None else transformer_options
+        forwarded_options = self._prepare_transformer_options(
+            original_options,
+            branch_batch,
+            execution_contexts,
+        )
         with self._invocation_context.activate(branch_batch.invocation):
             branch_output = self._backing.module(
                 branch_x,
                 branch_context,
                 rope_emb=rope_emb,
-                transformer_options=(
-                    {} if transformer_options is None else transformer_options
-                ),
+                transformer_options=forwarded_options,
             )
         if not isinstance(branch_output, torch.Tensor):
             raise TypeError("Original Anima cross-attention must return a tensor.")
@@ -184,6 +194,41 @@ class AnimaRegionalCrossAttentionPatch(nn.Module):
             weights=weights,
             base_output=base_output,
             regional_outputs=torch.stack(regional_outputs),
+        )
+
+    def _prepare_transformer_options(
+        self,
+        source: dict[str, Any],
+        branch_batch: AnimaRegionalBranchBatch,
+        contexts: BatchedRegionalAttentionContexts,
+    ) -> dict[str, object]:
+        """Pack NegPiP multipliers or preserve ordinary option identity."""
+
+        if self._negpip is None:
+            if contexts.base_value_multiplier is not None:
+                raise ValueError(
+                    "Anima value multipliers require admitted NegPiP semantics."
+                )
+            return source
+        if not isinstance(branch_batch, AnimaRegionalBranchBatch):
+            raise TypeError("Anima NegPiP branch batch has an invalid type.")
+        base_multiplier = contexts.base_value_multiplier
+        if base_multiplier is None:
+            raise ValueError("Anima NegPiP requires an aligned base value multiplier.")
+        values = {ANIMA_BASE_BRANCH_KEY: base_multiplier}
+        for region in contexts.regions:
+            for entry in region.entries:
+                multiplier = entry.cross_attention_value_multiplier
+                if multiplier is None:
+                    raise ValueError(
+                        "Anima NegPiP requires every regional value multiplier."
+                    )
+                values[
+                    AnimaRegionalBranchKey(region.region_index, entry.entry_index)
+                ] = multiplier
+        return self._negpip.prepare_anima_transformer_options(
+            source,
+            branch_batch.pack_branch_values(values),
         )
 
     def _validate_inputs(
@@ -246,6 +291,7 @@ def anima_cross_attention_mutations(
     query_activity: AnimaRegionalQueryActivityContext = (
         ANIMA_REGIONAL_QUERY_ACTIVITY_CONTEXT
     ),
+    negpip: PpmNegpipInterop | None = None,
 ) -> tuple[ModelExactObjectPatchMutation, ...]:
     """Build one exact clone-local cross-attention replacement per Anima block."""
 
@@ -262,6 +308,7 @@ def anima_cross_attention_mutations(
                 invocation_context=invocation_context,
                 phase_context=phase_context,
                 query_activity=query_activity,
+                negpip=negpip,
             ),
         )
         for block in surface.blocks

@@ -235,6 +235,35 @@ def test_collision_safe_mutations_integrate_through_one_real_comfy_clone() -> No
     assert ModelPatcher.set_model_attn2_patch is original_attn2_setter
 
 
+def test_attn2_mutation_prepends_before_exact_preserved_input_patch() -> None:
+    """Compose regional packing before an identity-admitted input transformer."""
+
+    model = _patcher(torch.nn.Linear(1, 1))
+
+    def preserved(*args: object) -> tuple[object, ...]:
+        """Return preserved callback arguments."""
+
+        return args
+
+    def regional(*args: object) -> tuple[object, ...]:
+        """Return regional callback arguments."""
+
+        return args
+
+    def output(*args: object) -> tuple[object, ...]:
+        """Return output callback arguments."""
+
+        return args
+
+    model.set_model_attn2_patch(preserved)
+
+    ModelAttn2PatchesMutation(regional, output, (preserved,)).apply(model)
+
+    patches = model.model_options["transformer_options"]["patches"]
+    assert patches["attn2_patch"] == [regional, preserved]
+    assert patches["attn2_output_patch"] == [output]
+
+
 @pytest.mark.parametrize(
     ("wrapper_type", "key", "wrapper", "message"),
     [

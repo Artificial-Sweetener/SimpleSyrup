@@ -23,6 +23,7 @@ from simple_syrup.runtime.comfy_conditioning_model_loader import (
 from simple_syrup.runtime.comfy_conditioning_processing import (
     ComfyRegionalConditioningProcessor,
 )
+from simple_syrup.runtime.ppm_negpip_interop import PpmNegpipInterop
 from simple_syrup.runtime.regional_lora_conditioning_adapter import (
     RegionalLoraConditioningAdapter,
 )
@@ -101,6 +102,7 @@ class ProfiledComfyRegionalConditioningProcessor(ComfyRegionalConditioningProces
         noise: torch.Tensor,
         device: torch.device,
         context_validator: RegionalContextValidator,
+        negpip: PpmNegpipInterop | None = None,
     ) -> ProcessedRegionalAttentionPlan:
         """Delegate conditioning processing with synchronized device timing."""
 
@@ -114,6 +116,7 @@ class ProfiledComfyRegionalConditioningProcessor(ComfyRegionalConditioningProces
                 noise=noise,
                 device=device,
                 context_validator=context_validator,
+                negpip=negpip,
             )
 
 

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from ..model_attention_patch_mutations import ModelAttn2PatchesMutation
 from ..patcher_lifecycle import PATCHER_LIFECYCLE, ModelMutation
+from ..ppm_negpip_interop import PpmNegpipInterop
 from ..regional_lora.standard_unet_native_admission import (
     StandardUnetNativeLoraAdmission,
 )
@@ -43,6 +44,7 @@ class StandardUnetAttentionBackend:
         model: object,
         state: StandardUnetAttentionState,
         admission: StandardUnetNativeLoraAdmission,
+        negpip: PpmNegpipInterop | None = None,
     ) -> StandardUnetAttentionModel:
         """Return a direct MODEL child containing only the paired UNet patches."""
 
@@ -55,6 +57,8 @@ class StandardUnetAttentionBackend:
                 "Standard UNet admission and processed conditioning must share "
                 "the same regional LoRA plan."
             )
+        if negpip is not None and not isinstance(negpip, PpmNegpipInterop):
+            raise TypeError("Standard UNet backend NegPiP state has an invalid type.")
         attention_phase = StandardUnetAttentionPhaseSession()
         template = (
             STANDARD_UNET_VARIANT_TEMPLATE_CACHE.resolve(model, admission)
@@ -68,6 +72,7 @@ class StandardUnetAttentionBackend:
                     admission,
                     attention_phase,
                     template,
+                    negpip,
                 ),
             )
             if template is not None
@@ -85,6 +90,7 @@ class StandardUnetAttentionBackend:
                 ModelAttn2PatchesMutation(
                     patches.input_patch,
                     patches.output_patch,
+                    (() if negpip is None else (negpip.attention_patch,)),
                 ),
             )
         derived = PATCHER_LIFECYCLE.derive_model(

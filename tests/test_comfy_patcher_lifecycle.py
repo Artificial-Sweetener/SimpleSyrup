@@ -14,7 +14,10 @@ from typing import Any, cast
 import pytest
 import torch
 
-from simple_syrup.runtime.patcher_lifecycle import ComfyPatcherLifecycle
+from simple_syrup.runtime.patcher_lifecycle import (
+    PATCHER_LIFECYCLE,
+    ComfyPatcherLifecycle,
+)
 from simple_syrup.runtime.regional_lora.execution_cache import ModelCloneLineage
 
 
@@ -62,6 +65,46 @@ def test_real_comfy_anima_lifecycle_regression(
     _assert_comfy_returns_clone_to_live_source()
     _assert_lifecycle_owned_anima_clip_is_safe(caplog, monkeypatch)
     _assert_supported_model_mutations_share_one_clone()
+
+
+@pytest.mark.parametrize("derivation_count", (2, 3, 5))
+def test_stacked_model_derivations_survive_simultaneous_cyclic_release(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    derivation_count: int,
+) -> None:
+    """Keep Comfy on a foreign boundary when any Syrup stack dies together."""
+
+    import comfy.model_management
+    from comfy.model_management import LoadedModel
+
+    encoder = AnimaTEModel_()
+    loader = _patcher(encoder)
+    foreign_boundary = loader.clone()
+    derived_models: list[object] = []
+    current = foreign_boundary
+    for stage in range(derivation_count):
+        current = PATCHER_LIFECYCLE.derive_model(
+            current,
+            (),
+            operation=f"stacked lifecycle regression stage {stage}",
+        )
+        derived_models.append(current)
+    loaded = LoadedModel(current)
+    loaded.real_model = weakref.ref(encoder)
+    monkeypatch.setattr(comfy.model_management, "current_loaded_models", [loaded])
+
+    execution_cycle: list[object] = [*derived_models]
+    execution_cycle.append(execution_cycle)
+    del current, derived_models, execution_cycle
+    gc.collect()
+    with caplog.at_level(logging.INFO):
+        comfy.model_management.cleanup_models_gc()
+
+    assert loaded.model is foreign_boundary
+    assert loaded.is_dead() is False
+    assert "Potential memory leak detected" not in caplog.text
+    assert "WARNING, memory leak" not in caplog.text
 
 
 def test_clip_alignment_precedes_mutations_after_dynamic_to_static_clone() -> None:
