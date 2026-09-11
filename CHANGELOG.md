@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.7.0...v1.7.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **regional:** preserve shared model patch ancestry ([6059a3f](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/6059a3f913a9502671666e83faeb8686a7a8da27))
+
 # [1.7.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.6.0...v1.7.0) (2026-09-05)
 
 
