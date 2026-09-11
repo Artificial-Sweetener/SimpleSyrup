@@ -14,6 +14,10 @@ import torch
 from simple_syrup.runtime.attention_coupling.unet_attn2_execution import (
     UnetAttn2Execution,
 )
+from simple_syrup.runtime.ppm_negpip_interop import (
+    PpmNegpipInterop,
+    PpmNegpipSemantics,
+)
 from simple_syrup.runtime.regional_lora.standard_unet_variant_base_attention import (
     StandardUnetVariantBaseAttention,
 )
@@ -67,3 +71,32 @@ def test_prepare_rejects_any_preexisting_attn2_callback_surface(key: str) -> Non
 
     with pytest.raises(ValueError, match="already contains"):
         StandardUnetVariantBaseAttention(_Resolver()).prepare({"patches": {key: []}})
+
+
+def test_prepare_places_coupling_before_exact_preserved_negpip_callback() -> None:
+    """Pack regional alternating tokens before PPM selects K and V views."""
+
+    def negpip(*args: object, **_kwargs: object) -> tuple[object, ...]:
+        """Represent the identity-validated PPM split callback."""
+
+        return args
+
+    interop = PpmNegpipInterop(
+        PpmNegpipSemantics.STANDARD_UNET_SPLIT_KEY_VALUE,
+        negpip,
+    )
+    source: dict[str, object] = {"patches": {"attn2_patch": [negpip]}}
+
+    prepared = StandardUnetVariantBaseAttention(
+        _Resolver(),
+        negpip=interop,
+    ).prepare(source)
+
+    patches = prepared["patches"]
+    assert isinstance(patches, dict)
+    installed = patches["attn2_patch"]
+    assert isinstance(installed, list)
+    assert len(installed) == 2
+    assert installed[1] is negpip
+    assert callable(installed[0])
+    assert source == {"patches": {"attn2_patch": [negpip]}}

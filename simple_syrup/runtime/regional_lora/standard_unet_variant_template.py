@@ -148,8 +148,10 @@ class StandardUnetVariantTemplate:
         )
         if not isinstance(request, ModelPatcher) or request.is_dynamic():
             raise TypeError("Comfy did not bind a static standard-UNet request.")
-        if request.parent is not source:
-            raise RuntimeError("Static standard-UNet request lost source lineage.")
+        if request.parent is not self.model:
+            raise RuntimeError(
+                "Static standard-UNet request lost its template fallback boundary."
+            )
         if "diffusion_model" in request.object_patches_backup:
             ModelSharedObjectPatchMutation(
                 "diffusion_model",

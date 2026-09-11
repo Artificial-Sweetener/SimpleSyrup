@@ -48,6 +48,7 @@ class BatchedRegionalAttentionEntry:
     entry_index: int
     context: torch.Tensor
     strengths: tuple[float, ...]
+    cross_attention_value_multiplier: torch.Tensor | None = None
 
     def __post_init__(self) -> None:
         """Validate entry order, aligned context, and finite sample strengths."""
@@ -70,6 +71,11 @@ class BatchedRegionalAttentionEntry:
                 )
             if not math.isfinite(float(strength)):
                 raise ValueError("Regional attention entry strength must be finite.")
+        _validate_value_multiplier(
+            self.cross_attention_value_multiplier,
+            self.context,
+            name="entry",
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +115,7 @@ class BatchedRegionalAttentionContexts:
     chunks: tuple[RegionalAttentionChunkBatch, ...]
     base_context: torch.Tensor
     regions: tuple[BatchedRegionalAttentionRegion, ...]
+    base_value_multiplier: torch.Tensor | None = None
 
     def __post_init__(self) -> None:
         """Validate complete chunk and tensor alignment."""
@@ -139,6 +146,11 @@ class BatchedRegionalAttentionContexts:
         _validate_aligned_context(
             self.base_context,
             expected_batch=expected_start,
+            name="base",
+        )
+        _validate_value_multiplier(
+            self.base_value_multiplier,
+            self.base_context,
             name="base",
         )
         if not isinstance(self.regions, tuple):
@@ -188,4 +200,28 @@ def _validate_aligned_context(
     ):
         raise ValueError(
             f"Regional attention {name} context must contain finite floating values."
+        )
+
+
+def _validate_value_multiplier(
+    multiplier: object,
+    context: torch.Tensor,
+    *,
+    name: str,
+) -> None:
+    """Validate one optional value multiplier against its aligned context."""
+
+    if multiplier is None:
+        return
+    if (
+        not isinstance(multiplier, torch.Tensor)
+        or multiplier.shape != (*context.shape[:2], 1)
+        or not multiplier.is_floating_point()
+        or multiplier.device != context.device
+        or multiplier.dtype != context.dtype
+        or not bool(torch.isfinite(multiplier).all().item())
+    ):
+        raise ValueError(
+            f"Regional attention {name} value multiplier must be a finite "
+            "floating BxSx1 tensor aligned with its context."
         )

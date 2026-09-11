@@ -5,22 +5,62 @@
 
 from __future__ import annotations
 
+from types import ModuleType
+from typing import Protocol, cast, runtime_checkable
+
 import torch
 
-from .fused_active_accumulation_kernel import (
-    MAX_FUSED_ADAPTERS_PER_LAUNCH,
-    REGIONAL_LORA_FUSED_ACCUMULATION_KERNEL,
+from .fused_active_accumulation_contract import MAX_FUSED_ADAPTERS_PER_LAUNCH
+from .triton_runtime import TRITON_RUNTIME_RESOLVER, TritonRuntimeResolver
+
+_TRITON_BACKEND_MODULE = (
+    "simple_syrup.runtime.regional_lora.fused_active_accumulation_kernel"
 )
+
+
+@runtime_checkable
+class _FusedAccumulationKernel(Protocol):
+    """Describe the lazily resolved fused CUDA launch surface."""
+
+    def launch(
+        self,
+        output: torch.Tensor,
+        *,
+        rank_values: torch.Tensor,
+        up: torch.Tensor,
+        multipliers: tuple[torch.Tensor, ...],
+        indices: torch.Tensor | None,
+        adapter_start: int,
+        target_indices: torch.Tensor | None = None,
+    ) -> None:
+        """Launch one validated fused accumulation chunk."""
+
+        ...
+
+
+class _FusedAccumulationBackend(Protocol):
+    """Describe the exported lazy backend module surface."""
+
+    REGIONAL_LORA_FUSED_ACCUMULATION_KERNEL: _FusedAccumulationKernel
 
 
 class RegionalLoraFusedActiveAccumulator:
     """Own verified CUDA fusion for B projection and ordered output updates."""
 
-    @staticmethod
-    def supports(output: torch.Tensor, up: torch.Tensor) -> bool:
+    def __init__(
+        self,
+        resolver: TritonRuntimeResolver = TRITON_RUNTIME_RESOLVER,
+    ) -> None:
+        """Retain the process-level optional acceleration authority."""
+
+        if not isinstance(resolver, TritonRuntimeResolver):
+            raise TypeError("Fused accumulation requires a Triton resolver.")
+        self._resolver = resolver
+
+    def supports(self, output: torch.Tensor, up: torch.Tensor) -> bool:
         """Admit only verified contiguous CUDA bf16/fp16 projection shapes."""
 
-        return (
+        eligible = (
             isinstance(output, torch.Tensor)
             and isinstance(up, torch.Tensor)
             and output.device.type == "cuda"
@@ -32,6 +72,7 @@ class RegionalLoraFusedActiveAccumulator:
             and output.is_contiguous()
             and up.is_contiguous()
         )
+        return eligible and self._backend() is not None
 
     def add(
         self,
@@ -59,7 +100,7 @@ class RegionalLoraFusedActiveAccumulator:
             return output
         for start in range(0, adapter_count, MAX_FUSED_ADAPTERS_PER_LAUNCH):
             stop = min(start + MAX_FUSED_ADAPTERS_PER_LAUNCH, adapter_count)
-            REGIONAL_LORA_FUSED_ACCUMULATION_KERNEL.launch(
+            self._require_backend().launch(
                 output,
                 rank_values=rank_values,
                 up=up,
@@ -97,7 +138,7 @@ class RegionalLoraFusedActiveAccumulator:
         )
         if active_row_count == 0:
             return output
-        REGIONAL_LORA_FUSED_ACCUMULATION_KERNEL.launch(
+        self._require_backend().launch(
             output,
             rank_values=rank_values,
             up=up,
@@ -137,7 +178,7 @@ class RegionalLoraFusedActiveAccumulator:
             return output
         for start in range(0, len(multipliers), MAX_FUSED_ADAPTERS_PER_LAUNCH):
             stop = min(start + MAX_FUSED_ADAPTERS_PER_LAUNCH, len(multipliers))
-            REGIONAL_LORA_FUSED_ACCUMULATION_KERNEL.launch(
+            self._require_backend().launch(
                 output,
                 rank_values=rank_values,
                 up=up,
@@ -148,9 +189,28 @@ class RegionalLoraFusedActiveAccumulator:
             )
         return output
 
-    @classmethod
+    def _backend(self) -> _FusedAccumulationKernel | None:
+        """Return the cached optional fused kernel without hiding failures."""
+
+        backend = self._resolver.resolve(_TRITON_BACKEND_MODULE)
+        if backend is None:
+            return None
+        module = cast(_FusedAccumulationBackend, cast(ModuleType, backend))
+        kernel = module.REGIONAL_LORA_FUSED_ACCUMULATION_KERNEL
+        if not isinstance(kernel, _FusedAccumulationKernel):
+            raise TypeError("Triton fused backend has an invalid kernel surface.")
+        return kernel
+
+    def _require_backend(self) -> _FusedAccumulationKernel:
+        """Return the admitted kernel or reject an invalid direct fused call."""
+
+        backend = self._backend()
+        if backend is None:
+            raise RuntimeError("Triton fused accumulation is unavailable.")
+        return backend
+
     def _validate_mapped_projection(
-        cls,
+        self,
         output: torch.Tensor,
         rank_values: torch.Tensor,
         up: torch.Tensor,
@@ -159,7 +219,7 @@ class RegionalLoraFusedActiveAccumulator:
     ) -> None:
         """Require one unique-target batch and valid declared group mapping."""
 
-        if not cls.supports(output, up):
+        if not self.supports(output, up):
             raise ValueError("Mapped fused accumulation received an unsupported path.")
         if (
             rank_values.device != output.device
@@ -191,9 +251,8 @@ class RegionalLoraFusedActiveAccumulator:
         ):
             raise ValueError("Mapped fused output indices are misaligned.")
 
-    @classmethod
     def _validate_projection(
-        cls,
+        self,
         output: torch.Tensor,
         rank_values: torch.Tensor,
         up: torch.Tensor,
@@ -201,7 +260,7 @@ class RegionalLoraFusedActiveAccumulator:
     ) -> None:
         """Require one complete aligned CUDA projection contract."""
 
-        if not cls.supports(output, up):
+        if not self.supports(output, up):
             raise ValueError("Fused active accumulation received an unsupported path.")
         if (
             rank_values.device != output.device

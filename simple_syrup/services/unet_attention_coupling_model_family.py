@@ -142,6 +142,7 @@ class StandardUnetAttentionCouplingModelFamily:
                 model=model,
                 state=state,
                 admission=admission,
+                negpip=interop_report.negpip,
             )
             .model
         )

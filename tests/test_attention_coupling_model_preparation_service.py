@@ -25,10 +25,14 @@ from simple_syrup.domain.regional_attention_execution import (
     RegionalAttentionExecutionMode,
 )
 from simple_syrup.domain.regional_lora_plan import EMPTY_REGIONAL_LORA_PLAN
+from simple_syrup.domain.regional_model_capabilities import RegionalModelFamily
 from simple_syrup.runtime.attention_coupling.family_admission import (
     AttentionCouplingFamilyAdmission,
 )
 from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
+from simple_syrup.runtime.regional_model_patch_interop import (
+    RegionalModelPatchInteropReport,
+)
 from simple_syrup.services.attention_coupling_model_family import (
     AttentionCouplingPreparedModelReuse,
     AttentionCouplingSamplerConditioning,
@@ -59,10 +63,16 @@ class _CapabilityService:
 class _InteropValidator:
     """Record centralized modifier admission without requiring a real patcher."""
 
-    report: ClassVar[object] = object()
+    report: ClassVar[RegionalModelPatchInteropReport] = RegionalModelPatchInteropReport(
+        RegionalModelFamily.ANIMA, ()
+    )
     calls: ClassVar[list[tuple[object, ...]]] = []
 
-    def validate(self, model: object, capabilities: object) -> object:
+    def validate(
+        self,
+        model: object,
+        capabilities: object,
+    ) -> RegionalModelPatchInteropReport:
         """Record exact orchestration inputs without changing them."""
 
         type(self).calls.append((model, capabilities))

@@ -14,7 +14,8 @@ import torch
 import triton  # type: ignore[import-untyped]
 import triton.language as tl  # type: ignore[import-untyped]
 
-MAX_FUSED_ADAPTERS_PER_LAUNCH = 8
+from .fused_active_accumulation_contract import MAX_FUSED_ADAPTERS_PER_LAUNCH
+
 _BLOCK_ROWS = 16
 _BLOCK_OUTPUT_FEATURES = 64
 

@@ -171,7 +171,7 @@ class RegionalPatchInteropWorkflowBuilder:
         mask_names: tuple[str, ...],
         checkpoint_name: str,
     ) -> BuiltRegionalPatchInteropWorkflow:
-        """Build the focused SDXL NegPiP rejection graph."""
+        """Build the focused SDXL NegPiP execution graph."""
 
         graph = AnimaWorkflowGraph()
         loader = graph.add("CheckpointLoaderSimple", ckpt_name=checkpoint_name)

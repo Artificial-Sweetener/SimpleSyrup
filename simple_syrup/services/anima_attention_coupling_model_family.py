@@ -107,5 +107,6 @@ class AnimaAttentionCouplingModelFamily:
             adaptation=admission.adaptation,
             region_strengths=region_strengths,
             latent_batch_size=latent_batch_size,
+            negpip=interop_report.negpip,
         )
         return built.model

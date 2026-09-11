@@ -30,6 +30,7 @@ class ProcessedRegionalAttentionEntry:
     schedule: ConditioningScheduleRange
     cross_attention: torch.Tensor
     strength: float
+    cross_attention_value_multiplier: torch.Tensor | None = None
 
     def __post_init__(self) -> None:
         """Validate entry order, model context, and finite scalar strength."""
@@ -62,6 +63,21 @@ class ProcessedRegionalAttentionEntry:
         if not math.isfinite(float(self.strength)):
             raise ValueError("Processed conditioning strength must be finite.")
         object.__setattr__(self, "strength", float(self.strength))
+        multiplier = self.cross_attention_value_multiplier
+        if multiplier is None:
+            return
+        if (
+            not isinstance(multiplier, torch.Tensor)
+            or multiplier.shape != (*self.cross_attention.shape[:2], 1)
+            or not multiplier.is_floating_point()
+            or multiplier.device != self.cross_attention.device
+            or multiplier.dtype != self.cross_attention.dtype
+            or not bool(torch.isfinite(multiplier).all().item())
+        ):
+            raise ValueError(
+                "Processed attention value multiplier must be a finite floating "
+                "BxSx1 tensor aligned with cross_attention."
+            )
 
 
 @dataclass(frozen=True, slots=True)

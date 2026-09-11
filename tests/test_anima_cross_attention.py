@@ -31,6 +31,10 @@ from simple_syrup.domain.spatial_views import (
     SpatialViewKind,
 )
 from simple_syrup.runtime.patcher_lifecycle import PATCHER_LIFECYCLE
+from simple_syrup.runtime.ppm_negpip_interop import (
+    PpmNegpipInterop,
+    PpmNegpipSemantics,
+)
 from simple_syrup.runtime.regional_lora.anima_activation_context import (
     AnimaActivationContext,
     AnimaActivationGeometry,
@@ -256,6 +260,79 @@ def test_patch_batches_complete_branches_and_blends_expected_outputs(
         )
     ]
     assert invocation_context.current_or_none() is None
+
+
+def test_patch_packs_anima_negpip_masks_with_the_same_branch_segments() -> None:
+    """Align each compact regional context with its own NegPiP value mask."""
+
+    activation_context = AnimaActivationContext()
+    invocation_context = AnimaCrossAttentionInvocationContext()
+    original = _DeterministicCrossAttention(invocation_context)
+    base = torch.zeros((1, 2, 1))
+    region = torch.ones_like(base)
+    base_multiplier = torch.tensor([[[1.0], [-1.0]]])
+    region_multiplier = torch.tensor([[[-1.0], [1.0]]])
+    contexts = BatchedRegionalAttentionContexts(
+        latent_batch_size=1,
+        chunks=(
+            RegionalAttentionChunkBatch(
+                0,
+                RegionalAttentionBranch.POSITIVE,
+                0,
+                1,
+            ),
+        ),
+        base_context=base,
+        regions=(
+            BatchedRegionalAttentionRegion(
+                0,
+                (
+                    BatchedRegionalAttentionEntry(
+                        0,
+                        region,
+                        (1.0,),
+                        region_multiplier,
+                    ),
+                ),
+            ),
+        ),
+        base_value_multiplier=base_multiplier,
+    )
+    execution = AnimaRegionalAttentionExecution(
+        contexts,
+        _bank(torch.full((1, 1, 1), 0.5)),
+        (1.0,),
+    )
+    negpip = PpmNegpipInterop(
+        PpmNegpipSemantics.ANIMA_VALUE_MASK,
+        lambda *args, **kwargs: (args, kwargs),
+    )
+    patch = AnimaRegionalCrossAttentionPatch(
+        original,
+        execution,
+        activation_context=activation_context,
+        invocation_context=invocation_context,
+        phase_context=_FullRegionalPhaseContext(),
+        negpip=negpip,
+    )
+    old_mask = torch.ones_like(base_multiplier)
+    options: dict[str, object] = {"ppm_negpip_mask": old_mask}
+
+    with activation_context.activate(_geometry(batch=1, height=1, width=1)):
+        patch(
+            torch.zeros((1, 1, 1)),
+            base,
+            transformer_options=options,
+        )
+
+    observed_options = original.calls[0][3]
+    assert isinstance(observed_options, dict)
+    assert observed_options is not options
+    assert torch.equal(
+        observed_options["ppm_negpip_mask"],
+        torch.cat((base_multiplier, region_multiplier)),
+    )
+    assert options["ppm_negpip_mask"] is old_mask
 
 
 def test_cross_attention_backing_module_does_not_leak_a_host_weight_namespace() -> None:

@@ -108,6 +108,56 @@ def test_batching_builds_canonical_regions_with_base_fallback() -> None:
     ]
 
 
+def test_batching_aligns_value_multipliers_with_cfg_regions_and_fallbacks() -> None:
+    """Keep each scheduled branch's value semantics in identical chunk order."""
+
+    source = _plan()
+    plan = ProcessedRegionalAttentionPlan(
+        ProcessedRegionalAttentionBranch(
+            _context_with_multiplier(source.positive.base_context, 1.0),
+            (
+                _context_with_multiplier(
+                    source.positive.regional_contexts[0],
+                    -1.0,
+                ),
+                _context_with_multiplier(
+                    source.positive.regional_contexts[1],
+                    1.0,
+                ),
+            ),
+        ),
+        ProcessedRegionalAttentionBranch(
+            _context_with_multiplier(source.negative.base_context, -1.0),
+            (
+                _context_with_multiplier(
+                    source.negative.regional_contexts[0],
+                    1.0,
+                ),
+            ),
+        ),
+        source.mask_bank,
+        source.lora_plan,
+    )
+
+    aligned = REGIONAL_ATTENTION_BATCHING_SERVICE.align(
+        plan,
+        base_context=_runtime_base(plan, [1, 0], 2),
+        cond_or_uncond=[1, 0],
+        conditioning_uuids=_uuids_for_selectors(plan, [1, 0]),
+        sigma=0.5,
+        latent_batch_size=2,
+    )
+
+    assert aligned.base_value_multiplier is not None
+    assert aligned.base_value_multiplier[:, 0, 0].tolist() == [-1.0, -1.0, 1.0, 1.0]
+    region_zero = aligned.regions[0].entries[0].cross_attention_value_multiplier
+    region_one = aligned.regions[1].entries[0].cross_attention_value_multiplier
+    assert region_zero is not None
+    assert region_one is not None
+    assert region_zero[:, 0, 0].tolist() == [1.0, 1.0, -1.0, -1.0]
+    assert region_one[:, 0, 0].tolist() == [-1.0, -1.0, 1.0, 1.0]
+
+
 def test_batching_preserves_all_regional_entries_and_per_sample_strengths() -> None:
     """Align simultaneous regional entries without collapsing their order."""
 
@@ -405,6 +455,34 @@ def _multi_entry_context(
                 strength,
             )
             for entry_index, (value, strength) in enumerate(entries)
+        ),
+    )
+
+
+def _context_with_multiplier(
+    context: ProcessedRegionalAttentionContext,
+    value: float,
+) -> ProcessedRegionalAttentionContext:
+    """Copy one context with a uniform sequence-aligned value multiplier."""
+
+    return ProcessedRegionalAttentionContext(
+        context.conditioning_index,
+        context.region_index,
+        tuple(
+            ProcessedRegionalAttentionEntry(
+                entry.entry_index,
+                entry.uuid,
+                entry.schedule,
+                entry.cross_attention,
+                entry.strength,
+                torch.full(
+                    (*entry.cross_attention.shape[:2], 1),
+                    value,
+                    dtype=entry.cross_attention.dtype,
+                    device=entry.cross_attention.device,
+                ),
+            )
+            for entry in context.entries
         ),
     )
 

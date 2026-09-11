@@ -22,6 +22,7 @@ def _apply_paired_attention_patches(
     attention_name: str,
     input_patch: Callable[..., object],
     output_patch: Callable[..., object],
+    trailing_input_patches: tuple[Callable[..., object], ...],
 ) -> None:
     """Validate and atomically install one paired attention callback surface."""
 
@@ -29,6 +30,12 @@ def _apply_paired_attention_patches(
         raise TypeError(f"MODEL {attention_name} input patch must be callable.")
     if not callable(output_patch):
         raise TypeError(f"MODEL {attention_name} output patch must be callable.")
+    if not isinstance(trailing_input_patches, tuple) or any(
+        not callable(patch) for patch in trailing_input_patches
+    ):
+        raise TypeError(
+            f"MODEL {attention_name} preserved input patches must be callables."
+        )
     input_setter = _require_bound_method(
         model,
         f"set_model_{attention_name}_patch",
@@ -54,11 +61,21 @@ def _apply_paired_attention_patches(
     output_name = f"{attention_name}_output_patch"
     input_exists = _require_callable_patch_list(patches, input_name)
     output_exists = _require_callable_patch_list(patches, output_name)
-    if input_exists:
+    existing_input = patches.get(input_name, [])
+    if input_exists and (
+        not trailing_input_patches or existing_input != list(trailing_input_patches)
+    ):
         raise ValueError(f"MODEL {attention_name} input patch is already installed.")
+    if not input_exists and trailing_input_patches:
+        raise ValueError(
+            f"MODEL {attention_name} preserved input patch is not installed."
+        )
     if output_exists:
         raise ValueError(f"MODEL {attention_name} output patch is already installed.")
-    input_setter(input_patch)
+    if trailing_input_patches:
+        patches[input_name] = [input_patch, *trailing_input_patches]
+    else:
+        input_setter(input_patch)
     output_setter(output_patch)
 
 
@@ -68,6 +85,7 @@ class ModelAttn2PatchesMutation:
 
     input_patch: Callable[..., object]
     output_patch: Callable[..., object]
+    trailing_input_patches: tuple[Callable[..., object], ...] = ()
 
     def apply(self, model: object) -> None:
         """Validate both attn2 surfaces before either mutation."""
@@ -77,4 +95,5 @@ class ModelAttn2PatchesMutation:
             attention_name="attn2",
             input_patch=self.input_patch,
             output_patch=self.output_patch,
+            trailing_input_patches=self.trailing_input_patches,
         )

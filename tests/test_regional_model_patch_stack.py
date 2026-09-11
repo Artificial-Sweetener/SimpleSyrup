@@ -100,7 +100,7 @@ def test_regional_patch_stack_preserves_state_lineage_and_runtime_nesting() -> N
 
     assert stack.user_model is source
     assert stack.attention_model.parent is source
-    assert stack.sampling_model.parent is stack.attention_model
+    assert stack.sampling_model.parent is source
     assert stack.sampling_model.patches["weight"] == [global_lora_patch]
     assert (
         source.get_wrappers("diffusion_model", "simple_syrup.attention_coupling") == []

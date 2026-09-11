@@ -41,6 +41,9 @@ def test_every_matrix_case_requires_exact_modifier_and_terminal_evidence(
     observed: RegionalPatchInteropHistory
     if case.expect_success:
         model_call_count = STEPS
+        diagnostic_record_count = model_call_count * (
+            2 if case.model_family is PatchInteropModelFamily.SDXL else 1
+        )
         observed = RegionalPatchInteropSuccess(
             snapshot,
             {
@@ -49,7 +52,7 @@ def test_every_matrix_case_requires_exact_modifier_and_terminal_evidence(
                 "runtime_ms": 10.0,
                 "peak_vram_bytes": 1,
             },
-            _diagnostics(case, workflow, record_count=model_call_count),
+            _diagnostics(case, workflow, record_count=diagnostic_record_count),
             ImageReference("result.png", "", "output"),
             None,
         )
@@ -69,7 +72,7 @@ def test_every_matrix_case_requires_exact_modifier_and_terminal_evidence(
     assert validated.model_call_count == (STEPS if case.expect_success else 0)
 
 
-def test_success_requires_one_diagnostic_record_per_actual_model_call() -> None:
+def test_success_requires_family_specific_diagnostic_records_per_model_call() -> None:
     """Reject cache evidence whose diagnostics omit an executed model call."""
 
     case = next(
@@ -89,7 +92,7 @@ def test_success_requires_one_diagnostic_record_per_actual_model_call() -> None:
         None,
     )
 
-    with pytest.raises(ValueError, match="one diagnostic record per model call"):
+    with pytest.raises(ValueError, match="model-family execution shape"):
         validate_case(case, workflow, observed)
 
 
@@ -216,7 +219,8 @@ def _diagnostics(
         PatchInteropSpatialMode.CONTEXTUAL: ("tile", "contextual_global"),
     }[case.spatial_mode]
     snapshots = [
-        _diagnostic_snapshot(modes[index % len(modes)]) for index in range(record_count)
+        _diagnostic_snapshot(case, modes[index % len(modes)])
+        for index in range(record_count)
     ]
     return {
         "run_id": workflow.diagnostics_run_id,
@@ -225,8 +229,25 @@ def _diagnostics(
     }
 
 
-def _diagnostic_snapshot(mode: str) -> JsonObject:
-    """Return one exact static-PRIMARY_ADAPTER diagnostic record."""
+def _diagnostic_snapshot(
+    case: RegionalPatchInteropCase,
+    mode: str,
+) -> JsonObject:
+    """Return one exact family-specific regional diagnostic record."""
+
+    if case.model_family is PatchInteropModelFamily.SDXL:
+        return {
+            "strategy": "attention_coupling",
+            "backend": "comfy.ldm.modules.diffusionmodules.openaimodel.UNetModel",
+            "spatial_mode": mode,
+            "region_count": 2,
+            "active_region_indices": [0, 1],
+            "estimated_work": {
+                "cross_attention_branch_multiplier": 3.0,
+                "cross_attention_formula": "base_plus_region_count",
+                "denoiser_call_multiplier": 1.0,
+            },
+        }
 
     return {
         "strategy": "attention_coupling",

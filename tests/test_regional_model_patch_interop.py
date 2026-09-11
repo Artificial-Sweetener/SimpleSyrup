@@ -30,6 +30,7 @@ from simple_syrup.domain.regional_model_capabilities import (
     RegionalReferenceLatentPolicy,
     RegionalSpatialPatchSupport,
 )
+from simple_syrup.runtime.ppm_negpip_interop import PpmNegpipSemantics
 from simple_syrup.runtime.regional_model_patch_interop import (
     REGIONAL_MODEL_PATCH_INTEROP_VALIDATOR,
     RegionalPreservedModelModifier,
@@ -45,6 +46,11 @@ class _FixtureModel(torch.nn.Module):
         super().__init__()
         self.projection = torch.nn.Linear(1, 1)
         self.latent_format = SimpleNamespace(latent_channels=4)
+
+    def extra_conds(self, **_kwargs: object) -> dict[str, object]:
+        """Expose the object path patched by Anima NegPiP."""
+
+        return {}
 
 
 def test_validator_preserves_easycache_and_unrelated_model_state() -> None:
@@ -186,28 +192,103 @@ def test_validator_rejects_both_core_caches_without_mutating_them() -> None:
     assert combined.wrappers == before_wrappers
 
 
-@pytest.mark.parametrize(
-    "family",
-    [RegionalModelFamily.ANIMA, RegionalModelFamily.STANDARD_UNET],
-)
-def test_validator_rejects_named_negpip_before_generic_attn2_collision(
-    family: RegionalModelFamily,
-) -> None:
-    """Report the installed modifier and regional mask misalignment by name."""
+def test_validator_admits_exact_standard_unet_negpip_without_mutation() -> None:
+    """Retain PPM's exact split-K/V callback as typed interop evidence."""
 
     model = _patcher()
+    callback = _identity_callback(
+        "custom_nodes.ComfyUI-ppm.src.negpip.unet_negpip",
+        "sdxl_attn2_negpip",
+    )
     model.model_options["ppm_negpip"] = True
+    model.set_model_attn2_patch(callback)
+
+    report = REGIONAL_MODEL_PATCH_INTEROP_VALIDATOR.validate(
+        model,
+        _capabilities(RegionalModelFamily.STANDARD_UNET),
+    )
+
+    assert report.negpip is not None
+    assert report.negpip.semantics is PpmNegpipSemantics.STANDARD_UNET_SPLIT_KEY_VALUE
+    assert report.negpip.attention_patch is callback
+    assert model.model_options["transformer_options"]["patches"]["attn2_patch"] == [
+        callback
+    ]
+
+
+def test_validator_admits_exact_anima_negpip_without_mutation() -> None:
+    """Retain PPM's complete Anima callback, wrapper, and object-patch family."""
+
+    model = _patcher()
+    callback = _identity_callback(
+        "custom_nodes.ComfyUI-ppm.src.negpip.anima_negpip",
+        "cosmos_attn2_negpip",
+    )
+    wrapper = _identity_callback(
+        "custom_nodes.ComfyUI-ppm.src.negpip.anima_negpip",
+        "cosmos_diffusion_negpip_wrapper",
+    )
+    extra_conds = _identity_callback(
+        "custom_nodes.ComfyUI-ppm.src.negpip.anima_negpip",
+        ("anima_extra_conds_negpip_wrapper.<locals>._anima_extra_conds_negpip_wrapper"),
+    )
+    model.model_options["ppm_negpip"] = True
+    model.set_model_attn2_patch(callback)
     model.add_wrapper_with_key(
         WrappersMP.DIFFUSION_MODEL,
         "ppm_negpip_anima",
-        lambda executor, *args, **kwargs: executor(*args, **kwargs),
+        wrapper,
     )
-    model.set_model_attn2_patch(lambda q, k, v, **kwargs: {"q": q, "k": k, "v": v})
+    model.add_object_patch("extra_conds", extra_conds)
 
-    with pytest.raises(
-        ValueError,
-        match="NegPiP.*ordinary conditioning batch.*regional branch batch",
-    ):
+    report = REGIONAL_MODEL_PATCH_INTEROP_VALIDATOR.validate(
+        model,
+        _capabilities(RegionalModelFamily.ANIMA),
+    )
+
+    assert report.negpip is not None
+    assert report.negpip.semantics is PpmNegpipSemantics.ANIMA_VALUE_MASK
+    assert report.negpip.attention_patch is callback
+    assert model.wrappers[WrappersMP.DIFFUSION_MODEL]["ppm_negpip_anima"] == [wrapper]
+    assert model.object_patches["extra_conds"] is extra_conds
+
+
+@pytest.mark.parametrize(
+    ("family", "configure", "message"),
+    [
+        (
+            RegionalModelFamily.STANDARD_UNET,
+            lambda model: model.model_options.__setitem__("ppm_negpip", True),
+            "requires exactly its PPM split-K/V",
+        ),
+        (
+            RegionalModelFamily.STANDARD_UNET,
+            lambda model: model.set_model_attn2_patch(
+                _identity_callback(
+                    "custom_nodes.ComfyUI-ppm.src.negpip.unet_negpip",
+                    "sdxl_attn2_negpip",
+                )
+            ),
+            "incomplete NegPiP patch family",
+        ),
+        (
+            RegionalModelFamily.ANIMA,
+            lambda model: model.model_options.__setitem__("ppm_negpip", True),
+            "requires exactly its PPM attention patch",
+        ),
+    ],
+)
+def test_validator_rejects_partial_or_foreign_negpip_families(
+    family: RegionalModelFamily,
+    configure: Callable[[ModelPatcher], object],
+    message: str,
+) -> None:
+    """Fail closed before partial or identity-foreign NegPiP state is composed."""
+
+    model = _patcher()
+    configure(model)
+
+    with pytest.raises(ValueError, match=message):
         REGIONAL_MODEL_PATCH_INTEROP_VALIDATOR.validate(
             model,
             _capabilities(family),
@@ -311,6 +392,19 @@ def _patcher() -> ModelPatcher:
         load_device=device,
         offload_device=device,
     )
+
+
+def _identity_callback(module: str, qualname: str) -> Callable[..., object]:
+    """Build one executable callback carrying a stable PPM definition identity."""
+
+    def callback(*args: object, **_kwargs: object) -> object:
+        """Return callback inputs for model-state-only admission tests."""
+
+        return args
+
+    callback.__module__ = module
+    callback.__qualname__ = qualname
+    return callback
 
 
 def _capabilities(family: RegionalModelFamily) -> RegionalModelCapabilities:

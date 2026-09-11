@@ -7,7 +7,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Protocol, TypeVar, cast
+from dataclasses import dataclass
+from typing import Any, Protocol, TypeVar, cast
 
 from .clip_patcher_model_alignment import align_clip_text_encoder_with_patcher
 
@@ -27,6 +28,14 @@ class ClipMutation(Protocol):
 
 
 PatcherValue = TypeVar("PatcherValue")
+_MODEL_FALLBACK_BOUNDARY_ATTACHMENT = "simple_syrup.model_fallback_boundary"
+
+
+@dataclass(frozen=True, slots=True)
+class _ModelFallbackBoundary:
+    """Retain the durable Comfy patcher beneath consecutive Syrup derivations."""
+
+    patcher: object
 
 
 class ComfyPatcherLifecycle:
@@ -48,6 +57,7 @@ class ComfyPatcherLifecycle:
             disable_dynamic=disable_dynamic,
         )
         self._require_direct_parent(source, derived, operation=operation)
+        self._stabilize_model_fallback(source, derived)
         for mutation in mutations:
             mutation.apply(derived)
         return derived
@@ -66,13 +76,19 @@ class ComfyPatcherLifecycle:
         getter = getattr(model_override_source, "get_clone_model_override", None)
         if not callable(getter):
             raise TypeError(f"{operation} requires a model-override source.")
+        model_override = getter()
         derived = self._clone(
             source,
             operation=operation,
             disable_dynamic=disable_dynamic,
-            model_override=getter(),
+            model_override=model_override,
         )
         self._require_direct_parent(source, derived, operation=operation)
+        self._stabilize_model_fallback(
+            source,
+            derived,
+            explicit_boundary=model_override_source,
+        )
         for mutation in mutations:
             mutation.apply(derived)
         return derived
@@ -107,6 +123,7 @@ class ComfyPatcherLifecycle:
             derived_patcher,
             operation=operation,
         )
+        self._stabilize_model_fallback(source_patcher, derived_patcher)
         align_clip_text_encoder_with_patcher(derived)
         for mutation in mutations:
             mutation.apply(derived)
@@ -180,6 +197,41 @@ class ComfyPatcherLifecycle:
             raise RuntimeError(
                 f"{operation} produced a derived patcher without its source as parent."
             )
+
+    @staticmethod
+    def _stabilize_model_fallback(
+        source: object,
+        derived: object,
+        *,
+        explicit_boundary: object | None = None,
+    ) -> None:
+        """Collapse Syrup-only lineage onto the durable same-model boundary."""
+
+        derived_attachments = getattr(derived, "attachments", None)
+        if not isinstance(derived_attachments, dict):
+            return
+        boundary = explicit_boundary
+        if boundary is None:
+            source_attachments = getattr(source, "attachments", None)
+            inherited = (
+                source_attachments.get(_MODEL_FALLBACK_BOUNDARY_ATTACHMENT)
+                if isinstance(source_attachments, dict)
+                else None
+            )
+            if inherited is not None and not isinstance(
+                inherited,
+                _ModelFallbackBoundary,
+            ):
+                raise TypeError("SimpleSyrup MODEL fallback boundary is invalid.")
+            boundary = inherited.patcher if inherited is not None else source
+
+        if getattr(boundary, "model", None) is not getattr(derived, "model", None):
+            derived_attachments.pop(_MODEL_FALLBACK_BOUNDARY_ATTACHMENT, None)
+            return
+        cast(Any, derived).parent = boundary
+        derived_attachments[_MODEL_FALLBACK_BOUNDARY_ATTACHMENT] = (
+            _ModelFallbackBoundary(boundary)
+        )
 
     @staticmethod
     def _required_clip_patcher(value: object, *, value_name: str) -> object:

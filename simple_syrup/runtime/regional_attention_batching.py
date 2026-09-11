@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import torch
+import torch.nn.functional as functional
 from comfy.utils import repeat_to_batch_size
 
 from ..domain.processed_regional_attention import (
@@ -143,6 +144,13 @@ class RegionalAttentionBatchingService:
                 )
                 for region_index in range(plan.mask_bank.region_count)
             ),
+            base_value_multiplier=self._align_value_multiplier(
+                tuple(chunk.base_entry for chunk in selected),
+                latent_batch_size=latent_batch_size,
+                device=aligned_base_context.device,
+                dtype=aligned_base_context.dtype,
+                target_sequence_length=target_sequence_length,
+            ),
         )
 
     def _align_region(
@@ -163,6 +171,7 @@ class RegionalAttentionBatchingService:
         for entry_index in range(entry_count):
             context_parts: list[torch.Tensor] = []
             strengths: list[float] = []
+            multiplier_entries: list[ProcessedRegionalAttentionEntry] = []
             for chunk, source in zip(chunks, sources, strict=True):
                 if source is None:
                     entry = chunk.base_entry
@@ -186,12 +195,20 @@ class RegionalAttentionBatchingService:
                         target_length=target_sequence_length,
                     )
                 context_parts.append(repeated)
+                multiplier_entries.append(entry)
                 strengths.extend((strength,) * latent_batch_size)
             entries.append(
                 BatchedRegionalAttentionEntry(
                     entry_index,
                     torch.cat(context_parts, dim=0),
                     tuple(strengths),
+                    self._align_value_multiplier(
+                        tuple(multiplier_entries),
+                        latent_batch_size=latent_batch_size,
+                        device=device,
+                        dtype=dtype,
+                        target_sequence_length=target_sequence_length,
+                    ),
                 )
             )
         return BatchedRegionalAttentionRegion(region_index, tuple(entries))
@@ -201,6 +218,7 @@ class RegionalAttentionBatchingService:
 
         entries = self._entries(plan)
         authority = entries[0].cross_attention
+        has_value_multiplier = entries[0].cross_attention_value_multiplier is not None
         for entry in entries[1:]:
             tensor = entry.cross_attention
             shape_mismatch = (
@@ -216,6 +234,48 @@ class RegionalAttentionBatchingService:
                 raise ValueError("Regional attention context devices must match.")
             if tensor.dtype != authority.dtype:
                 raise ValueError("Regional attention context dtypes must match.")
+            if (
+                entry.cross_attention_value_multiplier is not None
+            ) is not has_value_multiplier:
+                raise ValueError(
+                    "Regional attention value multiplier presence must be uniform."
+                )
+
+    @staticmethod
+    def _align_value_multiplier(
+        entries: tuple[ProcessedRegionalAttentionEntry, ...],
+        *,
+        latent_batch_size: int,
+        device: torch.device,
+        dtype: torch.dtype,
+        target_sequence_length: int,
+    ) -> torch.Tensor | None:
+        """Repeat and sequence-align one chunk-major value-multiplier bank."""
+
+        if not entries or entries[0].cross_attention_value_multiplier is None:
+            return None
+        parts: list[torch.Tensor] = []
+        for entry in entries:
+            multiplier = entry.cross_attention_value_multiplier
+            if multiplier is None:
+                raise ValueError(
+                    "Regional attention value multiplier presence must be uniform."
+                )
+            repeated = repeat_to_batch_size(multiplier, latent_batch_size).to(
+                device=device,
+                dtype=dtype,
+            )
+            sequence_length = int(repeated.shape[1])
+            if sequence_length < target_sequence_length:
+                repeated = functional.pad(
+                    repeated,
+                    (0, 0, 0, target_sequence_length - sequence_length),
+                    value=1.0,
+                )
+            elif sequence_length > target_sequence_length:
+                repeated = repeated[:, :target_sequence_length]
+            parts.append(repeated)
+        return torch.cat(parts, dim=0)
 
     @staticmethod
     def _entries(
