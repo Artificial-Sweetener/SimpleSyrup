@@ -85,6 +85,32 @@ def test_model_choices_include_curated_downloadable_models(tmp_path: Path) -> No
     assert not any("Score" in choice for choice in choices)
 
 
+def test_model_choices_list_installed_models_before_downloadable_entries(
+    tmp_path: Path,
+) -> None:
+    """Installed choices precede curated models that still require a download."""
+
+    models_dir = tmp_path / "models"
+    bbox_dir = models_dir / "ultralytics" / "bbox"
+    bbox_dir.mkdir(parents=True)
+    (bbox_dir / "face_yolov8n_v2.pt").write_bytes(b"checkpoint")
+    (bbox_dir / "local-detector.pt").write_bytes(b"checkpoint")
+    folder_paths = _folder_paths(models_dir)
+    service = UltralyticsLoaderService(
+        folder_paths_module=folder_paths,
+        choice_service=_choice_service(show_downloadable_models=True),
+    )
+
+    choices = service.model_choices()
+
+    assert choices[:2] == [
+        "bbox/local-detector.pt",
+        "Bingsu Face YOLOv8n v2 (6.23MB)",
+    ]
+    assert choices[2] == "Anzhc Face -seg (6.52MB)"
+    assert "bbox/face_yolov8n_v2.pt" not in choices
+
+
 def test_hidden_catalog_choices_exclude_installed_curated_model(
     tmp_path: Path,
 ) -> None:

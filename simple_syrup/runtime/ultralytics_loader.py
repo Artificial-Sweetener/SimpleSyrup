@@ -93,18 +93,39 @@ class UltralyticsLoaderService:
         )
 
     def model_choices(self) -> list[str]:
-        """Return curated and local Ultralytics model choices for ComfyUI dropdowns."""
+        """Return installed choices first, followed by downloadable catalog choices."""
 
         self._register_model_folders()
         curated_choices = self._choice_service.ultralytics_choices()
-        curated_local_paths = {
-            _catalog_selection(entry) for entry in ULTRALYTICS_ENTRIES
+        catalog_choice_labels = {
+            _catalog_selection(entry): entry.display_name
+            for entry in ULTRALYTICS_ENTRIES
         }
-        choices = curated_choices + [
-            choice
-            for choice in self.available_models()
-            if choice not in curated_local_paths
+        available_choices = self.available_models()
+        visible_catalog_choices = set(curated_choices)
+        installed_catalog_choices = [
+            entry.display_name
+            for entry in ULTRALYTICS_ENTRIES
+            if (
+                entry.display_name in visible_catalog_choices
+                and _catalog_selection(entry) in available_choices
+            )
         ]
+        installed_non_catalog_choices = [
+            choice
+            for choice in available_choices
+            if choice not in catalog_choice_labels
+        ]
+        downloadable_choices = [
+            choice
+            for choice in curated_choices
+            if choice not in installed_catalog_choices
+        ]
+        choices = (
+            installed_non_catalog_choices
+            + installed_catalog_choices
+            + downloadable_choices
+        )
         return choices or [NO_LOCAL_ULTRALYTICS_MODELS]
 
     def available_models(self) -> list[str]:
