@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Known model metadata for grounded SAM masking."""
+"""Known model metadata for downloadable SimpleSyrup model loaders."""
 
 from __future__ import annotations
 
@@ -11,13 +11,14 @@ from enum import StrEnum
 
 
 class ModelFamily(StrEnum):
-    """Catalog families used by grounded SAM model selection."""
+    """Catalog families used by SimpleSyrup model selection."""
 
     SAM = "sam"
     GROUNDING_DINO = "grounding_dino"
     TEXT_ENCODER = "text_encoder"
     VITMATTE = "vitmatte"
     WD14_TAGGER = "wd14_tagger"
+    ULTRALYTICS = "ultralytics"
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,7 @@ class ModelArtifact:
     folder_name: str
     source_url: str
     description: str
+    sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -386,6 +388,298 @@ WD14_TAGGER_ENTRIES: tuple[ModelEntry, ...] = (
 )
 
 
+_ANZHCS_YOLOS_REVISION = "f5a2306d7fed4f3cfc26c25ff1ab2e3f3cfce855"
+_ANZHCS_YOLOS_REPOSITORY = "Anzhc/Anzhcs_YOLOs"
+
+
+def _huggingface_yolo_entry(
+    *,
+    entry_id: str,
+    display_name: str,
+    filename: str,
+    folder_name: str,
+    model_type: str,
+    source_repo: str,
+    revision: str,
+    license_note: str,
+    description: str,
+    sha256: str,
+) -> ModelEntry:
+    """Build one revision-pinned Hugging Face Ultralytics catalog entry."""
+
+    encoded_filename = filename.replace(" ", "%20")
+    return ModelEntry(
+        entry_id=entry_id,
+        display_name=display_name,
+        family=ModelFamily.ULTRALYTICS,
+        model_type=model_type,
+        source_repo=source_repo,
+        license_note=license_note,
+        artifacts=(
+            ModelArtifact(
+                artifact_id=f"{entry_id}_checkpoint",
+                filename=filename,
+                folder_name=folder_name,
+                source_url=(
+                    f"https://huggingface.co/{source_repo}/resolve/{revision}/"
+                    f"{encoded_filename}"
+                ),
+                description=description,
+                sha256=sha256,
+            ),
+        ),
+    )
+
+
+def _anzhc_yolo_entry(
+    *,
+    entry_id: str,
+    display_name: str,
+    filename: str,
+    folder_name: str,
+    model_type: str,
+    description: str,
+    sha256: str,
+) -> ModelEntry:
+    """Build one revision-pinned Anzhc Ultralytics catalog entry."""
+
+    return _huggingface_yolo_entry(
+        entry_id=entry_id,
+        display_name=display_name,
+        filename=filename,
+        folder_name=folder_name,
+        model_type=model_type,
+        source_repo=_ANZHCS_YOLOS_REPOSITORY,
+        revision=_ANZHCS_YOLOS_REVISION,
+        license_note="AGPL-3.0",
+        description=description,
+        sha256=sha256,
+    )
+
+
+ULTRALYTICS_ENTRIES: tuple[ModelEntry, ...] = (
+    _anzhc_yolo_entry(
+        entry_id="anzhc_face_seg",
+        display_name="Anzhc Face -seg (6.52MB)",
+        filename="Anzhc Face -seg.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc face segmentation model",
+        sha256="dbf083201298a495e332113de0612d1be1ae8307628628eb7972a31979cdbbb3",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhc_face_seg_640_v2_y8n",
+        display_name="Anzhc Face seg 640 v2 y8n (6.56MB)",
+        filename="Anzhc Face seg 640 v2 y8n.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc face segmentation model",
+        sha256="d473e8bccc4c833d8eb36c95e566ce6460ffdc8b2899c859910e380c85def276",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhc_face_seg_768_v2_y8n",
+        display_name="Anzhc Face seg 768 v2 y8n (6.58MB)",
+        filename="Anzhc Face seg 768 v2 y8n.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc face segmentation model",
+        sha256="9a1e5b154c1d190812447431bda6b8f260f132877812b4a2f163981f54558355",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhc_face_seg_768ms_v2_y8n",
+        display_name="Anzhc Face seg 768MS v2 y8n (6.60MB)",
+        filename="Anzhc Face seg 768MS v2 y8n.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc multi-scale face segmentation model",
+        sha256="429e88d9aecb9fa4167ffd41a6ebc42c97b7fa785aa5468a7eb302ceb9837aae",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhc_face_seg_1024_v2_y8n",
+        display_name="Anzhc Face seg 1024 v2 y8n (6.63MB)",
+        filename="Anzhc Face seg 1024 v2 y8n.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc face segmentation model",
+        sha256="1bbcfd7a9f407c6f6e4389a371dbcc392f9444421cf7f824152e92bf563dc6a3",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhc_face_seg_640_v3_y11n",
+        display_name="Anzhc Face seg 640 v3 y11n (5.80MB)",
+        filename="Anzhc Face seg 640 v3 y11n.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc YOLO11 face segmentation model",
+        sha256="96437afc773bacd118e275e6cddc1fb7263c78dc11299989c7a00a26506c45bf",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhc_face_seg_640_v4_y11n",
+        display_name="Anzhc Face seg 640 v4 y11n (5.74MB)",
+        filename="Anzhc Face seg 640 v4 y11n.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc YOLO11 face segmentation model",
+        sha256="1e77ad7bd349babd8a4a90478bfc965348642b63a8d95d3b43ee13db42fd0a64",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhcs_manface_v02_1024_y8n",
+        display_name="Anzhcs ManFace v02 1024 y8n (6.06MB)",
+        filename="Anzhcs ManFace v02 1024 y8n.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc male face segmentation model",
+        sha256="184b9a680afb3c4a559e46e2fe692338fe7bdd6267979fa4ef10526fa96c1b31",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhcs_womanface_v05_1024_y8n",
+        display_name="Anzhcs WomanFace v05 1024 y8n (6.07MB)",
+        filename="Anzhcs WomanFace v05 1024 y8n.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc female face segmentation model",
+        sha256="84db37616e1ca975c4e23fa5a300acf0edd9144ec287bbbdbd1ad0f4a3afa9c1",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhc_eyes_seg_hd",
+        display_name="Anzhc Eyes -seg-hd (6.59MB)",
+        filename="Anzhc Eyes -seg-hd.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc eye segmentation model",
+        sha256="6be1c13ca7a51c2425e278e07e7ae3d4c94ee125b874a0104a142f4f5a35a308",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhc_headhair_seg_y8n",
+        display_name="Anzhc HeadHair seg y8n (6.50MB)",
+        filename="Anzhc HeadHair seg y8n.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc head and hair segmentation model",
+        sha256="a6e99b1305f600c35e7f6400741c2322b198ae03755f91dc1c59d7a78d77f13c",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhc_headhair_seg_y8m",
+        display_name="Anzhc HeadHair seg y8m (52.34MB)",
+        filename="Anzhc HeadHair seg y8m.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc head and hair segmentation model",
+        sha256="f63aa1cdb63a26c0025a4a984588248241a5838aff4edfeea93d9c155efe0b5e",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhc_breasts_seg_v1_1024n",
+        display_name="Anzhc Breasts Seg v1 1024n (6.58MB)",
+        filename="Anzhc Breasts Seg v1 1024n.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc breast segmentation model",
+        sha256="d469bd7abdcbe32a946e0e342bc1fe96aa021987787d51245f97a29e114cb31b",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhc_breasts_seg_v1_1024s",
+        display_name="Anzhc Breasts Seg v1 1024s (22.86MB)",
+        filename="Anzhc Breasts Seg v1 1024s.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc breast segmentation model",
+        sha256="413a9b948a40f96a83769a882816ef0dd2b91b49673c91bff75463660077b395",
+    ),
+    _anzhc_yolo_entry(
+        entry_id="anzhc_breasts_seg_v1_1024m",
+        display_name="Anzhc Breasts Seg v1 1024m (52.39MB)",
+        filename="Anzhc Breasts Seg v1 1024m.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        description="Anzhc breast segmentation model",
+        sha256="53d15e82a8308f8056f4929838e00e42c8da576b661e0c2b4fef5837d8b5b2b4",
+    ),
+    _huggingface_yolo_entry(
+        entry_id="bingsu_face_yolov8n_v2",
+        display_name="Bingsu Face YOLOv8n v2 (6.23MB)",
+        filename="face_yolov8n_v2.pt",
+        folder_name="ultralytics_bbox",
+        model_type="detect",
+        source_repo="Bingsu/adetailer",
+        revision="53cc19de382014514d9d4038601d261a7faa9b7b",
+        license_note="Apache-2.0",
+        description="Bingsu ADetailer face detection model",
+        sha256="8f5f2110f83c4e00712993fab48c771d26036e2e80ec62bd5b9cb37c29e36b36",
+    ),
+    _huggingface_yolo_entry(
+        entry_id="bingsu_face_yolov8s",
+        display_name="Bingsu Face YOLOv8s (22.5MB)",
+        filename="face_yolov8s.pt",
+        folder_name="ultralytics_bbox",
+        model_type="detect",
+        source_repo="Bingsu/adetailer",
+        revision="53cc19de382014514d9d4038601d261a7faa9b7b",
+        license_note="Apache-2.0",
+        description="Bingsu ADetailer face detection model",
+        sha256="c7237eff25787377de196961140ceaed324d859ee8de5a775d93d33a0e3fab78",
+    ),
+    _huggingface_yolo_entry(
+        entry_id="bingsu_hand_yolov8n",
+        display_name="Bingsu Hand YOLOv8n (6.23MB)",
+        filename="hand_yolov8n.pt",
+        folder_name="ultralytics_bbox",
+        model_type="detect",
+        source_repo="Bingsu/adetailer",
+        revision="53cc19de382014514d9d4038601d261a7faa9b7b",
+        license_note="Apache-2.0",
+        description="Bingsu ADetailer hand detection model",
+        sha256="3991202eb69e9ddcb3b9ba80cdeb41e734ffaf844403d6c9f47d515cd88c6f29",
+    ),
+    _huggingface_yolo_entry(
+        entry_id="bingsu_hand_yolov8s",
+        display_name="Bingsu Hand YOLOv8s (22.5MB)",
+        filename="hand_yolov8s.pt",
+        folder_name="ultralytics_bbox",
+        model_type="detect",
+        source_repo="Bingsu/adetailer",
+        revision="53cc19de382014514d9d4038601d261a7faa9b7b",
+        license_note="Apache-2.0",
+        description="Bingsu ADetailer hand detection model",
+        sha256="70b540063fbc385736d8258970744a4afbc4cbf7932134bae3b24cdadeadec06",
+    ),
+    _huggingface_yolo_entry(
+        entry_id="bingsu_person_yolov8n_seg",
+        display_name="Bingsu Person YOLOv8n-seg (6.78MB)",
+        filename="person_yolov8n-seg.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        source_repo="Bingsu/adetailer",
+        revision="53cc19de382014514d9d4038601d261a7faa9b7b",
+        license_note="Apache-2.0",
+        description="Bingsu ADetailer person segmentation model",
+        sha256="38fc8aaae97cb6e70be4ec44770005b26ed473471362afcda62a0037d7ccf432",
+    ),
+    _huggingface_yolo_entry(
+        entry_id="bingsu_person_yolov8s_seg",
+        display_name="Bingsu Person YOLOv8s-seg (23.9MB)",
+        filename="person_yolov8s-seg.pt",
+        folder_name="ultralytics_segm",
+        model_type="segment",
+        source_repo="Bingsu/adetailer",
+        revision="53cc19de382014514d9d4038601d261a7faa9b7b",
+        license_note="Apache-2.0",
+        description="Bingsu ADetailer person segmentation model",
+        sha256="53c54aec2239355faffc6c5b70d0f3d05042f386f956cbec39cec46ad456f050",
+    ),
+    _huggingface_yolo_entry(
+        entry_id="fuyucchi_yolov8x6_animeface",
+        display_name="Fuyucchi YOLOv8x6 Anime Face (195MB)",
+        filename="yolov8x6_animeface.pt",
+        folder_name="ultralytics_bbox",
+        model_type="detect",
+        source_repo="Fuyucchi/yolov8_animeface",
+        revision="b0841ce930453c0f23ceb8086d6554c17de5fe4a",
+        license_note="AGPL-3.0",
+        description="Fuyucchi high-resolution anime face detection model",
+        sha256="f3cdc1a6266347322439fd9b3c8f5a1222668eb10c8adf00e17b28c48b95213c",
+    ),
+)
+
+
 def sam_choices() -> list[str]:
     """Return deterministic SAM dropdown choices."""
 
@@ -410,6 +704,12 @@ def wd14_tagger_choices() -> list[str]:
     return [entry.display_name for entry in WD14_TAGGER_ENTRIES]
 
 
+def ultralytics_choices() -> list[str]:
+    """Return deterministic Ultralytics dropdown choices."""
+
+    return [entry.display_name for entry in ULTRALYTICS_ENTRIES]
+
+
 def get_sam_entry(selection: str) -> ModelEntry:
     """Return the SAM catalog entry matching an id or display name."""
 
@@ -432,6 +732,12 @@ def get_wd14_tagger_entry(selection: str) -> ModelEntry:
     """Return the WD14 tagger catalog entry matching an id or display name."""
 
     return _get_entry(selection, WD14_TAGGER_ENTRIES, "WD14 tagger")
+
+
+def get_ultralytics_entry(selection: str) -> ModelEntry:
+    """Return the Ultralytics catalog entry matching an id or display name."""
+
+    return _get_entry(selection, ULTRALYTICS_ENTRIES, "Ultralytics")
 
 
 def _get_entry(

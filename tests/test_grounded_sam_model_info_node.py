@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
+
+import pytest
 
 from simple_syrup.nodes.grounded_sam_model_info import GroundedSAMModelInfo
 
@@ -20,9 +22,25 @@ def test_model_info_node_contract_constants() -> None:
     assert GroundedSAMModelInfo.CATEGORY == "SimpleSyrup/Masking"
 
 
-def test_model_info_node_declares_expected_inputs() -> None:
+def test_model_info_node_declares_expected_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Model info node exposes model selectors."""
 
+    class FakeChoices:
+        """Return the known downloadable selections for declaration tests."""
+
+        def sam_choices(self) -> list[str]:
+            """Return the expected SAM choice."""
+
+            return ["sam_hq_vit_b (379MB)"]
+
+        def grounding_dino_choices(self) -> list[str]:
+            """Return the expected GroundingDINO choice."""
+
+            return ["GroundingDINO_SwinT_OGC (694MB)"]
+
+    monkeypatch.setattr(GroundedSAMModelInfo, "_choices", cast(Any, FakeChoices()))
     input_types: dict[str, dict[str, tuple[Any, ...]]] = (
         GroundedSAMModelInfo.INPUT_TYPES()
     )
@@ -31,6 +49,38 @@ def test_model_info_node_declares_expected_inputs() -> None:
     assert set(required) == {"sam_model", "grounding_dino_model"}
     assert "sam_hq_vit_b (379MB)" in required["sam_model"][0]
     assert "GroundingDINO_SwinT_OGC (694MB)" in required["grounding_dino_model"][0]
+
+
+def test_model_info_node_uses_settings_aware_choices() -> None:
+    """Model metadata selectors follow the downloadable-models preference."""
+
+    class FakeChoices:
+        """Return the local-only choices supplied by settings policy."""
+
+        def sam_choices(self) -> list[str]:
+            """Return the available SAM choices."""
+
+            return ["local-sam"]
+
+        def grounding_dino_choices(self) -> list[str]:
+            """Return the available GroundingDINO choices."""
+
+            return ["local-dino"]
+
+        def reject_sentinel(self, selection: str) -> None:
+            """Accept the deterministic test selections."""
+
+            del selection
+
+    original = GroundedSAMModelInfo._choices
+    GroundedSAMModelInfo._choices = cast(Any, FakeChoices())
+    try:
+        required = GroundedSAMModelInfo.INPUT_TYPES()["required"]
+    finally:
+        GroundedSAMModelInfo._choices = original
+
+    assert required["sam_model"][0] == ["local-sam"]
+    assert required["grounding_dino_model"][0] == ["local-dino"]
 
 
 def test_model_info_node_delegates_to_metadata_provider() -> None:
@@ -44,12 +94,23 @@ def test_model_info_node_delegates_to_metadata_provider() -> None:
 
             return f"{sam_model}|{grounding_dino_model}"
 
+    class FakeChoices:
+        """Accept all model selections while exercising metadata delegation."""
+
+        def reject_sentinel(self, selection: str) -> None:
+            """Accept the deterministic test selections."""
+
+            del selection
+
     node = GroundedSAMModelInfo()
     original = GroundedSAMModelInfo._metadata
+    original_choices = GroundedSAMModelInfo._choices
     GroundedSAMModelInfo._metadata = FakeMetadata()  # type: ignore[assignment]
+    GroundedSAMModelInfo._choices = cast(Any, FakeChoices())
     try:
         result = node.describe("sam", "dino")
     finally:
         GroundedSAMModelInfo._metadata = original
+        GroundedSAMModelInfo._choices = original_choices
 
     assert result == ("sam|dino",)

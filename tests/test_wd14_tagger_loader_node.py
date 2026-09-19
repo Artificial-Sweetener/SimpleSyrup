@@ -23,9 +23,21 @@ def test_wd14_tagger_loader_contract() -> None:
     assert WD14TaggerLoader.CATEGORY == "SimpleSyrup/Tagging"
 
 
-def test_wd14_tagger_loader_declares_expected_inputs() -> None:
+def test_wd14_tagger_loader_declares_expected_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """WD14 loader inputs are asset-only and deterministic."""
 
+    def catalog_choices() -> list[str]:
+        """Return the catalog choice expected by this declaration test."""
+
+        return ["wd-eva02-large-tagger-v3"]
+
+    monkeypatch.setattr(
+        WD14TaggerLoader._choices,
+        "wd14_tagger_choices",
+        catalog_choices,
+    )
     input_types: dict[str, dict[str, tuple[Any, ...]]] = WD14TaggerLoader.INPUT_TYPES()
     required = input_types["required"]
 

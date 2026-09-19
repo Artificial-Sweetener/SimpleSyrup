@@ -63,6 +63,9 @@ export async function registerSimpleSyrupSettings(
     saveSettings: (settings) => api.saveSettings(settings),
     setSettings: (settings) => {
       savedSettings = settings;
+    },
+    refreshModelChoices: async () => {
+      await app.refreshComboInNodes?.();
     }
   };
   registerDownloadableModelsSetting(app, settingsContext, logger);

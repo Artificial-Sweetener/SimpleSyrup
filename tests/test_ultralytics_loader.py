@@ -13,6 +13,15 @@ from typing import Any, cast
 
 import pytest
 
+from simple_syrup.runtime.model_catalog import get_ultralytics_entry
+from simple_syrup.runtime.model_choices import ModelChoiceService
+from simple_syrup.runtime.model_downloads import (
+    DownloadRequest,
+    DownloadResult,
+    ModelDownloader,
+    ProgressReporter,
+)
+from simple_syrup.runtime.settings import SimpleSyrupSettings
 from simple_syrup.runtime.ultralytics_loader import (
     NO_LOCAL_ULTRALYTICS_MODELS,
     LoadedUltralyticsDetector,
@@ -32,7 +41,11 @@ def test_model_choices_list_conventional_folders(tmp_path: Path) -> None:
     (models_dir / "ultralytics" / "bbox" / "face.pt").write_bytes(b"")
     (models_dir / "ultralytics" / "segm" / "person.pt").write_bytes(b"")
 
-    service = UltralyticsLoaderService(folder_paths_module=_folder_paths(models_dir))
+    folder_paths = _folder_paths(models_dir)
+    service = UltralyticsLoaderService(
+        folder_paths_module=folder_paths,
+        choice_service=_choice_service(folder_paths, show_downloadable_models=False),
+    )
 
     assert service.model_choices() == ["bbox/face.pt", "root.pt", "segm/person.pt"]
 
@@ -43,9 +56,51 @@ def test_model_choices_returns_sentinel_when_no_models(tmp_path: Path) -> None:
     models_dir = tmp_path / "models"
     models_dir.mkdir()
 
-    service = UltralyticsLoaderService(folder_paths_module=_folder_paths(models_dir))
+    folder_paths = _folder_paths(models_dir)
+    service = UltralyticsLoaderService(
+        folder_paths_module=folder_paths,
+        choice_service=_choice_service(folder_paths, show_downloadable_models=False),
+    )
 
     assert service.model_choices() == [NO_LOCAL_ULTRALYTICS_MODELS]
+
+
+def test_model_choices_include_curated_downloadable_models(tmp_path: Path) -> None:
+    """Downloadable mode exposes the complete curated Anzhc model selection."""
+
+    folder_paths = _folder_paths(tmp_path / "models")
+    service = UltralyticsLoaderService(
+        folder_paths_module=folder_paths,
+        choice_service=_choice_service(folder_paths, show_downloadable_models=True),
+    )
+
+    choices = service.model_choices()
+
+    assert len(choices) == 22
+    assert "Anzhc Face -seg (6.52MB)" in choices
+    assert "Bingsu Hand YOLOv8n (6.23MB)" in choices
+    assert "Fuyucchi YOLOv8x6 Anime Face (195MB)" in choices
+    assert "Anzhcs Breast size det cls v8 640 y11m (38.70MB)" not in choices
+    assert not any("Drone" in choice for choice in choices)
+    assert not any("Score" in choice for choice in choices)
+
+
+def test_local_only_choices_use_curated_label_for_installed_model(
+    tmp_path: Path,
+) -> None:
+    """Installed curated files keep their friendly dropdown label when hidden."""
+
+    models_dir = tmp_path / "models"
+    checkpoint = models_dir / "ultralytics" / "segm" / "Anzhc Face -seg.pt"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"checkpoint")
+    folder_paths = _folder_paths(models_dir)
+    service = UltralyticsLoaderService(
+        folder_paths_module=folder_paths,
+        choice_service=_choice_service(folder_paths, show_downloadable_models=False),
+    )
+
+    assert service.model_choices() == ["Anzhc Face -seg (6.52MB)"]
 
 
 def test_missing_model_raises_value_error(tmp_path: Path) -> None:
@@ -100,6 +155,112 @@ def test_loader_returns_native_and_compatibility_outputs(tmp_path: Path) -> None
     assert loaded.detector_model.model_name == "segm/face.pt"
     assert loaded.detector_model.supports_segmentation is True
     assert loaded.bbox_detector is cast(Any, loaded.segm_detector).bbox_detector
+
+
+def test_curated_model_downloads_to_impact_pack_compatible_folder(
+    tmp_path: Path,
+) -> None:
+    """A curated selection downloads with checksum verification into segm."""
+
+    models_dir = tmp_path / "models"
+    folder_paths = _folder_paths(models_dir)
+    downloader = _RecordingDownloader()
+    ultralytics_module = ModuleType("ultralytics")
+    cast(Any, ultralytics_module).YOLO = _FakeYOLO
+    entry = get_ultralytics_entry("anzhc_face_seg")
+    service = UltralyticsLoaderService(
+        folder_paths_module=folder_paths,
+        ultralytics_module=ultralytics_module,
+        downloader=downloader,
+        choice_service=_choice_service(folder_paths, show_downloadable_models=True),
+        cache={},
+    )
+
+    loaded = service.load(entry.display_name)
+
+    expected_path = models_dir / "ultralytics" / "segm" / "Anzhc Face -seg.pt"
+    assert loaded.detector_model.model_path == expected_path
+    assert loaded.detector_model.model_name == "segm/Anzhc Face -seg.pt"
+    assert loaded.detector_model.supports_segmentation is True
+    assert downloader.requests[0].destination_path == expected_path
+    assert downloader.requests[0].expected_folder == expected_path.parent
+    assert downloader.requests[0].expected_sha256 == entry.artifacts[0].sha256
+
+
+def test_curated_bbox_model_downloads_to_impact_pack_compatible_folder(
+    tmp_path: Path,
+) -> None:
+    """A curated bbox selection downloads into the conventional bbox folder."""
+
+    models_dir = tmp_path / "models"
+    folder_paths = _folder_paths(models_dir)
+    downloader = _RecordingDownloader()
+    ultralytics_module = ModuleType("ultralytics")
+    cast(Any, ultralytics_module).YOLO = _FakeYOLO
+    entry = get_ultralytics_entry("bingsu_hand_yolov8n")
+    service = UltralyticsLoaderService(
+        folder_paths_module=folder_paths,
+        ultralytics_module=ultralytics_module,
+        downloader=downloader,
+        choice_service=_choice_service(folder_paths, show_downloadable_models=True),
+        cache={},
+    )
+
+    loaded = service.load(entry.display_name)
+
+    expected_path = models_dir / "ultralytics" / "bbox" / "hand_yolov8n.pt"
+    assert loaded.detector_model.model_path == expected_path
+    assert loaded.detector_model.supports_segmentation is False
+    assert downloader.requests[0].destination_path == expected_path
+    assert downloader.requests[0].expected_sha256 == entry.artifacts[0].sha256
+
+
+def test_curated_existing_model_must_match_its_catalog_checksum(
+    tmp_path: Path,
+) -> None:
+    """A pre-existing curated checkpoint cannot bypass checksum verification."""
+
+    models_dir = tmp_path / "models"
+    checkpoint = models_dir / "ultralytics" / "segm" / "Anzhc Face -seg.pt"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"wrong checkpoint")
+    folder_paths = _folder_paths(models_dir)
+    service = UltralyticsLoaderService(
+        folder_paths_module=folder_paths,
+        choice_service=_choice_service(folder_paths, show_downloadable_models=True),
+        cache={},
+    )
+
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        service.load("Anzhc Face -seg (6.52MB)")
+
+
+def test_catalog_and_local_selection_share_one_loaded_model(tmp_path: Path) -> None:
+    """Catalog and conventional-path selections share the loaded model instance."""
+
+    models_dir = tmp_path / "models"
+    folder_paths = _folder_paths(models_dir)
+    downloader = _RecordingDownloader()
+    ultralytics_module = ModuleType("ultralytics")
+    yolo_factory = _RecordingYOLOFactory()
+    cast(Any, ultralytics_module).YOLO = yolo_factory
+    entry = get_ultralytics_entry("anzhc_face_seg")
+    cache: dict[UltralyticsModelCacheKey, LoadedUltralyticsDetector] = {}
+    service = UltralyticsLoaderService(
+        folder_paths_module=folder_paths,
+        ultralytics_module=ultralytics_module,
+        downloader=downloader,
+        choice_service=_choice_service(folder_paths, show_downloadable_models=True),
+        cache=cache,
+    )
+
+    catalog_loaded = service.load(entry.display_name)
+    local_loaded = service.load("segm/Anzhc Face -seg.pt")
+
+    assert local_loaded is catalog_loaded
+    assert len(downloader.requests) == 1
+    assert len(yolo_factory.paths) == 1
+    assert len(cache) == 1
 
 
 def test_bbox_prefix_marks_model_as_bbox_only(tmp_path: Path) -> None:
@@ -231,6 +392,61 @@ class _RecordingYOLOFactory:
             self.fail_once = False
             raise RuntimeError("YOLO failed")
         return _FakeYOLO(path)
+
+
+class _RecordingDownloader(ModelDownloader):
+    """Download boundary double that records verified catalog requests."""
+
+    def __init__(self) -> None:
+        """Initialize the recorded request collection."""
+
+        self.requests: list[DownloadRequest] = []
+
+    def download(
+        self,
+        request: DownloadRequest,
+        progress: ProgressReporter | None = None,
+    ) -> DownloadResult:
+        """Materialize a placeholder checkpoint at the requested destination."""
+
+        del progress
+        self.requests.append(request)
+        request.destination_path.parent.mkdir(parents=True, exist_ok=True)
+        request.destination_path.write_bytes(b"checkpoint")
+        return DownloadResult(
+            path=request.destination_path,
+            bytes_downloaded=len(b"checkpoint"),
+            skipped_existing=False,
+        )
+
+
+class _FakeSettingsRepository:
+    """Settings boundary double for Ultralytics dropdown tests."""
+
+    def __init__(self, show_downloadable_models: bool) -> None:
+        """Store the configured dropdown visibility preference."""
+
+        self._settings = SimpleSyrupSettings(
+            show_downloadable_models=show_downloadable_models
+        )
+
+    def load(self) -> SimpleSyrupSettings:
+        """Return the configured settings value."""
+
+        return self._settings
+
+
+def _choice_service(
+    folder_paths: ModuleType,
+    *,
+    show_downloadable_models: bool,
+) -> ModelChoiceService:
+    """Build an Ultralytics choice service with deterministic settings."""
+
+    return ModelChoiceService(
+        _FakeSettingsRepository(show_downloadable_models),
+        folder_paths,
+    )
 
 
 def _folder_paths(models_dir: Path) -> ModuleType:

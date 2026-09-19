@@ -28,9 +28,21 @@ def test_grounding_dino_model_loader_contract() -> None:
     assert GroundingDINOModelLoader.CATEGORY == "SimpleSyrup/Masking"
 
 
-def test_grounding_dino_model_loader_declares_expected_inputs() -> None:
+def test_grounding_dino_model_loader_declares_expected_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """GroundingDINO loader makes text encoder selection explicit."""
 
+    def catalog_choices() -> list[str]:
+        """Return the catalog choice expected by this declaration test."""
+
+        return ["GroundingDINO_SwinT_OGC (694MB)"]
+
+    monkeypatch.setattr(
+        GroundingDINOModelLoader._choices,
+        "grounding_dino_choices",
+        catalog_choices,
+    )
     input_types: dict[str, dict[str, tuple[Any, ...]]] = (
         GroundingDINOModelLoader.INPUT_TYPES()
     )

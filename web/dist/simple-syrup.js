@@ -232,7 +232,7 @@ async function backendErrorMessage(response, fallback) {
 // web/src/downloadableModelsSetting.ts
 var SIMPLE_SYRUP_SETTING_ID = "SimpleSyrup.ShowDownloadableModels";
 var SIMPLE_SYRUP_SETTING_LABEL = "SimpleSyrup: Show downloadable models in loader dropdowns";
-var SIMPLE_SYRUP_SETTING_DESCRIPTION = "Show known downloadable SAM, GroundingDINO, and ViTMatte models even when they are not installed locally.";
+var SIMPLE_SYRUP_SETTING_DESCRIPTION = "Show known downloadable SAM, GroundingDINO, ViTMatte, WD14 tagger, and Ultralytics models even when they are not installed locally.";
 function registerDownloadableModelsSetting(app2, context, logger) {
   const setting = app2.ui.settings.addSetting({
     id: SIMPLE_SYRUP_SETTING_ID,
@@ -255,6 +255,15 @@ function registerDownloadableModelsSetting(app2, context, logger) {
           error
         );
         setting.value = previous.show_downloadable_models;
+        return;
+      }
+      try {
+        await context.refreshModelChoices();
+      } catch (error) {
+        logger.warn(
+          "Could not refresh Comfy loader model choices after saving SimpleSyrup settings.",
+          error
+        );
       }
     }
   });
@@ -692,6 +701,9 @@ async function registerSimpleSyrupSettings(app2, api = defaultApi(), logger = co
     saveSettings: (settings) => api.saveSettings(settings),
     setSettings: (settings) => {
       savedSettings = settings;
+    },
+    refreshModelChoices: async () => {
+      await app2.refreshComboInNodes?.();
     }
   };
   registerDownloadableModelsSetting(app2, settingsContext, logger);

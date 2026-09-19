@@ -47,6 +47,7 @@ def test_downloadable_mode_includes_catalog_entries(tmp_path: Path) -> None:
     assert "GroundingDINO_SwinT_OGC (694MB)" in service.grounding_dino_choices()
     assert "vitmatte-small-composition-1k" in service.vitmatte_choices()
     assert "wd-eva02-large-tagger-v3" in service.wd14_tagger_choices()
+    assert "Bingsu Hand YOLOv8n (6.23MB)" in service.ultralytics_choices()
 
 
 def test_local_only_mode_returns_sentinels_when_no_models_exist(
@@ -60,6 +61,7 @@ def test_local_only_mode_returns_sentinels_when_no_models_exist(
     assert service.grounding_dino_choices() == [NO_LOCAL_GROUNDING_DINO_MODELS]
     assert service.vitmatte_choices() == [NO_LOCAL_VITMATTE_MODELS]
     assert service.wd14_tagger_choices() == [NO_LOCAL_WD14_TAGGER_MODELS]
+    assert service.ultralytics_choices() == []
 
 
 def test_sam_local_only_lists_installed_catalog_artifacts(tmp_path: Path) -> None:

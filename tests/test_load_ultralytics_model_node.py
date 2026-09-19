@@ -11,6 +11,7 @@ from typing import Any, cast
 import pytest
 
 from simple_syrup.nodes.load_ultralytics_model import LoadUltralyticsModel
+from simple_syrup.runtime.model_downloads import ProgressReporter
 from simple_syrup.runtime.ultralytics_loader import LoadedUltralyticsDetector
 
 
@@ -50,8 +51,13 @@ class _FakeLoaderService:
 
         return ["model.pt"]
 
-    def load(self, model_name: str) -> LoadedUltralyticsDetector:
+    def load(
+        self,
+        model_name: str,
+        progress: ProgressReporter | None = None,
+    ) -> LoadedUltralyticsDetector:
         """Return deterministic loaded outputs."""
 
+        del progress
         assert model_name == "model.pt"
         return LoadedUltralyticsDetector(cast(Any, "native"), "bbox", "segm")

@@ -78,6 +78,7 @@ class GroundedSAMModelMetadata:
                     "artifact_id": artifact.artifact_id,
                     "filename": artifact.filename,
                     "source_url": artifact.source_url,
+                    "sha256": artifact.sha256,
                     "expected_path": str(expected),
                     "local_path": str(local_path) if local_path else None,
                     "installed": local_path is not None,

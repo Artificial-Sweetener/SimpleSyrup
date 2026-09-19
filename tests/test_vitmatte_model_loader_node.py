@@ -23,9 +23,24 @@ def test_vitmatte_model_loader_contract() -> None:
     assert ViTMatteModelLoader.CATEGORY == "SimpleSyrup/Masking"
 
 
-def test_vitmatte_model_loader_declares_expected_inputs() -> None:
+def test_vitmatte_model_loader_declares_expected_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """ViTMatte loader inputs are asset-only and deterministic."""
 
+    def catalog_choices() -> list[str]:
+        """Return the catalog choices expected by this declaration test."""
+
+        return [
+            "vitmatte-small-composition-1k",
+            "vitmatte-base-composition-1k",
+        ]
+
+    monkeypatch.setattr(
+        ViTMatteModelLoader._choices,
+        "vitmatte_choices",
+        catalog_choices,
+    )
     input_types: dict[str, dict[str, tuple[Any, ...]]] = (
         ViTMatteModelLoader.INPUT_TYPES()
     )

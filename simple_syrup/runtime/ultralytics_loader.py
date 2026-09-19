@@ -14,7 +14,14 @@ from types import ModuleType
 from typing import Any, TypeAlias, cast
 
 from ..shared.logging import get_logger
-from .model_folders import SUPPORTED_MODEL_EXTENSIONS
+from .model_catalog import ULTRALYTICS_ENTRIES, ModelEntry
+from .model_choices import ModelChoiceService
+from .model_downloads import DownloadRequest, ModelDownloader, ProgressReporter
+from .model_folders import (
+    SUPPORTED_MODEL_EXTENSIONS,
+    expected_model_file,
+    resolve_model_file,
+)
 from .model_instance_cache import ModelInstanceCache
 
 LOGGER = get_logger(__name__)
@@ -52,7 +59,6 @@ class LoadedUltralyticsDetector:
 class UltralyticsModelCacheKey:
     """Identify a loaded Ultralytics detector for process-level reuse."""
 
-    model_name: str
     model_path: Path
 
 
@@ -68,6 +74,8 @@ class UltralyticsLoaderService:
         self,
         folder_paths_module: ModuleType | None = None,
         ultralytics_module: ModuleType | None = None,
+        downloader: ModelDownloader | None = None,
+        choice_service: ModelChoiceService | None = None,
         cache: (
             MutableMapping[UltralyticsModelCacheKey, LoadedUltralyticsDetector] | None
         ) = None,
@@ -76,6 +84,10 @@ class UltralyticsLoaderService:
 
         self._folder_paths_module = folder_paths_module
         self._ultralytics_module = ultralytics_module
+        self._downloader = downloader or ModelDownloader()
+        self._choice_service = choice_service or ModelChoiceService(
+            folder_paths_module=folder_paths_module
+        )
         self._cache: ModelInstanceCache[
             UltralyticsModelCacheKey, LoadedUltralyticsDetector
         ] = ModelInstanceCache(
@@ -83,9 +95,18 @@ class UltralyticsLoaderService:
         )
 
     def model_choices(self) -> list[str]:
-        """Return local Ultralytics model choices for ComfyUI dropdowns."""
+        """Return curated and local Ultralytics model choices for ComfyUI dropdowns."""
 
-        choices = self.available_models()
+        self._register_model_folders()
+        curated_choices = self._choice_service.ultralytics_choices()
+        curated_local_paths = {
+            _catalog_selection(entry) for entry in ULTRALYTICS_ENTRIES
+        }
+        choices = curated_choices + [
+            choice
+            for choice in self.available_models()
+            if choice not in curated_local_paths
+        ]
         return choices or [NO_LOCAL_ULTRALYTICS_MODELS]
 
     def available_models(self) -> list[str]:
@@ -133,16 +154,23 @@ class UltralyticsLoaderService:
 
         return sorted(choices)
 
-    def load(self, model_name: str) -> LoadedUltralyticsDetector:
+    def load(
+        self,
+        model_name: str,
+        progress: ProgressReporter | None = None,
+    ) -> LoadedUltralyticsDetector:
         """Load one Ultralytics model and create compatibility facades."""
 
         self.reject_sentinel(model_name)
-        model_path = self.resolve_model_path(model_name)
-        normalized_name = _normalized_model_name(model_name)
-        key = UltralyticsModelCacheKey(
-            model_name=normalized_name,
-            model_path=model_path.resolve(),
-        )
+        entry = _catalog_entry_or_none(model_name)
+        if entry is None:
+            model_path = self.resolve_model_path(model_name)
+            normalized_name = _normalized_model_name(model_name)
+        else:
+            model_path = self._resolve_catalog_entry(entry, progress)
+            normalized_name = _catalog_selection(entry)
+
+        key = UltralyticsModelCacheKey(model_path=model_path.resolve())
         already_loaded = key in self._cache.entries
         loaded = self._cache.get_or_load(
             key,
@@ -159,6 +187,40 @@ class UltralyticsLoaderService:
                 },
             )
         return loaded
+
+    def _resolve_catalog_entry(
+        self,
+        entry: ModelEntry,
+        progress: ProgressReporter | None,
+    ) -> Path:
+        """Resolve or securely download one curated Ultralytics checkpoint."""
+
+        if len(entry.artifacts) != 1:
+            raise RuntimeError(
+                f"Ultralytics catalog entry '{entry.entry_id}' must have one artifact."
+            )
+
+        self._register_model_folders()
+        artifact = entry.artifacts[0]
+        existing = resolve_model_file(
+            artifact.folder_name,
+            artifact.filename,
+            self._folder_paths_module,
+        )
+        destination = existing or expected_model_file(
+            artifact.folder_name, artifact.filename, self._folder_paths_module
+        )
+        result = self._downloader.download(
+            DownloadRequest(
+                source_url=artifact.source_url,
+                destination_path=destination,
+                expected_folder=destination.parent,
+                description=artifact.description,
+                expected_sha256=artifact.sha256,
+            ),
+            progress,
+        )
+        return result.path
 
     def _load_uncached_detector(
         self,
@@ -227,9 +289,10 @@ class UltralyticsLoaderService:
 
         if model_name == NO_LOCAL_ULTRALYTICS_MODELS:
             raise ValueError(
-                "No local Ultralytics models are available. Install a model in "
-                "models\\ultralytics, models\\ultralytics\\bbox, or "
-                "models\\ultralytics\\segm."
+                "No local Ultralytics models are available. Enable 'Show "
+                "downloadable models in loader dropdowns' in SimpleSyrup settings "
+                "or install a model in models\\ultralytics, "
+                "models\\ultralytics\\bbox, or models\\ultralytics\\segm."
             )
 
     def resolve_model_path(self, model_name: str) -> Path:
@@ -385,6 +448,42 @@ def _normalized_model_name(model_name: str) -> str:
     """Return a stable model selection string for cache identity."""
 
     return model_name.replace("\\", "/")
+
+
+def _catalog_entry_or_none(selection: str) -> ModelEntry | None:
+    """Return a curated Ultralytics entry when a dropdown label matches it."""
+
+    return next(
+        (
+            entry
+            for entry in ULTRALYTICS_ENTRIES
+            if selection in (entry.entry_id, entry.display_name)
+        ),
+        None,
+    )
+
+
+def _catalog_selection(entry: ModelEntry) -> str:
+    """Return the local conventional selection path for one catalog entry."""
+
+    if len(entry.artifacts) != 1:
+        raise ValueError(
+            f"Ultralytics catalog entry '{entry.entry_id}' must have one artifact."
+        )
+
+    artifact = entry.artifacts[0]
+    prefix_by_folder = {
+        ULTRALYTICS_BBOX_FOLDER: "bbox",
+        ULTRALYTICS_SEGM_FOLDER: "segm",
+    }
+    try:
+        prefix = prefix_by_folder[artifact.folder_name]
+    except KeyError as error:
+        raise ValueError(
+            f"Ultralytics catalog entry '{entry.entry_id}' has unsupported folder "
+            f"'{artifact.folder_name}'."
+        ) from error
+    return f"{prefix}/{artifact.filename}"
 
 
 def _model_task(model_name: str, raw_model: object) -> str:

@@ -8,13 +8,25 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from simple_syrup.nodes.wd14_tagger_loader import WD14TaggerLoader
+from simple_syrup.nodes_v3 import wd14_tagger_loader as wd14_tagger_loader_v3
 from simple_syrup.nodes_v3.wd14_tagger_loader import WD14TaggerLoaderV3
 
 
-def test_wd14_tagger_loader_v3_schema() -> None:
+def test_wd14_tagger_loader_v3_schema(monkeypatch: pytest.MonkeyPatch) -> None:
     """The v3 loader schema exposes the WD14 tagger loader contract."""
 
+    class FakeChoices:
+        """Return the catalog choice expected by this schema test."""
+
+        def wd14_tagger_choices(self) -> list[str]:
+            """Return the expected WD14 tagger choice."""
+
+            return ["wd-eva02-large-tagger-v3"]
+
+    monkeypatch.setattr(wd14_tagger_loader_v3, "ModelChoiceService", FakeChoices)
     schema = WD14TaggerLoaderV3.define_schema()
 
     assert schema.node_id == "SimpleSyrup.WD14TaggerLoader"

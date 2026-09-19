@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from ..runtime.model_downloads import ComfyProgressReporter
 from ..runtime.ultralytics_loader import UltralyticsLoaderService
 
 
@@ -40,7 +41,8 @@ class LoadUltralyticsModel:
                     {
                         "default": choices[0],
                         "tooltip": (
-                            "Ultralytics model file in the ComfyUI models folder."
+                            "A local Ultralytics model or a curated model that "
+                            "downloads to ComfyUI's Impact Pack-compatible folders."
                         ),
                     },
                 )
@@ -50,5 +52,8 @@ class LoadUltralyticsModel:
     def load(self, model_name: str) -> tuple[object, object, object]:
         """Load the selected detector and paired compatibility facades."""
 
-        loaded = self.service_class().load(model_name)
+        loaded = self.service_class().load(
+            model_name,
+            progress=ComfyProgressReporter(),
+        )
         return loaded.detector_model, loaded.bbox_detector, loaded.segm_detector

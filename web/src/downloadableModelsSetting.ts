@@ -9,12 +9,13 @@ export const SIMPLE_SYRUP_SETTING_ID = "SimpleSyrup.ShowDownloadableModels";
 export const SIMPLE_SYRUP_SETTING_LABEL =
   "SimpleSyrup: Show downloadable models in loader dropdowns";
 export const SIMPLE_SYRUP_SETTING_DESCRIPTION =
-  "Show known downloadable SAM, GroundingDINO, and ViTMatte models even when they are not installed locally.";
+  "Show known downloadable SAM, GroundingDINO, ViTMatte, WD14 tagger, and Ultralytics models even when they are not installed locally.";
 
 export interface GeneralSettingsContext {
   getSettings(): SimpleSyrupSettings;
   saveSettings(settings: SimpleSyrupSettings): Promise<SimpleSyrupSettings>;
   setSettings(settings: SimpleSyrupSettings): void;
+  refreshModelChoices(): Promise<void>;
 }
 
 export function registerDownloadableModelsSetting(
@@ -43,6 +44,16 @@ export function registerDownloadableModelsSetting(
           error
         );
         setting.value = previous.show_downloadable_models;
+        return;
+      }
+
+      try {
+        await context.refreshModelChoices();
+      } catch (error) {
+        logger.warn(
+          "Could not refresh Comfy loader model choices after saving SimpleSyrup settings.",
+          error
+        );
       }
     }
   });

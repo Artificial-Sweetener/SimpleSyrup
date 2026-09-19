@@ -12,11 +12,13 @@ from typing import Protocol
 from .model_catalog import (
     GROUNDING_DINO_ENTRIES,
     SAM_ENTRIES,
+    ULTRALYTICS_ENTRIES,
     VITMATTE_ENTRIES,
     WD14_TAGGER_ENTRIES,
     ModelEntry,
     grounding_dino_choices,
     sam_choices,
+    ultralytics_choices,
     vitmatte_choices,
     wd14_tagger_choices,
 )
@@ -107,6 +109,18 @@ class ModelChoiceService:
             if self._entry_artifacts_are_local(entry)
         ]
         return choices or [NO_LOCAL_WD14_TAGGER_MODELS]
+
+    def ultralytics_choices(self) -> list[str]:
+        """Return settings-aware curated Ultralytics dropdown choices."""
+
+        if self._show_downloadable_models():
+            return ultralytics_choices()
+
+        return [
+            entry.display_name
+            for entry in ULTRALYTICS_ENTRIES
+            if self._entry_artifacts_are_local(entry)
+        ]
 
     def reject_sentinel(self, selection: str) -> None:
         """Reject placeholder dropdown selections before loader work begins."""

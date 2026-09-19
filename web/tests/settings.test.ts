@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   SIMPLE_SYRUP_SETTING_ID,
+  SIMPLE_SYRUP_SETTING_DESCRIPTION,
   SIMPLE_SYRUP_SETTING_LABEL
 } from "../src/downloadableModelsSetting";
 import {
@@ -31,8 +32,11 @@ describe("Comfy settings registration", () => {
       id: SIMPLE_SYRUP_SETTING_ID,
       name: SIMPLE_SYRUP_SETTING_LABEL,
       type: "boolean",
-      defaultValue: false
+      defaultValue: false,
+      tooltip: SIMPLE_SYRUP_SETTING_DESCRIPTION
     });
+    expect(SIMPLE_SYRUP_SETTING_DESCRIPTION).toContain("WD14 tagger");
+    expect(SIMPLE_SYRUP_SETTING_DESCRIPTION).toContain("Ultralytics");
     expect(app.ui.settings.settings[0]?.value).toBe(false);
     expect(app.ui.settings.definitions[1]).toMatchObject({
       id: QUANT_CACHE_SETTING_ID,
@@ -53,6 +57,8 @@ describe("Comfy settings registration", () => {
 
   it("saves setting changes to the backend", async () => {
     const app = createFakeComfyApp();
+    const refreshComboInNodes = vi.fn().mockResolvedValue(undefined);
+    app.refreshComboInNodes = refreshComboInNodes;
     const saveSettings = vi
       .fn<SimpleSyrupSettingsApi["saveSettings"]>()
       .mockResolvedValue({
@@ -81,6 +87,7 @@ describe("Comfy settings registration", () => {
       quant_cache_limit_gib: 20
     });
     expect(app.ui.settings.settings[0]?.value).toBe(true);
+    expect(refreshComboInNodes).toHaveBeenCalledOnce();
   });
 
   it("falls back to the default and warns when backend load fails", async () => {
@@ -142,6 +149,22 @@ describe("Comfy settings registration", () => {
       expect.any(Error)
     );
     expect(app.ui.settings.settings[0]?.value).toBe(true);
+  });
+
+  it("keeps a saved setting when live model-choice refresh fails", async () => {
+    const app = createFakeComfyApp();
+    const logger = { warn: vi.fn() };
+    app.refreshComboInNodes = vi.fn().mockRejectedValue(new Error("offline"));
+    const api = fakeSettingsApi(false);
+
+    await registerSimpleSyrupSettings(app, api, logger);
+    await app.ui.settings.definitions[0]?.onChange?.(true);
+
+    expect(app.ui.settings.settings[0]?.value).toBe(true);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Could not refresh Comfy loader model choices"),
+      expect.any(Error)
+    );
   });
 
   it("shows global quant cache usage and saves its GiB limit", async () => {

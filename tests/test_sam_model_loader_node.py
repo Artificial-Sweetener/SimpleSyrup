@@ -23,9 +23,17 @@ def test_sam_model_loader_contract() -> None:
     assert SAMModelLoader.CATEGORY == "SimpleSyrup/Masking"
 
 
-def test_sam_model_loader_declares_expected_inputs() -> None:
+def test_sam_model_loader_declares_expected_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """SAM loader inputs are deterministic and loader-owned."""
 
+    def catalog_choices() -> list[str]:
+        """Return the catalog choices expected by this declaration test."""
+
+        return ["sam_vit_b (375MB)", "FastSAM-s (23MB)"]
+
+    monkeypatch.setattr(SAMModelLoader._choices, "sam_choices", catalog_choices)
     input_types: dict[str, dict[str, tuple[Any, ...]]] = SAMModelLoader.INPUT_TYPES()
     required = input_types["required"]
 
