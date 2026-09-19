@@ -22,21 +22,30 @@ _ANIMA_CONDITION_KEY = "c_ppm_negpip_mask"
 _ANIMA_TRANSFORMER_KEY = "ppm_negpip_mask"
 _EXTRA_CONDS_PATH = "extra_conds"
 _ATTN2_PATCH_NAME = "attn2_patch"
-_UNET_CALLBACK = (
-    "src.negpip.unet_negpip",
-    "sdxl_attn2_negpip",
+_UNET_CALLBACKS = (
+    ("src.negpip.unet_negpip", "sdxl_attn2_negpip"),
+    ("simple_syrup.runtime.negpip.standard", "standard_attn2_negpip"),
 )
-_ANIMA_CALLBACK = (
-    "src.negpip.anima_negpip",
-    "cosmos_attn2_negpip",
+_ANIMA_CALLBACKS = (
+    ("src.negpip.anima_negpip", "cosmos_attn2_negpip"),
+    ("simple_syrup.runtime.negpip.anima", "anima_attn2_negpip"),
 )
-_ANIMA_WRAPPER = (
-    "src.negpip.anima_negpip",
-    "cosmos_diffusion_negpip_wrapper",
+_ANIMA_WRAPPERS = (
+    ("src.negpip.anima_negpip", "cosmos_diffusion_negpip_wrapper"),
+    (
+        "simple_syrup.runtime.negpip.anima",
+        "anima_diffusion_negpip_wrapper",
+    ),
 )
-_ANIMA_EXTRA_CONDS = (
-    "src.negpip.anima_negpip",
-    "anima_extra_conds_negpip_wrapper.<locals>._anima_extra_conds_negpip_wrapper",
+_ANIMA_EXTRA_CONDS_CALLBACKS = (
+    (
+        "src.negpip.anima_negpip",
+        "anima_extra_conds_negpip_wrapper.<locals>._anima_extra_conds_negpip_wrapper",
+    ),
+    (
+        "simple_syrup.runtime.negpip.anima",
+        "anima_extra_conds_negpip_wrapper.<locals>.wrapped_extra_conds",
+    ),
 )
 
 
@@ -135,10 +144,12 @@ class PpmNegpipInteropValidator:
         extra_conds = object_patches.get(_EXTRA_CONDS_PATH)
         recognized_surface = any(
             (
-                any(_is_identity(item, *_UNET_CALLBACK) for item in attention),
-                any(_is_identity(item, *_ANIMA_CALLBACK) for item in attention),
+                any(_matches_any_identity(item, _UNET_CALLBACKS) for item in attention),
+                any(
+                    _matches_any_identity(item, _ANIMA_CALLBACKS) for item in attention
+                ),
                 bool(anima_wrappers),
-                _is_identity(extra_conds, *_ANIMA_EXTRA_CONDS),
+                _matches_any_identity(extra_conds, _ANIMA_EXTRA_CONDS_CALLBACKS),
             )
         )
         if not marker:
@@ -173,9 +184,9 @@ class PpmNegpipInteropValidator:
 
         if (
             len(attention) != 1
-            or not _is_identity(attention[0], *_UNET_CALLBACK)
+            or not _matches_any_identity(attention[0], _UNET_CALLBACKS)
             or anima_wrappers
-            or _is_identity(extra_conds, *_ANIMA_EXTRA_CONDS)
+            or _matches_any_identity(extra_conds, _ANIMA_EXTRA_CONDS_CALLBACKS)
         ):
             raise ValueError(
                 "Standard UNet NegPiP requires exactly its PPM split-K/V attention "
@@ -197,10 +208,10 @@ class PpmNegpipInteropValidator:
 
         if (
             len(attention) != 1
-            or not _is_identity(attention[0], *_ANIMA_CALLBACK)
+            or not _matches_any_identity(attention[0], _ANIMA_CALLBACKS)
             or len(anima_wrappers) != 1
-            or not _is_identity(anima_wrappers[0], *_ANIMA_WRAPPER)
-            or not _is_identity(extra_conds, *_ANIMA_EXTRA_CONDS)
+            or not _matches_any_identity(anima_wrappers[0], _ANIMA_WRAPPERS)
+            or not _matches_any_identity(extra_conds, _ANIMA_EXTRA_CONDS_CALLBACKS)
         ):
             raise ValueError(
                 "Anima NegPiP requires exactly its PPM attention patch, keyed "
@@ -228,6 +239,15 @@ def _is_identity(
         and (module == module_suffix or module.endswith(f".{module_suffix}"))
         and qualname == qualified_name
     )
+
+
+def _matches_any_identity(
+    value: object,
+    identities: tuple[tuple[str, str], ...],
+) -> bool:
+    """Match a callable against either the installed PPM or owned equivalent."""
+
+    return any(_is_identity(value, *identity) for identity in identities)
 
 
 PPM_NEGPIP_INTEROP_VALIDATOR = PpmNegpipInteropValidator()

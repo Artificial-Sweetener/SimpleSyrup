@@ -56,3 +56,20 @@ tagger ONNX models and `selected_tags.csv` files at runtime from Hugging Face.
 These model files are not vendored in this repository. The runtime catalog
 points to the corresponding `SmilingWolf/*` repositories and stores downloaded
 files in the user's ComfyUI model directory.
+
+## NegPiP prompt weighting
+
+SimpleSyrup adapts the AGPL-3.0 NegPiP implementation from
+`pamparamm/ComfyUI-ppm` at revision
+`6c6c360155cace9d7091306c1b8e26d9c7438620`. The standard SD1/SDXL and Anima
+paths preserve PPM's ModelPatcher-based magnitude-key and signed-value
+behavior. The Krea 2 path extends the same signed-value rule to Krea's layered
+Qwen conditioning and joint text/image attention while preserving its native
+conditioning shape.
+
+PPM credits the original ComfyUI port to
+`laksjdjf/cd-tuner_negpip-ComfyUI`; SimpleSyrup records revision
+`938b838546cf774dc8841000996552cef52cccf3`. That port credits the original
+Automatic1111 WebUI implementation in `hako-mikan/sd-webui-negpip`;
+SimpleSyrup records revision
+`fb7151f327ae56195f08b30b70d459493dadedbb`.

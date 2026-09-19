@@ -60,6 +60,63 @@ def test_schedule_encode_graph_builds_single_conditioning_outputs(
     ]
 
 
+@pytest.mark.parametrize(
+    ("positive_prompt", "negative_prompt"),
+    [
+        ("portrait of (1girl:-2.0)", "blur"),
+        ("portrait", "(blur:-0.5)"),
+        ("portrait [SEP] (hands:-1.2)", "blur"),
+        ("portrait [0:(eyes:-1.5):0.5]", "blur"),
+    ],
+)
+def test_schedule_encode_graph_injects_negpip_for_negative_weights(
+    monkeypatch: pytest.MonkeyPatch,
+    positive_prompt: str,
+    negative_prompt: str,
+) -> None:
+    """Any effective negative segment weight prepares MODEL and CLIP first."""
+
+    calls = _install_fake_prompt_control(monkeypatch)
+
+    output = PromptControlScheduleEncodeGraphBuilder().build(
+        model=["model", 0],
+        clip=["clip", 0],
+        positive_prompt=positive_prompt,
+        negative_prompt=negative_prompt,
+    )
+
+    assert output.expand is not None
+    preparation_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "SimpleSyrup.ApplyAutomaticNegpip"
+    ]
+    assert len(preparation_nodes) == 1
+    assert calls["encode"]
+    assert all(call["clip"] != ["clip", 0] for call in calls["encode"])
+
+
+def test_schedule_encode_graph_does_not_inject_negpip_for_nonnegative_weights(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ordinary and positive-weight prompts retain the existing graph path."""
+
+    _install_fake_prompt_control(monkeypatch)
+
+    output = PromptControlScheduleEncodeGraphBuilder().build(
+        model=["model", 0],
+        clip=["clip", 0],
+        positive_prompt="portrait of (1girl:2.0)",
+        negative_prompt="blur",
+    )
+
+    assert output.expand is not None
+    assert not any(
+        node["class_type"] == "SimpleSyrup.ApplyAutomaticNegpip"
+        for node in output.expand.values()
+    )
+
+
 def test_schedule_encode_graph_packs_both_sides_to_matched_segment_counts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

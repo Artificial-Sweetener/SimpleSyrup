@@ -135,6 +135,7 @@ def get_nodes() -> list[type[object]]:
     if not prompt_control_is_available():
         return nodes
 
+    from .apply_automatic_negpip import ApplyAutomaticNegpipV3
     from .attach_regional_global_conditioning import (
         AttachRegionalGlobalConditioningV3,
     )
@@ -149,6 +150,7 @@ def get_nodes() -> list[type[object]]:
 
     return [
         *nodes,
+        ApplyAutomaticNegpipV3,
         AttachRegionalGlobalConditioningV3,
         EncodePromptBatchWithPromptControl,
         LabelRegionalLoraHooksV3,

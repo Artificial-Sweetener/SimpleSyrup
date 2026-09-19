@@ -86,6 +86,28 @@ class PromptControlGraphAdapter:
         self.merge_expand(expand, negative.expand, "negative LoRA scheduling")
         return negative.args[0], negative.args[1]
 
+    def apply_automatic_negpip(
+        self,
+        *,
+        model: Any,
+        clip: Any,
+        expand: dict[str, dict[str, Any]],
+    ) -> tuple[Any, Any]:
+        """Insert the runtime family check after a negative prompt-weight trigger."""
+
+        graph = self._graph_utils.GraphBuilder()
+        prepared = graph.node(
+            "SimpleSyrup.ApplyAutomaticNegpip",
+            model=model,
+            clip=clip,
+        )
+        self.merge_expand(
+            expand,
+            cast(dict[str, dict[str, Any]], graph.finalize()),
+            "automatic NegPiP preparation",
+        )
+        return prepared.out(0), prepared.out(1)
+
     def encode_segment(
         self,
         *,

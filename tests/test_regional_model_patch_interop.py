@@ -253,6 +253,55 @@ def test_validator_admits_exact_anima_negpip_without_mutation() -> None:
     assert model.object_patches["extra_conds"] is extra_conds
 
 
+def test_validator_admits_owned_standard_negpip_without_mutation() -> None:
+    """Retain the automatic node's owned split-K/V callback identity."""
+
+    from simple_syrup.runtime.negpip.standard import standard_attn2_negpip
+
+    model = _patcher()
+    model.model_options["ppm_negpip"] = True
+    model.set_model_attn2_patch(standard_attn2_negpip)
+
+    report = REGIONAL_MODEL_PATCH_INTEROP_VALIDATOR.validate(
+        model,
+        _capabilities(RegionalModelFamily.STANDARD_UNET),
+    )
+
+    assert report.negpip is not None
+    assert report.negpip.attention_patch is standard_attn2_negpip
+
+
+def test_validator_admits_owned_anima_negpip_without_mutation() -> None:
+    """Retain the automatic node's complete owned Anima callback family."""
+
+    from simple_syrup.runtime.negpip.anima import (
+        anima_attn2_negpip,
+        anima_diffusion_negpip_wrapper,
+        anima_extra_conds_negpip_wrapper,
+    )
+
+    model = _patcher()
+    model.model_options["ppm_negpip"] = True
+    model.set_model_attn2_patch(anima_attn2_negpip)
+    model.add_wrapper_with_key(
+        WrappersMP.DIFFUSION_MODEL,
+        "ppm_negpip_anima",
+        anima_diffusion_negpip_wrapper,
+    )
+    model.add_object_patch(
+        "extra_conds",
+        anima_extra_conds_negpip_wrapper(lambda **kwargs: {}),
+    )
+
+    report = REGIONAL_MODEL_PATCH_INTEROP_VALIDATOR.validate(
+        model,
+        _capabilities(RegionalModelFamily.ANIMA),
+    )
+
+    assert report.negpip is not None
+    assert report.negpip.attention_patch is anima_attn2_negpip
+
+
 @pytest.mark.parametrize(
     ("family", "configure", "message"),
     [

@@ -75,6 +75,7 @@ BASE_NODE_IDS = [
 ]
 
 PROMPT_CONTROL_NODE_IDS = [
+    "SimpleSyrup.ApplyAutomaticNegpip",
     "SimpleSyrup.AttachRegionalGlobalConditioning",
     "SimpleSyrup.EncodePromptBatchWithPromptControl",
     "SimpleSyrup.LabelRegionalLoraHooks",

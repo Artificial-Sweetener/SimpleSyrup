@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..domain.negative_prompt_weights import contains_negative_prompt_weight
 from ..domain.prompt_batch_parser import DEFAULT_PROMPT_BATCH_SEPARATOR
 from ..domain.prompt_control_prompt import PreparedPromptSide, apply_encode_style
 from ..services.prompt_control_segment_planning_service import (
@@ -48,6 +49,12 @@ class PromptControlScheduleEncodeGraphBuilder:
         )
         adapter = self.graph_adapter_class.load(PROMPT_CONTROL_MISSING_MESSAGE)
         expand: dict[str, dict[str, Any]] = {}
+        if self._requires_negpip(plan):
+            model, clip = adapter.apply_automatic_negpip(
+                model=model,
+                clip=clip,
+                expand=expand,
+            )
         scheduled_model, encoding_clip = self._sampling_inputs(
             model=model,
             clip=clip,
@@ -82,6 +89,16 @@ class PromptControlScheduleEncodeGraphBuilder:
             positive,
             negative,
             expand=expand,
+        )
+
+    @staticmethod
+    def _requires_negpip(plan: PromptControlSegmentPlan) -> bool:
+        """Return whether any cleaned positive or negative segment needs NegPiP."""
+
+        return any(
+            contains_negative_prompt_weight(chunk.text)
+            for side in (plan.positive, plan.negative)
+            for chunk in side.chunks
         )
 
     def _sampling_inputs(

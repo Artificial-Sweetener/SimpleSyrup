@@ -133,3 +133,25 @@ vendored_files = [
   "simple_syrup/runtime/tiled_sampling_validation.py",
   "simple_syrup/services/detail_segs_as_regions_service.py",
 ]
+
+[[component]]
+name = "NegPiP prompt weighting"
+license = "AGPL-3.0"
+license_file = "third_party/licenses/negpip.LICENSE.txt"
+source = "https://github.com/pamparamm/ComfyUI-ppm"
+revision = "6c6c360155cace9d7091306c1b8e26d9c7438620"
+source_paths = [
+  "src/nodes_ppm/clip_negpip.py",
+  "src/negpip/unet_negpip.py",
+  "src/negpip/anima_negpip.py",
+]
+origin_sources = [
+  "https://github.com/laksjdjf/cd-tuner_negpip-ComfyUI@938b838546cf774dc8841000996552cef52cccf3",
+  "https://github.com/hako-mikan/sd-webui-negpip@fb7151f327ae56195f08b30b70d459493dadedbb",
+]
+vendored_files = [
+  "simple_syrup/runtime/negpip/standard.py",
+  "simple_syrup/runtime/negpip/anima.py",
+  "simple_syrup/runtime/negpip/krea2.py",
+  "simple_syrup/services/negpip_model_service.py",
+]

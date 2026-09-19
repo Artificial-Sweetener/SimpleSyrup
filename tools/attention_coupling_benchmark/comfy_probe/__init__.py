@@ -21,6 +21,7 @@ from .latent_completion import CompleteLatentV3
 from .lora_execution_probe import InstrumentLoraModelV3, ReadLoraMetricsV3
 from .materialization_parity_node import CompareMaterializationParityV3
 from .model_modifier_snapshot import SnapshotModelModifierV3
+from .negpip_runtime import InstrumentNegpipModelV3, ReadNegpipRuntimeV3
 from .operator_profile import ProfileIndexedModelCallV3, ReadOperatorProfileV3
 from .prompt_control_expansion import SnapshotPromptControlExpansionV3
 from .prompt_control_runtime import (
@@ -70,6 +71,8 @@ class BenchmarkProbeExtension(_ComfyExtensionBase):
             ReadLoraMetricsV3,
             CompareMaterializationParityV3,
             SnapshotModelModifierV3,
+            InstrumentNegpipModelV3,
+            ReadNegpipRuntimeV3,
             SnapshotPromptControlV3,
             SnapshotPromptControlExpansionV3,
             InstrumentPromptControlModelV3,

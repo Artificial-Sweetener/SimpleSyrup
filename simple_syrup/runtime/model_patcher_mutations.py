@@ -238,6 +238,102 @@ class ModelDiffusionWrapperMutation:
 
 
 @dataclass(frozen=True)
+class ModelInteropDiffusionWrapperMutation:
+    """Install the exact legacy key required for PPM Anima interoperability."""
+
+    key: str
+    wrapper: Callable[..., object]
+
+    def apply(self, model: object) -> None:
+        """Install only the documented PPM Anima wrapper surface."""
+
+        if self.key != "ppm_negpip_anima":
+            raise ValueError("NegPiP interop wrapper must use PPM's Anima key.")
+        getter = _require_bound_method(model, "get_wrappers", ("wrapper_type", "key"))
+        adder = _require_bound_method(
+            model,
+            "add_wrapper_with_key",
+            ("wrapper_type", "key", "wrapper"),
+        )
+        existing = getter(WrappersMP.DIFFUSION_MODEL, self.key)
+        if not isinstance(existing, list) or any(
+            not callable(callback) for callback in existing
+        ):
+            raise TypeError("Existing NegPiP wrappers must be a callable list.")
+        if existing:
+            raise ValueError("PPM's Anima NegPiP wrapper key is already installed.")
+        adder(WrappersMP.DIFFUSION_MODEL, self.key, self.wrapper)
+
+
+@dataclass(frozen=True)
+class ModelAttentionPatchMutation:
+    """Append one validated Comfy attention patch to a derived MODEL."""
+
+    patch_name: str
+    callback: Callable[..., object]
+
+    def apply(self, model: object) -> None:
+        """Install an attn1 or attn2 callback through the public patcher setter."""
+
+        if self.patch_name not in {"attn1", "attn2"}:
+            raise ValueError("MODEL attention patch name must be 'attn1' or 'attn2'.")
+        if not callable(self.callback):
+            raise TypeError("MODEL attention patch callback must be callable.")
+        setter = getattr(model, f"set_model_{self.patch_name}_patch", None)
+        if not callable(setter):
+            raise TypeError(f"MODEL does not support {self.patch_name} patches.")
+        setter(self.callback)
+
+
+@dataclass(frozen=True)
+class ModelBooleanOptionMutation:
+    """Publish one collision-safe boolean MODEL option marker."""
+
+    key: str
+    value: bool
+
+    def apply(self, model: object) -> None:
+        """Set one supported marker only when no value already owns the key."""
+
+        if self.key != "ppm_negpip":
+            raise ValueError("Unsupported MODEL boolean option marker.")
+        if not isinstance(self.value, bool):
+            raise TypeError("MODEL option marker value must be boolean.")
+        options = _require_dictionary_attribute(model, "model_options")
+        if self.key in options:
+            raise ValueError(f"MODEL option '{self.key}' is already present.")
+        options[self.key] = self.value
+
+
+@dataclass(frozen=True)
+class ModelCallableObjectPatchMutation:
+    """Replace one callable model object after collision validation."""
+
+    path: str
+    replacement: Callable[..., object]
+
+    def apply(self, model: object) -> None:
+        """Patch one callable path without relying on bound-method identity."""
+
+        if (
+            not isinstance(self.path, str)
+            or not self.path
+            or any(not segment for segment in self.path.split("."))
+        ):
+            raise ValueError("MODEL callable patch path must be a dotted path.")
+        if not callable(self.replacement):
+            raise TypeError("MODEL callable object replacement must be callable.")
+        getter = _require_bound_method(model, "get_model_object", ("name",))
+        adder = _require_bound_method(model, "add_object_patch", ("name", "obj"))
+        object_patches = _require_dictionary_attribute(model, "object_patches")
+        if self.path in object_patches:
+            raise ValueError(f"MODEL object path '{self.path}' already has a patch.")
+        if not callable(getter(self.path)):
+            raise TypeError(f"MODEL object path '{self.path}' must be callable.")
+        adder(self.path, self.replacement)
+
+
+@dataclass(frozen=True)
 class ModelExactObjectPatchMutation:
     """Replace one exact model object after collision and identity validation."""
 

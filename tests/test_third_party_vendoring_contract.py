@@ -192,3 +192,32 @@ def test_notice_records_sampler_and_tiled_diffusion_provenance() -> None:
     assert "k-diffusion Euler ancestral sampler" in notice
     assert "Mixture of Diffusers and MultiDiffusion tiled diffusion behavior" in notice
     assert "regional prompt mask blending" in notice
+
+
+def test_negpip_provenance_records_baseline_and_original_implementations() -> None:
+    """NegPiP should trace through PPM to both credited original projects."""
+
+    manifest = tomllib.loads(
+        (REPO_ROOT / "third_party" / "manifest.toml").read_text(encoding="utf-8")
+    )
+    components = {component["name"]: component for component in manifest["component"]}
+
+    negpip = components["NegPiP prompt weighting"]
+    license_path = REPO_ROOT / negpip["license_file"]
+
+    assert negpip["license"] == "AGPL-3.0"
+    assert "GNU AFFERO GENERAL PUBLIC" in license_path.read_text(encoding="utf-8")
+    assert negpip["source"] == "https://github.com/pamparamm/ComfyUI-ppm"
+    assert negpip["revision"] == "6c6c360155cace9d7091306c1b8e26d9c7438620"
+    assert negpip["origin_sources"] == [
+        "https://github.com/laksjdjf/cd-tuner_negpip-ComfyUI@"
+        "938b838546cf774dc8841000996552cef52cccf3",
+        "https://github.com/hako-mikan/sd-webui-negpip@"
+        "fb7151f327ae56195f08b30b70d459493dadedbb",
+    ]
+    assert negpip["vendored_files"] == [
+        "simple_syrup/runtime/negpip/standard.py",
+        "simple_syrup/runtime/negpip/anima.py",
+        "simple_syrup/runtime/negpip/krea2.py",
+        "simple_syrup/services/negpip_model_service.py",
+    ]
