@@ -1,3 +1,17 @@
+# [1.8.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.7.1...v1.8.0) (2026-09-19)
+
+
+### Bug Fixes
+
+* **downloads:** keep unknown sizes indeterminate ([a31467c](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/a31467cd3a4299e9e3929d44281018dba0322b3e))
+* **models:** hide installed catalog choices ([d887e87](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/d887e87e03eb6d0d9d5325fe43b67fbd9e47cf71))
+
+
+### Features
+
+* **models:** add curated ultralytics downloads ([b907fa2](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/b907fa2a17afa30170bc22cf1134a750241e55c2))
+* **models:** prioritize installed ultralytics choices ([d30e04f](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/d30e04f229366d3e1d2388bd4d713b2b47a12a1f))
+
 ## [1.7.1](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.7.0...v1.7.1) (2026-09-11)
 
 
