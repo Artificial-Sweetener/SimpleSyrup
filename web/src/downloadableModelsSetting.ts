@@ -9,7 +9,7 @@ export const SIMPLE_SYRUP_SETTING_ID = "SimpleSyrup.ShowDownloadableModels";
 export const SIMPLE_SYRUP_SETTING_LABEL =
   "SimpleSyrup: Show downloadable models in loader dropdowns";
 export const SIMPLE_SYRUP_SETTING_DESCRIPTION =
-  "Show known downloadable SAM, GroundingDINO, ViTMatte, WD14 tagger, and Ultralytics models even when they are not installed locally.";
+  "Show curated downloadable SAM, GroundingDINO, ViTMatte, WD14 tagger, and Ultralytics models in loader dropdowns.";
 
 export interface GeneralSettingsContext {
   getSettings(): SimpleSyrupSettings;

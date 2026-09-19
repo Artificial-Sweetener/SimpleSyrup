@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 
@@ -40,7 +39,6 @@ def test_downloadable_mode_includes_catalog_entries(tmp_path: Path) -> None:
 
     service = ModelChoiceService(
         FakeSettingsRepository(show_downloadable_models=True),
-        fake_folder_paths(tmp_path),
     )
 
     assert "sam_vit_b (375MB)" in service.sam_choices()
@@ -64,21 +62,19 @@ def test_local_only_mode_returns_sentinels_when_no_models_exist(
     assert service.ultralytics_choices() == []
 
 
-def test_sam_local_only_lists_installed_catalog_artifacts(tmp_path: Path) -> None:
-    """SAM local-only mode lists installed known checkpoint files."""
+def test_hidden_catalog_mode_excludes_installed_sam_artifacts(tmp_path: Path) -> None:
+    """Catalog mode hides installed SAM entries when disabled."""
 
     (tmp_path / "models" / "sams").mkdir(parents=True)
     (tmp_path / "models" / "sams" / "sam_vit_b_01ec64.pth").write_bytes(b"sam")
 
-    choices = local_only_service(tmp_path).sam_choices()
-
-    assert choices == ["sam_vit_b (375MB)"]
+    assert local_only_service(tmp_path).sam_choices() == [NO_LOCAL_SAM_MODELS]
 
 
-def test_grounding_dino_local_only_requires_complete_artifacts(
+def test_hidden_catalog_mode_excludes_installed_grounding_dino_artifacts(
     tmp_path: Path,
 ) -> None:
-    """GroundingDINO local-only mode excludes partial config/checkpoint pairs."""
+    """Catalog mode hides installed GroundingDINO entries when disabled."""
 
     model_dir = tmp_path / "models" / "grounding-dino"
     model_dir.mkdir(parents=True)
@@ -86,37 +82,35 @@ def test_grounding_dino_local_only_requires_complete_artifacts(
     (model_dir / "groundingdino_swint_ogc.pth").write_bytes(b"dino")
     (model_dir / "GroundingDINO_SwinB.cfg.py").write_text("", encoding="utf-8")
 
-    choices = local_only_service(tmp_path).grounding_dino_choices()
+    assert local_only_service(tmp_path).grounding_dino_choices() == [
+        NO_LOCAL_GROUNDING_DINO_MODELS
+    ]
 
-    assert choices == ["GroundingDINO_SwinT_OGC (694MB)"]
 
-
-def test_vitmatte_local_only_lists_valid_canonical_directory(
+def test_hidden_catalog_mode_excludes_installed_vitmatte_directory(
     tmp_path: Path,
 ) -> None:
-    """ViTMatte local-only mode accepts canonical SimpleSyrup directories."""
+    """Catalog mode hides installed ViTMatte entries when disabled."""
 
     create_vitmatte_snapshot(
         tmp_path / "models" / "vitmatte" / "vitmatte-small-composition-1k"
     )
 
-    choices = local_only_service(tmp_path).vitmatte_choices()
-
-    assert choices == ["vitmatte-small-composition-1k"]
+    assert local_only_service(tmp_path).vitmatte_choices() == [NO_LOCAL_VITMATTE_MODELS]
 
 
-def test_vitmatte_local_only_lists_layerstyle_directory(tmp_path: Path) -> None:
-    """ViTMatte local-only mode accepts LayerStyle-compatible directories."""
+def test_hidden_catalog_mode_excludes_layerstyle_vitmatte_directory(
+    tmp_path: Path,
+) -> None:
+    """Catalog mode hides LayerStyle-compatible entries when disabled."""
 
     create_vitmatte_snapshot(tmp_path / "models" / "vitmatte-base-composition-1k")
 
-    choices = local_only_service(tmp_path).vitmatte_choices()
-
-    assert choices == ["vitmatte-base-composition-1k"]
+    assert local_only_service(tmp_path).vitmatte_choices() == [NO_LOCAL_VITMATTE_MODELS]
 
 
-def test_wd14_local_only_requires_complete_artifacts(tmp_path: Path) -> None:
-    """WD14 local-only mode excludes partial ONNX/CSV pairs."""
+def test_hidden_catalog_mode_excludes_installed_wd14_artifacts(tmp_path: Path) -> None:
+    """Catalog mode hides installed WD14 entries when disabled."""
 
     model_dir = tmp_path / "models" / "wd14_tagger"
     model_dir.mkdir(parents=True)
@@ -127,9 +121,9 @@ def test_wd14_local_only_requires_complete_artifacts(tmp_path: Path) -> None:
     )
     (model_dir / "wd-vit-tagger-v3.onnx").write_bytes(b"onnx")
 
-    choices = local_only_service(tmp_path).wd14_tagger_choices()
-
-    assert choices == ["wd-eva02-large-tagger-v3"]
+    assert local_only_service(tmp_path).wd14_tagger_choices() == [
+        NO_LOCAL_WD14_TAGGER_MODELS
+    ]
 
 
 @pytest.mark.parametrize(
@@ -159,17 +153,7 @@ def local_only_service(tmp_path: Path) -> ModelChoiceService:
 
     return ModelChoiceService(
         FakeSettingsRepository(show_downloadable_models=False),
-        fake_folder_paths(tmp_path),
     )
-
-
-def fake_folder_paths(tmp_path: Path) -> ModuleType:
-    """Create a minimal fake Comfy folder_paths module."""
-
-    module = ModuleType("folder_paths")
-    module.models_dir = str(tmp_path / "models")  # type: ignore[attr-defined]
-    module.folder_names_and_paths = {}  # type: ignore[attr-defined]
-    return module
 
 
 def create_vitmatte_snapshot(path: Path) -> None:

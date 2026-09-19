@@ -232,7 +232,7 @@ async function backendErrorMessage(response, fallback) {
 // web/src/downloadableModelsSetting.ts
 var SIMPLE_SYRUP_SETTING_ID = "SimpleSyrup.ShowDownloadableModels";
 var SIMPLE_SYRUP_SETTING_LABEL = "SimpleSyrup: Show downloadable models in loader dropdowns";
-var SIMPLE_SYRUP_SETTING_DESCRIPTION = "Show known downloadable SAM, GroundingDINO, ViTMatte, WD14 tagger, and Ultralytics models even when they are not installed locally.";
+var SIMPLE_SYRUP_SETTING_DESCRIPTION = "Show curated downloadable SAM, GroundingDINO, ViTMatte, WD14 tagger, and Ultralytics models in loader dropdowns.";
 function registerDownloadableModelsSetting(app2, context, logger) {
   const setting = app2.ui.settings.addSetting({
     id: SIMPLE_SYRUP_SETTING_ID,

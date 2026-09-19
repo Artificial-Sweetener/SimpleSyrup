@@ -85,9 +85,7 @@ class UltralyticsLoaderService:
         self._folder_paths_module = folder_paths_module
         self._ultralytics_module = ultralytics_module
         self._downloader = downloader or ModelDownloader()
-        self._choice_service = choice_service or ModelChoiceService(
-            folder_paths_module=folder_paths_module
-        )
+        self._choice_service = choice_service or ModelChoiceService()
         self._cache: ModelInstanceCache[
             UltralyticsModelCacheKey, LoadedUltralyticsDetector
         ] = ModelInstanceCache(

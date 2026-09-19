@@ -44,7 +44,7 @@ def test_model_choices_list_conventional_folders(tmp_path: Path) -> None:
     folder_paths = _folder_paths(models_dir)
     service = UltralyticsLoaderService(
         folder_paths_module=folder_paths,
-        choice_service=_choice_service(folder_paths, show_downloadable_models=False),
+        choice_service=_choice_service(show_downloadable_models=False),
     )
 
     assert service.model_choices() == ["bbox/face.pt", "root.pt", "segm/person.pt"]
@@ -59,7 +59,7 @@ def test_model_choices_returns_sentinel_when_no_models(tmp_path: Path) -> None:
     folder_paths = _folder_paths(models_dir)
     service = UltralyticsLoaderService(
         folder_paths_module=folder_paths,
-        choice_service=_choice_service(folder_paths, show_downloadable_models=False),
+        choice_service=_choice_service(show_downloadable_models=False),
     )
 
     assert service.model_choices() == [NO_LOCAL_ULTRALYTICS_MODELS]
@@ -71,7 +71,7 @@ def test_model_choices_include_curated_downloadable_models(tmp_path: Path) -> No
     folder_paths = _folder_paths(tmp_path / "models")
     service = UltralyticsLoaderService(
         folder_paths_module=folder_paths,
-        choice_service=_choice_service(folder_paths, show_downloadable_models=True),
+        choice_service=_choice_service(show_downloadable_models=True),
     )
 
     choices = service.model_choices()
@@ -85,10 +85,10 @@ def test_model_choices_include_curated_downloadable_models(tmp_path: Path) -> No
     assert not any("Score" in choice for choice in choices)
 
 
-def test_local_only_choices_use_curated_label_for_installed_model(
+def test_hidden_catalog_choices_exclude_installed_curated_model(
     tmp_path: Path,
 ) -> None:
-    """Installed curated files keep their friendly dropdown label when hidden."""
+    """Hidden catalog mode excludes installed curated model files."""
 
     models_dir = tmp_path / "models"
     checkpoint = models_dir / "ultralytics" / "segm" / "Anzhc Face -seg.pt"
@@ -97,10 +97,10 @@ def test_local_only_choices_use_curated_label_for_installed_model(
     folder_paths = _folder_paths(models_dir)
     service = UltralyticsLoaderService(
         folder_paths_module=folder_paths,
-        choice_service=_choice_service(folder_paths, show_downloadable_models=False),
+        choice_service=_choice_service(show_downloadable_models=False),
     )
 
-    assert service.model_choices() == ["Anzhc Face -seg (6.52MB)"]
+    assert service.model_choices() == [NO_LOCAL_ULTRALYTICS_MODELS]
 
 
 def test_missing_model_raises_value_error(tmp_path: Path) -> None:
@@ -172,7 +172,7 @@ def test_curated_model_downloads_to_impact_pack_compatible_folder(
         folder_paths_module=folder_paths,
         ultralytics_module=ultralytics_module,
         downloader=downloader,
-        choice_service=_choice_service(folder_paths, show_downloadable_models=True),
+        choice_service=_choice_service(show_downloadable_models=True),
         cache={},
     )
 
@@ -202,7 +202,7 @@ def test_curated_bbox_model_downloads_to_impact_pack_compatible_folder(
         folder_paths_module=folder_paths,
         ultralytics_module=ultralytics_module,
         downloader=downloader,
-        choice_service=_choice_service(folder_paths, show_downloadable_models=True),
+        choice_service=_choice_service(show_downloadable_models=True),
         cache={},
     )
 
@@ -227,7 +227,7 @@ def test_curated_existing_model_must_match_its_catalog_checksum(
     folder_paths = _folder_paths(models_dir)
     service = UltralyticsLoaderService(
         folder_paths_module=folder_paths,
-        choice_service=_choice_service(folder_paths, show_downloadable_models=True),
+        choice_service=_choice_service(show_downloadable_models=True),
         cache={},
     )
 
@@ -250,7 +250,7 @@ def test_catalog_and_local_selection_share_one_loaded_model(tmp_path: Path) -> N
         folder_paths_module=folder_paths,
         ultralytics_module=ultralytics_module,
         downloader=downloader,
-        choice_service=_choice_service(folder_paths, show_downloadable_models=True),
+        choice_service=_choice_service(show_downloadable_models=True),
         cache=cache,
     )
 
@@ -437,16 +437,12 @@ class _FakeSettingsRepository:
 
 
 def _choice_service(
-    folder_paths: ModuleType,
     *,
     show_downloadable_models: bool,
 ) -> ModelChoiceService:
     """Build an Ultralytics choice service with deterministic settings."""
 
-    return ModelChoiceService(
-        _FakeSettingsRepository(show_downloadable_models),
-        folder_paths,
-    )
+    return ModelChoiceService(_FakeSettingsRepository(show_downloadable_models))
 
 
 def _folder_paths(models_dir: Path) -> ModuleType:
