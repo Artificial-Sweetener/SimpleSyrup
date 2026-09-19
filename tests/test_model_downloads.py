@@ -113,6 +113,41 @@ def test_comfy_progress_reporter_updates_the_active_node_progress(
     assert updates == [(-1, 6), (0, 6), (3, 6), (6, 6)]
 
 
+def test_comfy_progress_reporter_does_not_falsely_complete_unknown_downloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unknown response lengths emit no misleading progress until completion."""
+
+    updates: list[tuple[int, int | None]] = []
+
+    class FakeProgressBar:
+        """Record ComfyUI absolute progress updates."""
+
+        def __init__(self, total: int) -> None:
+            """Record the total selected for the progress bar."""
+
+            updates.append((-1, total))
+
+        def update_absolute(self, value: int, total: int | None = None) -> None:
+            """Record one absolute progress update."""
+
+            updates.append((value, total))
+
+    comfy_module = ModuleType("comfy")
+    comfy_utils = ModuleType("comfy.utils")
+    comfy_utils.ProgressBar = FakeProgressBar  # type: ignore[attr-defined]
+    comfy_module.utils = comfy_utils  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "comfy", comfy_module)
+    monkeypatch.setitem(sys.modules, "comfy.utils", comfy_utils)
+
+    reporter = ComfyProgressReporter()
+    reporter.start("Downloading unknown-size model", None)
+    reporter.advance(1024 * 1024, None)
+    reporter.finish()
+
+    assert updates == [(-1, 1), (1, 1)]
+
+
 def test_downloader_streams_file_and_reports_progress(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -59,30 +59,30 @@ class ComfyProgressReporter:
         """Initialize an empty ComfyUI progress reporter."""
 
         self._progress_bar: object | None = None
-        self._total = 1
+        self._total: int | None = None
 
     def start(self, label: str, total: int | None) -> None:
         """Create a ComfyUI progress bar for one artifact."""
 
         comfy_utils = importlib.import_module("comfy.utils")
         progress_bar_class = comfy_utils.ProgressBar
-        self._total = total if total and total > 0 else 1
-        self._progress_bar = progress_bar_class(self._total)
+        self._total = total if total and total > 0 else None
+        progress_total = self._total or 1
+        self._progress_bar = progress_bar_class(progress_total)
         self.advance(0, total)
         LOGGER.info("download progress started", extra={"label": label, "total": total})
 
     def advance(self, current: int, total: int | None) -> None:
-        """Update the ComfyUI progress bar."""
+        """Update known-size downloads without falsely completing unknown ones."""
 
         if self._progress_bar is None:
             return
-        if total and total > 0 and total != self._total:
+        if total is None or total <= 0:
+            return
+        if total != self._total:
             self._total = total
-        value = (
-            current if total and total > 0 else min(current // CHUNK_SIZE, self._total)
-        )
         progress_bar = cast(_ComfyProgressBar, self._progress_bar)
-        progress_bar.update_absolute(value, self._total)
+        progress_bar.update_absolute(current, self._total)
 
     def finish(self) -> None:
         """Mark the current ComfyUI progress bar complete."""
@@ -90,7 +90,8 @@ class ComfyProgressReporter:
         if self._progress_bar is None:
             return
         progress_bar = cast(_ComfyProgressBar, self._progress_bar)
-        progress_bar.update_absolute(self._total, self._total)
+        total = self._total or 1
+        progress_bar.update_absolute(total, total)
 
 
 @dataclass(frozen=True)
