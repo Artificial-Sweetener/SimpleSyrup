@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.8.0...v1.9.0) (2026-09-19)
+
+
+### Features
+
+* **prompts:** add automatic NegPiP support ([6d052e9](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/6d052e9800985696972bf431fa7dae4972a56313))
+
 # [1.8.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.7.1...v1.8.0) (2026-09-19)
 
 
