@@ -1,3 +1,10 @@
+## [1.9.3](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.9.2...v1.9.3) (2026-09-20)
+
+
+### Bug Fixes
+
+* **attention-coupling:** restore regional LoRA sampling ([0255a0f](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/0255a0f5044278f14452b6b2582ec6646083f756))
+
 ## [1.9.2](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.9.1...v1.9.2) (2026-09-20)
 
 
