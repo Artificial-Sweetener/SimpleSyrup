@@ -54,12 +54,15 @@ class KSamplerTiledAttentionCouplingV3(_ComfyNodeBase):
                 "batches and masks, denoises large Anima and standard SD/SDXL "
                 "latents in tiles through "
                 "one shared model trajectory per tile batch while coupling global "
-                "and masked regional cross-attention. The input MODEL may carry "
-                "global LoRAs. Anima regions may carry independently scheduled "
+                "and masked regional cross-attention. LoRAs on the input MODEL and "
+                "Prompt Control model LoRAs on global conditioning entry 0 apply "
+                "across every tile. Regions may carry independently scheduled "
                 "regional LoRA stacks; inactive attention and LoRA work is pruned "
                 "without changing quality. MultiDiffusion or Mixture of Diffusers "
-                "fuses restored tile predictions. Standard SD/SDXL regional "
-                "model-side hooks and unsupported Anima targets fail before sampling."
+                "fuses restored tile predictions. Global LoRA and regional LoRA "
+                "stacks retain independent schedules; regional model-side hooks are "
+                "supported on admitted model families. Unsupported adapter targets "
+                "fail before sampling."
             ),
             search_aliases=[
                 "attention coupling tiled",

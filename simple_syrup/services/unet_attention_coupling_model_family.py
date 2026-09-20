@@ -27,9 +27,9 @@ from ..runtime.attention_coupling.unet_context import (
 from ..runtime.regional_attention_diagnostics import (
     RegionalAttentionDiagnosticsBuilder,
 )
-from ..runtime.regional_lora.standard_unet_native_admission import (
-    StandardUnetNativeLoraAdmission,
-    StandardUnetNativeLoraAdmissionService,
+from ..runtime.regional_lora.standard_unet_operation_preparation import (
+    StandardUnetOperationAdmission,
+    StandardUnetOperationPreparation,
 )
 from ..runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 from ..runtime.regional_model_patch_interop import RegionalModelPatchInteropReport
@@ -47,8 +47,8 @@ class StandardUnetAttentionCouplingModelFamily:
     backend_class: ClassVar[type[StandardUnetAttentionBackend]] = (
         StandardUnetAttentionBackend
     )
-    native_admission_class: ClassVar[type[StandardUnetNativeLoraAdmissionService]] = (
-        StandardUnetNativeLoraAdmissionService
+    operation_preparation_class: ClassVar[type[StandardUnetOperationPreparation]] = (
+        StandardUnetOperationPreparation
     )
 
     @property
@@ -84,7 +84,7 @@ class StandardUnetAttentionCouplingModelFamily:
             raise TypeError(
                 "Standard UNet Attention Coupling requires regional adaptation."
             )
-        return self.native_admission_class().admit(model, adaptation)
+        return self.operation_preparation_class().admit(model, adaptation)
 
     def prepare_sampler_conditioning(
         self,
@@ -113,8 +113,8 @@ class StandardUnetAttentionCouplingModelFamily:
     ) -> object:
         """Build shared diagnostics state and derive the paired attn2 backend."""
 
-        if not isinstance(admission, StandardUnetNativeLoraAdmission):
-            raise TypeError("Standard UNet derivation requires native admission.")
+        if not isinstance(admission, StandardUnetOperationAdmission):
+            raise TypeError("Standard UNet derivation requires operation admission.")
         if not isinstance(interop_report, RegionalModelPatchInteropReport):
             raise TypeError("Standard UNet derivation requires interop evidence.")
         if admission.adaptation.plan != processed_plan.lora_plan:

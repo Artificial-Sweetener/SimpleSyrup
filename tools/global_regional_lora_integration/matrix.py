@@ -24,7 +24,6 @@ class GlobalRegionalLoraCase:
     """Bind one public workflow case to its expected terminal status."""
 
     integration: IntegrationCase
-    expect_overlap_error: bool = False
 
     @property
     def case_id(self) -> str:
@@ -84,13 +83,12 @@ def cases() -> tuple[GlobalRegionalLoraCase, ...]:
         GlobalRegionalLoraCase(
             IntegrationCase(
                 "duplicate-global-regional-primary_adapter",
-                "Exact global and regional PRIMARY_ADAPTER duplicate rejection",
+                "Same PRIMARY_ADAPTER globally and regionally with additive use",
                 1.0,
                 MASK_CASE_ID,
                 0,
                 global_loras=(global_primary_adapter,),
                 regional_loras=(regional_primary_adapter,),
-            ),
-            expect_overlap_error=True,
+            )
         ),
     )

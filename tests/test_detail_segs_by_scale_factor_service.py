@@ -140,6 +140,40 @@ def test_positive_conditioning_batch_selects_by_segment_index() -> None:
     assert [call.negative for call in sampler.sample_calls] == [negative, negative]
 
 
+def test_detailer_keeps_prompt_control_hooks_peer_scoped_by_segment() -> None:
+    """Preserve each scheduled LoRA hook on only its selected face conditioning."""
+
+    sampler = _FakeSampler()
+    first = _segment(CropRegion(0, 0, 4, 4), BoundingBox(1, 1, 3, 3))
+    second = _segment(CropRegion(4, 4, 8, 8), BoundingBox(5, 5, 7, 7))
+    first_hooks = object()
+    second_hooks = object()
+    first_conditioning = [["first", {"hooks": first_hooks}]]
+    second_conditioning = [["second", {"hooks": second_hooks}]]
+    service = _service(sampler)
+
+    service.detail(
+        _image(),
+        _segs(first, second),
+        object(),
+        object(),
+        ConditioningBatch((first_conditioning, second_conditioning)),
+        [],
+        **_settings(),
+    )
+
+    assert sampler.sample_calls[0].positive is first_conditioning
+    assert sampler.sample_calls[1].positive is second_conditioning
+    selected_first = cast(list[list[object]], sampler.sample_calls[0].positive)
+    selected_second = cast(list[list[object]], sampler.sample_calls[1].positive)
+    first_metadata = selected_first[0][1]
+    second_metadata = selected_second[0][1]
+    assert isinstance(first_metadata, dict)
+    assert isinstance(second_metadata, dict)
+    assert first_metadata["hooks"] is first_hooks
+    assert second_metadata["hooks"] is second_hooks
+
+
 def test_negative_conditioning_batch_selects_by_segment_index() -> None:
     """A negative batch varies by SEG while normal positive broadcasts."""
 

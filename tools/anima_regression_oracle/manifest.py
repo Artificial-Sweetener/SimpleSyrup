@@ -101,7 +101,7 @@ def default_manifest(repo_root: Path) -> AnimaRegressionManifest:
         "tests/test_anima_multi_lora_fidelity.py",
         "tests/test_anima_multi_lora_composition.py",
         "tests/test_anima_full_tile_lora_equivalence.py",
-        "tests/test_anima_global_lora_overlap.py",
+        "tests/test_regional_lora_conditioning_adapter.py",
         "tests/test_anima_lora_block.py",
         "tests/test_anima_lora_block_inactive_schedule.py",
         "tests/test_anima_projection_batch.py",

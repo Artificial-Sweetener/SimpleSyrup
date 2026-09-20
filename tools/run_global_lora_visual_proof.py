@@ -81,14 +81,6 @@ def main() -> int:
                 LOGGER.info("Starting %s", case.label)
                 prompt_id = running.client.submit(workflow)
                 history = running.client.wait_for_history(prompt_id, timeout=1200.0)
-                if case.expect_overlap_rejection:
-                    recorder.record_overlap_rejection(
-                        case,
-                        workflow=workflow,
-                        history=history,
-                        prompt_id=prompt_id,
-                    )
-                    continue
                 reference = extract_saved_image(history, "11")
                 image_bytes = running.client.download_image(reference)
                 recorder.record_success(

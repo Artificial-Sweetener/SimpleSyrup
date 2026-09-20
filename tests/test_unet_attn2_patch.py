@@ -29,13 +29,6 @@ from simple_syrup.runtime.attention_coupling.unet_attn2_execution_resolver impor
 from simple_syrup.runtime.attention_coupling.unet_attn2_patch import (
     UnetAttn2PatchPair,
 )
-from simple_syrup.runtime.ppm_negpip_interop import (
-    PpmNegpipInterop,
-    PpmNegpipSemantics,
-)
-from simple_syrup.runtime.regional_lora.standard_unet_variant_base_attention import (
-    StandardUnetVariantBaseAttention,
-)
 
 
 class _ZeroAttention(nn.Module):
@@ -198,11 +191,8 @@ def test_unet_patch_clears_callback_state_after_output_failure() -> None:
     patches.input_patch(query, context, context, options)
 
 
-@pytest.mark.parametrize("persistent_base_graph", [False, True])
-def test_negpip_splits_exact_packed_regional_key_and_value_views(
-    persistent_base_graph: bool,
-) -> None:
-    """Select even K and odd V tokens after packing in both UNet base routes."""
+def test_negpip_splits_exact_packed_regional_key_and_value_views() -> None:
+    """Select even K and odd V tokens after regional branch packing."""
 
     contexts = _negpip_contexts()
     execution = UnetAttn2Execution(
@@ -224,22 +214,12 @@ def test_negpip_splits_exact_packed_regional_key_and_value_views(
 
         return query, key[:, 0::2], value[:, 1::2]
 
-    if persistent_base_graph:
-        interop = PpmNegpipInterop(
-            PpmNegpipSemantics.STANDARD_UNET_SPLIT_KEY_VALUE,
-            split_negpip,
-        )
-        options = StandardUnetVariantBaseAttention(
-            StaticUnetAttn2ExecutionResolver(execution),
-            negpip=interop,
-        ).prepare({"patches": {"attn2_patch": [split_negpip]}})
-    else:
-        options = {
-            "patches": {
-                "attn2_patch": [pair.input_patch, split_negpip],
-                "attn2_output_patch": [pair.output_patch],
-            }
+    options = {
+        "patches": {
+            "attn2_patch": [pair.input_patch, split_negpip],
+            "attn2_output_patch": [pair.output_patch],
         }
+    }
     recording = _RecordingKeyValueAttention()
     block = _block(recording)
 

@@ -248,7 +248,8 @@ def attention_coupling_ksampler_inputs(
             "model",
             tooltip=(
                 "Supported Anima or standard SD/SDXL model used for one shared "
-                "denoiser trajectory; apply global model LoRAs before connecting it."
+                "denoiser trajectory. LoRAs patched on this model and Prompt Control "
+                "model LoRAs on conditioning entry 0 apply globally."
             ),
         ),
         *base[1:6],
@@ -258,8 +259,8 @@ def attention_coupling_ksampler_inputs(
             tooltip=(
                 "Global-first positive conditioning: entry 0 is global and later "
                 "entries pair with masks. Regional Prompt Control WeightHooks may "
-                "contain ordered full-rank Anima LoRA stacks with independent "
-                "schedules; standard SD/SDXL rejects regional model-side hooks."
+                "contain ordered regional LoRA stacks with independent schedules. "
+                "Model LoRA hooks on entry 0 apply across the image."
             ),
         ),
         comfy_io.MultiType.Input(
@@ -267,8 +268,9 @@ def attention_coupling_ksampler_inputs(
             [comfy_io.Conditioning, conditioning_batch],
             tooltip=(
                 "Global-first negative conditioning aligned to the same masks; "
-                "Anima regional LoRA hooks retain their negative-branch ownership "
-                "and independent schedules."
+                "its global model hooks must match the positive global entry. "
+                "Regional LoRA hooks retain their negative-branch ownership and "
+                "independent schedules."
             ),
         ),
         comfy_io.Mask.Input(
@@ -278,7 +280,7 @@ def attention_coupling_ksampler_inputs(
                 "Optional ordered masks paired with conditioning entries 1 onward. "
                 "Leave disconnected with ordinary conditioning to bypass Attention "
                 "Coupling. In overlaps, prompt contributions are normalized while "
-                "Anima regional LoRA deltas add in declared adapter and region order."
+                "regional LoRA deltas add in declared adapter and region order."
             ),
         ),
         comfy_io.Float.Input(
@@ -291,7 +293,7 @@ def attention_coupling_ksampler_inputs(
             tooltip=(
                 "Balances regional cross-attention against the global prompt from "
                 "0 (global only) to 1 (regional only inside solid masks); regional "
-                "Anima LoRA strength remains controlled by each hook."
+                "LoRA strength remains controlled by each hook."
             ),
         ),
         comfy_io.Int.Input(
@@ -301,7 +303,7 @@ def attention_coupling_ksampler_inputs(
             max=512,
             step=1,
             tooltip=(
-                "Softens Attention Coupling and Anima regional LoRA boundaries by "
+                "Softens Attention Coupling and regional LoRA boundaries by "
                 "this many image pixels; 0 preserves authored mask values."
             ),
         ),

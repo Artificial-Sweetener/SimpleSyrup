@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any, TypeAlias
 
 import torch
+from comfy.hooks import HookGroup
 
 from ..domain.conditioning_batch import ConditioningBatch
 from ..domain.regional_prompting import (
@@ -18,6 +19,9 @@ from ..domain.regional_prompting import (
 from ..masking.regional_prompt_masks import (
     prepare_regional_mask_batch,
     regional_mask,
+)
+from ..runtime.global_first_conditioning_hooks import (
+    GLOBAL_FIRST_CONDITIONING_HOOK_COMPOSER,
 )
 from ..runtime.regional_conditioning_companion import detach_global_companion
 from ..shared.logging import get_logger
@@ -114,6 +118,11 @@ class RegionalConditioningService:
         if not plan.pairs:
             return self._copy_conditioning(global_conditioning)
 
+        global_hooks = GLOBAL_FIRST_CONDITIONING_HOOK_COMPOSER.global_hooks(
+            global_conditioning,
+            source_label=f"{input_name} global conditioning",
+        )
+        hook_cache: dict[tuple[HookGroup, HookGroup], HookGroup] = {}
         assembled = self._as_default(global_conditioning)
         for pair in plan.pairs:
             conditioning = self._validate_conditioning(
@@ -121,6 +130,22 @@ class RegionalConditioningService:
                 input_name=(f"{input_name} regional entry {pair.conditioning_index}"),
             )
             conditioning, global_companion = detach_global_companion(conditioning)
+            conditioning = GLOBAL_FIRST_CONDITIONING_HOOK_COMPOSER.compose(
+                conditioning,
+                global_hooks,
+                source_label=(f"{input_name} regional entry {pair.conditioning_index}"),
+                cache=hook_cache,
+            )
+            if global_companion is not None:
+                global_companion = GLOBAL_FIRST_CONDITIONING_HOOK_COMPOSER.compose(
+                    global_companion,
+                    global_hooks,
+                    source_label=(
+                        f"{input_name} regional entry {pair.conditioning_index} "
+                        "global companion"
+                    ),
+                    cache=hook_cache,
+                )
             mask = regional_mask(mask_batch, pair.mask_index)
             if global_companion is not None and regional_prompt_weight < 1.0:
                 assembled.extend(

@@ -21,7 +21,6 @@ class GlobalLoraVisualCase:
     label: str
     global_strength: float | None = None
     regional_strength: float | None = None
-    expect_overlap_rejection: bool = False
 
 
 def cases() -> tuple[GlobalLoraVisualCase, ...]:
@@ -49,7 +48,6 @@ def cases() -> tuple[GlobalLoraVisualCase, ...]:
             "GLOBAL + LEFT PRIMARY_ADAPTER 1.0 — duplicate",
             global_strength=1.0,
             regional_strength=1.0,
-            expect_overlap_rejection=True,
         ),
     )
 

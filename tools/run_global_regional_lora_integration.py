@@ -44,7 +44,7 @@ def execute_matrix(
     readiness_timeout: float,
     prompt_timeout: float,
 ) -> Path:
-    """Execute all success and intentional-rejection cases."""
+    """Execute all global, regional, and additive-placement cases."""
 
     definitions = cases()
     manifest_case = next(
@@ -84,14 +84,6 @@ def execute_matrix(
                     prompt_id,
                     timeout=prompt_timeout,
                 )
-                if case.expect_overlap_error:
-                    recorder.record_overlap_rejection(
-                        case,
-                        workflow,
-                        prompt_id=prompt_id,
-                        history=history,
-                    )
-                    continue
                 reference = extract_saved_image(history, workflow.save_node_id)
                 image = running.client.download_image(reference)
                 path = recorder.record_success(

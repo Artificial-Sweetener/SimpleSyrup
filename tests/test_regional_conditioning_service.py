@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 import torch
+from comfy.hooks import EnumHookType, HookGroup, create_hook_lora
 
 from simple_syrup.domain.conditioning_batch import ConditioningBatch
 from simple_syrup.runtime.regional_conditioning_companion import (
@@ -141,10 +142,10 @@ def test_feathering_preserves_inputs_and_softens_regional_copy() -> None:
 
 
 def test_mask_composition_preserves_segment_lora_hook_metadata() -> None:
-    """Global and regional hook groups survive standard mask composition."""
+    """Global hooks compose into every conventional regional model state."""
 
-    global_hooks = object()
-    regional_hooks = object()
+    global_hooks = _hooks("global")
+    regional_hooks = _hooks("regional")
     positive = ConditioningBatch(
         (
             [["global", {"hooks": global_hooks, "other": "global metadata"}]],
@@ -162,8 +163,66 @@ def test_mask_composition_preserves_segment_lora_hook_metadata() -> None:
 
     assert assembled[0][1]["hooks"] is global_hooks
     assert assembled[0][1]["other"] == "global metadata"
-    assert assembled[1][1]["hooks"] is regional_hooks
+    combined = assembled[1][1]["hooks"]
+    assert isinstance(combined, HookGroup)
+    assert _hook_refs(combined) == ["global", "regional"]
     assert assembled[1][1]["other"] == "region metadata"
+
+
+def test_global_hooks_compose_with_regional_companion_and_both_cfg_sides() -> None:
+    """Keep one global patch under every local and fallback regional prompt share."""
+
+    positive_global = _hooks("positive global")
+    positive_regional = _hooks("positive regional")
+    negative_global = _hooks("negative global")
+    negative_regional = _hooks("negative regional")
+    positive_region = attach_global_companion(
+        [["positive region", {"hooks": positive_regional}]],
+        [["positive fallback", {"hooks": positive_regional}]],
+    )
+    negative_region = attach_global_companion(
+        [["negative region", {"hooks": negative_regional}]],
+        [["negative fallback", {"hooks": negative_regional}]],
+    )
+
+    positive, negative = RegionalConditioningService().assemble(
+        positive=ConditioningBatch(
+            (
+                [["positive global", {"hooks": positive_global}]],
+                positive_region,
+            )
+        ),
+        negative=ConditioningBatch(
+            (
+                [["negative global", {"hooks": negative_global}]],
+                negative_region,
+            )
+        ),
+        masks=torch.ones((1, 2, 2)),
+        regional_prompt_weight=0.5,
+        region_mask_feather=0,
+    )
+
+    assert _hook_refs(positive[0][1]["hooks"]) == ["positive global"]
+    assert _hook_refs(positive[1][1]["hooks"]) == [
+        "positive global",
+        "positive regional",
+    ]
+    assert _hook_refs(positive[2][1]["hooks"]) == [
+        "positive global",
+        "positive regional",
+    ]
+    assert positive[1][1]["hooks"] is positive[2][1]["hooks"]
+    assert _hook_refs(negative[0][1]["hooks"]) == ["negative global"]
+    assert _hook_refs(negative[1][1]["hooks"]) == [
+        "negative global",
+        "negative regional",
+    ]
+    assert _hook_refs(negative[2][1]["hooks"]) == [
+        "negative global",
+        "negative regional",
+    ]
+    assert negative[1][1]["hooks"] is negative[2][1]["hooks"]
 
 
 @pytest.mark.parametrize(
@@ -281,3 +340,18 @@ def test_invalid_regional_prompt_weight_fails_before_mask_processing(
             regional_prompt_weight=weight,
             region_mask_feather=0,
         )
+
+
+def _hooks(identity: str) -> HookGroup:
+    """Return one recognizable model-active Prompt Control-style HookGroup."""
+
+    hooks = create_hook_lora({}, strength_model=1.0, strength_clip=0.0)
+    hooks.get_type(EnumHookType.Weight)[0].hook_ref = identity
+    return hooks
+
+
+def _hook_refs(value: object) -> list[object]:
+    """Return ordered WeightHook references from one asserted HookGroup."""
+
+    assert isinstance(value, HookGroup)
+    return [hook.hook_ref for hook in value.get_type(EnumHookType.Weight)]

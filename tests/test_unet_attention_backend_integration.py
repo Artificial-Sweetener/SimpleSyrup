@@ -31,8 +31,8 @@ from simple_syrup.runtime.attention_coupling.unet_attention_state import (
 from simple_syrup.runtime.regional_attention_diagnostics import (
     RegionalAttentionDiagnosticsBuilder,
 )
-from simple_syrup.runtime.regional_lora.standard_unet_native_admission import (
-    StandardUnetNativeLoraAdmission,
+from simple_syrup.runtime.regional_lora.standard_unet_operation_preparation import (
+    StandardUnetOperationAdmission,
 )
 from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 
@@ -181,8 +181,10 @@ def test_backend_projects_unique_resolutions_once_in_one_native_trajectory(
     diffusion_model = _ResolutionDiffusionModel(context_dimension)
     source = _patcher(diffusion_model)
     state = _state(context_dimension)
-    admission = StandardUnetNativeLoraAdmission(
+    admission = StandardUnetOperationAdmission(
         RegionalLoraPlanAdaptation(EMPTY_REGIONAL_LORA_PLAN, ()),
+        None,
+        {},
         None,
     )
     built = StandardUnetAttentionBackend().derive(

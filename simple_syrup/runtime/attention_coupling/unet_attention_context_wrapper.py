@@ -6,12 +6,17 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
+
 import torch
 
 from ..diffusion_wrapper_executor import DiffusionWrapperExecutor
 from ..diffusion_wrapper_invocation import DIFFUSION_WRAPPER_INVOCATION_VALIDATOR
 from ..model_patcher_mutations import ModelDiffusionWrapperMutation
 from ..regional_attention_model_call import RegionalAttentionModelCallResolver
+from ..regional_lora.standard_unet_operation_session import (
+    StandardUnetRegionalOperationSession,
+)
 from .standard_unet_model_output_validation import (
     STANDARD_UNET_MODEL_OUTPUT_VALIDATOR,
     StandardUnetModelOutputValidator,
@@ -32,6 +37,7 @@ class StandardUnetAttentionContextDiffusionWrapper:
         self,
         state: StandardUnetAttentionState,
         attention_phase: StandardUnetAttentionPhaseSession,
+        operation_session: StandardUnetRegionalOperationSession | None = None,
         *,
         model_call_resolver: RegionalAttentionModelCallResolver = (
             STANDARD_UNET_MODEL_CALL_RESOLVER
@@ -46,12 +52,18 @@ class StandardUnetAttentionContextDiffusionWrapper:
             raise TypeError("Standard UNet context wrapper requires attention state.")
         if not isinstance(attention_phase, StandardUnetAttentionPhaseSession):
             raise TypeError("Standard UNet context wrapper requires phase state.")
+        if operation_session is not None and not isinstance(
+            operation_session,
+            StandardUnetRegionalOperationSession,
+        ):
+            raise TypeError("Standard UNet operation session has an invalid type.")
         if not isinstance(model_call_resolver, RegionalAttentionModelCallResolver):
             raise TypeError(
                 "Standard UNet context wrapper requires a model-call resolver."
             )
         self._state = state
         self._attention_phase = attention_phase
+        self._operation_session = operation_session
         self._model_call_resolver = model_call_resolver
         if not isinstance(output_validator, StandardUnetModelOutputValidator):
             raise TypeError("Standard UNet output validator has an invalid type.")
@@ -90,11 +102,14 @@ class StandardUnetAttentionContextDiffusionWrapper:
             transformer_options=args[5],
         )
         forwarded_args = (*args[:2], contexts.base_context, *args[3:])
-        with (
-            self._attention_phase.activate(args[5]),
-            self._state.execution_context.activate(contexts),
-            self._state.resolution_cache.activate(),
-        ):
+        with ExitStack() as scopes:
+            scopes.enter_context(self._attention_phase.activate(args[5]))
+            scopes.enter_context(self._state.execution_context.activate(contexts))
+            scopes.enter_context(self._state.resolution_cache.activate())
+            if self._operation_session is not None:
+                scopes.enter_context(
+                    self._operation_session.activate(contexts, args[5])
+                )
             output = executor(*forwarded_args, **kwargs)
             return self._output_validator.validate(output, model_input=args[0])
 
@@ -102,6 +117,7 @@ class StandardUnetAttentionContextDiffusionWrapper:
 def unet_attention_context_wrapper_mutation(
     state: StandardUnetAttentionState,
     attention_phase: StandardUnetAttentionPhaseSession,
+    operation_session: StandardUnetRegionalOperationSession | None = None,
 ) -> ModelDiffusionWrapperMutation:
     """Return the clone-local standard-UNet context wrapper mutation."""
 
@@ -110,5 +126,6 @@ def unet_attention_context_wrapper_mutation(
         StandardUnetAttentionContextDiffusionWrapper(
             state,
             attention_phase,
+            operation_session,
         ),
     )

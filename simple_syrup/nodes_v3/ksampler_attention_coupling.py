@@ -53,12 +53,14 @@ class KSamplerAttentionCouplingV3(_ComfyNodeBase):
                 "With conditioning batches and masks, denoises supported Anima "
                 "and standard SD/SDXL models through one "
                 "shared trajectory while coupling global and masked regional "
-                "cross-attention. The input MODEL may carry a global LoRA. Anima "
-                "regions may also carry ordered, independently scheduled Prompt "
-                "Control model LoRAs whose overlapping deltas compose in declared "
-                "order. Runtime scales with active adapters, ranks, and targets. "
-                "Standard SD/SDXL regional model-side hooks and unsupported Anima "
-                "adapter targets fail before sampling."
+                "cross-attention. LoRAs on the input MODEL and Prompt Control model "
+                "LoRAs on global conditioning entry 0 apply across the image. Regions "
+                "may also carry ordered, independently scheduled model LoRAs "
+                "whose overlapping deltas compose in declared order. Runtime scales "
+                "with active adapters, ranks, and targets. "
+                "Global LoRA and regional LoRA retain independent schedules; "
+                "regional model-side hooks are supported on admitted model families. "
+                "Unsupported adapter targets fail before sampling."
             ),
             search_aliases=[
                 "attention coupling",

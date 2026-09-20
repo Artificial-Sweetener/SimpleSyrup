@@ -26,8 +26,8 @@ from simple_syrup.runtime.attention_coupling.unet_attention_state import (
 from simple_syrup.runtime.regional_attention_diagnostics import (
     RegionalAttentionDiagnosticsBuilder,
 )
-from simple_syrup.runtime.regional_lora.standard_unet_native_admission import (
-    StandardUnetNativeLoraAdmission,
+from simple_syrup.runtime.regional_lora.standard_unet_operation_preparation import (
+    StandardUnetOperationAdmission,
 )
 from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 
@@ -71,8 +71,10 @@ class UnetAttentionCouplingLifecycleHarness(AttentionCouplingLifecycleHarness):
         built = StandardUnetAttentionBackend().derive(
             model=source,
             state=state,
-            admission=StandardUnetNativeLoraAdmission(
+            admission=StandardUnetOperationAdmission(
                 RegionalLoraPlanAdaptation(plan.lora_plan, ()),
+                None,
+                {},
                 None,
             ),
         )

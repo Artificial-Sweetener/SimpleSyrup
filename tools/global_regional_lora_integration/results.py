@@ -19,8 +19,6 @@ from tools.comfy_api import ImageReference, JsonObject
 from .image_validation import GLOBAL_REGIONAL_LORA_IMAGE_VALIDATOR
 from .matrix import GlobalRegionalLoraCase
 
-_OVERLAP_MESSAGE = "Regional Anima LoRA content is already applied globally"
-
 
 class GlobalRegionalLoraResultRecorder:
     """Own terminal status, ordering, and durable P9.3 evidence persistence."""
@@ -46,8 +44,6 @@ class GlobalRegionalLoraResultRecorder:
     ) -> Path:
         """Require success and preserve its labeled image and sidecars."""
 
-        if case.expect_overlap_error:
-            raise ValueError("P9.3 overlap case cannot be recorded as success.")
         _require_status(history, "success")
         metrics = _metrics(history, workflow)
         image_path = self._root / f"{case.case_id}.png"
@@ -71,38 +67,6 @@ class GlobalRegionalLoraResultRecorder:
             }
         )
         return image_path
-
-    def record_overlap_rejection(
-        self,
-        case: GlobalRegionalLoraCase,
-        workflow: BuiltAnimaAttentionCouplingWorkflow,
-        *,
-        prompt_id: str,
-        history: JsonObject,
-    ) -> None:
-        """Require the exact pre-sampling duplicate diagnostic and no image."""
-
-        if not case.expect_overlap_error:
-            raise ValueError("P9.3 success case cannot be recorded as rejection.")
-        _require_status(history, "error")
-        serialized = json.dumps(history, sort_keys=True)
-        if (
-            _OVERLAP_MESSAGE not in serialized
-            or "adapter-a.safetensors" not in serialized
-        ):
-            raise ValueError("P9.3 history lacks the exact overlap diagnostic.")
-        if workflow.save_node_id in _outputs(history):
-            raise ValueError("P9.3 overlap rejection unexpectedly saved an image.")
-        self._sidecars(case, workflow, history)
-        self._observations.append(
-            {
-                "case_id": case.case_id,
-                "label": case.integration.label,
-                "status": "rejected_before_sampling",
-                "prompt_id": prompt_id,
-                "diagnostic": _OVERLAP_MESSAGE,
-            }
-        )
 
     def finalize(
         self,

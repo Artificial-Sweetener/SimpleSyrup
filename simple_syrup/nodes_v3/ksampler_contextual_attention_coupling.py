@@ -50,12 +50,14 @@ class KSamplerContextualAttentionCouplingV3(_ComfyNodeBase):
             description=(
                 "Preserves large-image composition through Contextual Diffusion "
                 "while coupling regional attention in every local and reduced-global "
-                "Anima or standard SD/SDXL view. Global LoRAs remain on the input "
-                "model. Anima regional LoRA stacks are prepared once, retain "
+                "Anima or standard SD/SDXL view. LoRAs on the input MODEL and Prompt "
+                "Control model LoRAs on global conditioning entry 0 apply in every "
+                "view. Regional LoRA stacks are prepared once, retain "
                 "independent schedules and full quality, and skip inactive work. "
-                "Optional SEGS guide the shared local tile plan. Standard SD/SDXL "
-                "regional model-side hooks and unsupported Anima targets fail before "
-                "sampling."
+                "Global LoRA and regional LoRA stacks remain independently scheduled; "
+                "regional model-side hooks are supported on admitted model families. "
+                "Optional SEGS guide the shared local tile plan. Unsupported adapter "
+                "targets fail before sampling."
             ),
             search_aliases=[
                 "contextual attention coupling",

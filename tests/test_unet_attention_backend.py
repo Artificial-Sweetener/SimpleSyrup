@@ -30,8 +30,8 @@ from simple_syrup.runtime.attention_coupling.unet_attention_state import (
 from simple_syrup.runtime.regional_attention_diagnostics import (
     RegionalAttentionDiagnosticsBuilder,
 )
-from simple_syrup.runtime.regional_lora.standard_unet_native_admission import (
-    StandardUnetNativeLoraAdmission,
+from simple_syrup.runtime.regional_lora.standard_unet_operation_preparation import (
+    StandardUnetOperationAdmission,
 )
 from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
 
@@ -145,11 +145,11 @@ def test_standard_unet_backend_preserves_existing_attn1_patch() -> None:
     assert source.object_patches == {}
 
 
-def _empty_admission() -> StandardUnetNativeLoraAdmission:
+def _empty_admission() -> StandardUnetOperationAdmission:
     """Return one prompt-only standard-family admission."""
 
     adaptation = RegionalLoraPlanAdaptation(EMPTY_REGIONAL_LORA_PLAN, ())
-    return StandardUnetNativeLoraAdmission(adaptation, None)
+    return StandardUnetOperationAdmission(adaptation, None, {}, None)
 
 
 def _state() -> StandardUnetAttentionState:

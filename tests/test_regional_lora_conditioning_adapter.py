@@ -22,6 +22,9 @@ from simple_syrup.masking.regional_prompt_masks import build_regional_mask_bank
 from simple_syrup.runtime.regional_lora_conditioning_adapter import (
     RegionalLoraConditioningAdapter,
 )
+from simple_syrup.runtime.regional_lora_conditioning_sources import (
+    conditioning_hook_groups,
+)
 
 
 class _Sampling:
@@ -201,17 +204,32 @@ def test_adapter_accepts_different_text_only_hooks_across_schedule_entries() -> 
     assert adaptation.adapter_payloads == ()
 
 
-def test_adapter_rejects_global_hooks_and_opaque_regional_identity() -> None:
-    """Require global MODEL ownership and a stable regional adapter identity."""
+def test_adapter_preserves_global_hooks_and_rejects_opaque_regional_identity() -> None:
+    """Leave compatible global hooks on sampler conditioning and adapt regions."""
 
-    hooks = _hooks(("pc-PRIMARY_ADAPTER-0.8-0.0",))
+    global_hooks = _hooks(("pc-GLOBAL_ADAPTER-0.7-0.0",))
+    regional_hooks = _hooks(("pc-PRIMARY_ADAPTER-0.8-0.0",))
     global_plan = build_raw_regional_attention_plan(
-        positive=ConditioningBatch((_conditioning(hooks), _conditioning())),
-        negative=ConditioningBatch((_conditioning(), _conditioning())),
+        positive=ConditioningBatch(
+            (_conditioning(global_hooks), _conditioning(regional_hooks))
+        ),
+        negative=ConditioningBatch((_conditioning(global_hooks), _conditioning())),
         mask_bank=_mask_bank(1),
     )
-    with pytest.raises(ValueError, match="Apply global LoRAs to the input MODEL"):
-        RegionalLoraConditioningAdapter().adapt(global_plan, model=_Model())
+    adaptation = RegionalLoraConditioningAdapter().adapt(
+        global_plan,
+        model=_Model(),
+    )
+
+    assert [item.adapter_identity.value for item in adaptation.plan.adapters] == [
+        "pc-PRIMARY_ADAPTER-0.8-0.0"
+    ]
+    assert conditioning_hook_groups(global_plan.positive.base_conditioning) == (
+        global_hooks,
+    )
+    assert conditioning_hook_groups(global_plan.negative.base_conditioning) == (
+        global_hooks,
+    )
 
     opaque = comfy.hooks.create_hook_lora({}, 1.0, 0.0)
     opaque_plan = build_raw_regional_attention_plan(
@@ -221,6 +239,21 @@ def test_adapter_rejects_global_hooks_and_opaque_regional_identity() -> None:
     )
     with pytest.raises(ValueError, match="no stable string adapter identity"):
         RegionalLoraConditioningAdapter().adapt(opaque_plan, model=_Model())
+
+
+def test_adapter_rejects_mismatched_global_cfg_hook_schedules() -> None:
+    """Keep Attention Coupling on one global hook state per packed model call."""
+
+    positive_global = _hooks(("pc-positive-global",))
+    negative_global = _hooks(("pc-negative-global",))
+    plan = build_raw_regional_attention_plan(
+        positive=ConditioningBatch((_conditioning(positive_global), _conditioning())),
+        negative=ConditioningBatch((_conditioning(negative_global), _conditioning())),
+        mask_bank=_mask_bank(1),
+    )
+
+    with pytest.raises(ValueError, match="must match across positive and negative"):
+        RegionalLoraConditioningAdapter().adapt(plan, model=_Model())
 
 
 def _hooks(identities: tuple[str, ...]) -> comfy.hooks.HookGroup:

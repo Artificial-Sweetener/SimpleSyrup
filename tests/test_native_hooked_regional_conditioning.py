@@ -152,8 +152,10 @@ def test_native_sampler_activates_hooks_from_masked_regional_conditioning(
 ) -> None:
     """Comfy activates each preserved hook group through direct and tiled paths."""
 
-    global_hooks = comfy.hooks.HookGroup()
-    regional_hooks = comfy.hooks.HookGroup()
+    global_hooks = comfy.hooks.create_hook_lora({}, 0.7, 0.0)
+    regional_hooks = comfy.hooks.create_hook_lora({}, 0.9, 0.0)
+    global_hooks.get_type(comfy.hooks.EnumHookType.Weight)[0].hook_ref = "global"
+    regional_hooks.get_type(comfy.hooks.EnumHookType.Weight)[0].hook_ref = "regional"
     assembled, _ = RegionalConditioningService().assemble(
         positive=ConditioningBatch(
             (
@@ -166,6 +168,12 @@ def test_native_sampler_activates_hooks_from_masked_regional_conditioning(
         regional_prompt_weight=0.5,
         region_mask_feather=0,
     )
+    combined_hooks = assembled[1][1]["hooks"]
+    assert isinstance(combined_hooks, comfy.hooks.HookGroup)
+    assert [
+        hook.hook_ref
+        for hook in combined_hooks.get_type(comfy.hooks.EnumHookType.Weight)
+    ] == ["global", "regional"]
     converted = comfy.sampler_helpers.convert_cond(assembled)
     for conditioning in converted:
         cross_attn = conditioning.pop("cross_attn")
@@ -187,9 +195,9 @@ def test_native_sampler_activates_hooks_from_masked_regional_conditioning(
     )
 
     assert len(outputs) == 1
-    assert set(model.current_patcher.prepared) == {global_hooks, regional_hooks}
-    assert set(model.current_patcher.applied) == {global_hooks, regional_hooks}
-    assert set(model.model_calls) == {global_hooks, regional_hooks}
+    assert set(model.current_patcher.prepared) == {global_hooks, combined_hooks}
+    assert set(model.current_patcher.applied) == {global_hooks, combined_hooks}
+    assert set(model.model_calls) == {global_hooks, combined_hooks}
 
 
 def _conditioning(

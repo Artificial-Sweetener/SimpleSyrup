@@ -68,8 +68,7 @@ class RegionalLoraConditioningSourceCollector:
 
         if not isinstance(plan, RawRegionalAttentionPlan):
             raise TypeError("Regional LoRA source collection requires a plan.")
-        self._require_unhooked_base("positive", plan.positive)
-        self._require_unhooked_base("negative", plan.negative)
+        self._require_compatible_base_hooks(plan)
         return (
             *self._branch_sources(plan.positive, branch=RegionalLoraBranch.POSITIVE),
             *self._branch_sources(plan.negative, branch=RegionalLoraBranch.NEGATIVE),
@@ -112,31 +111,49 @@ class RegionalLoraConditioningSourceCollector:
             )
         return tuple(sources)
 
-    def _require_unhooked_base(
+    def _require_compatible_base_hooks(
+        self,
+        plan: RawRegionalAttentionPlan,
+    ) -> None:
+        """Require one shared global model-hook schedule across CFG branches."""
+
+        positive = self._base_hook_signature("positive", plan.positive)
+        negative = self._base_hook_signature("negative", plan.negative)
+        if positive != negative:
+            raise ValueError(
+                "Attention Coupling global model hooks must match across positive "
+                "and negative conditioning. Encode both branches through the same "
+                "Prompt Control global segment."
+            )
+
+    def _base_hook_signature(
         self,
         branch_name: str,
         branch: RawRegionalAttentionBranch,
-    ) -> None:
-        """Require only model-active global LoRAs to arrive on the input MODEL."""
+    ) -> tuple[tuple[object, ...], ...]:
+        """Return one uniform global model-hook signature for a CFG branch."""
 
-        groups = conditioning_hook_groups(branch.base_conditioning)
-        model_hook_count = sum(
-            len(
+        signatures = tuple(
+            self._group_signature(
                 self._model_hook_selection(
                     group,
                     source_label=(
                         f"Attention Coupling {branch_name} global conditioning"
                     ),
-                ).model_hooks
+                )
             )
-            for group in groups
+            for group in conditioning_hook_groups(branch.base_conditioning)
         )
-        if model_hook_count:
+        if not signatures:
+            return ()
+        authority = signatures[0]
+        if any(signature != authority for signature in signatures[1:]):
             raise ValueError(
-                f"Attention Coupling {branch_name} global conditioning contains "
-                "model hooks. Apply global LoRAs to the input MODEL; reserve "
-                "conditioning hooks for masked regional entries."
+                f"Attention Coupling {branch_name} global conditioning uses "
+                "different model HookGroups across text schedule entries. Keep "
+                "model LoRA scheduling on one shared WeightHook schedule."
             )
+        return authority
 
     def _uniform_hooks(
         self,

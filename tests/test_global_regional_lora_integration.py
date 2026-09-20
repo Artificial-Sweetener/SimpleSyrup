@@ -49,19 +49,12 @@ def test_p9_3_matrix_covers_global_regional_distinct_and_duplicate_cases() -> No
         0,
         1,
     ]
-    assert [case.expect_overlap_error for case in definitions] == [
-        False,
-        False,
-        False,
-        False,
-        True,
-    ]
 
 
-def test_p9_3_result_requires_success_outputs_and_exact_overlap_rejection(
+def test_p9_3_result_requires_success_outputs_for_every_placement(
     tmp_path: Path,
 ) -> None:
-    """Persist four images and one pre-sampling rejection before completion."""
+    """Persist all five global, regional, and additive placement images."""
 
     recorder = GlobalRegionalLoraResultRecorder(tmp_path)
     workflow = BuiltAnimaAttentionCouplingWorkflow(
@@ -77,7 +70,7 @@ def test_p9_3_result_requires_success_outputs_and_exact_overlap_rejection(
         "status": {"status_str": "success", "completed": True},
         "outputs": {"metrics": {"benchmark_metrics": [{"model_call_count": STEPS}]}},
     }
-    for case in definitions[:-1]:
+    for case in definitions:
         color = (
             (240, 10, 10)
             if "global-global_adapter-regional" in case.case_id
@@ -93,24 +86,6 @@ def test_p9_3_result_requires_success_outputs_and_exact_overlap_rejection(
             reference=ImageReference("image.png", "", "output"),
             image_bytes=_png(color),
         )
-    rejection_history: JsonObject = {
-        "status": {
-            "status_str": "error",
-            "completed": False,
-            "messages": [
-                "Regional Anima LoRA content is already applied globally to the "
-                "input MODEL: 'adapter-a.safetensors'."
-            ],
-        },
-        "outputs": {},
-    }
-    recorder.record_overlap_rejection(
-        definitions[-1],
-        workflow,
-        prompt_id="prompt-duplicate",
-        history=rejection_history,
-    )
-
     result_path = recorder.finalize(
         definitions,
         system_stats={"devices": []},
@@ -125,7 +100,7 @@ def test_p9_3_result_requires_success_outputs_and_exact_overlap_rejection(
         "success",
         "success",
         "success",
-        "rejected_before_sampling",
+        "success",
     ]
     assert result["transition"] == {
         "distinct_before_after": {

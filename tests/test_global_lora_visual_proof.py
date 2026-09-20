@@ -29,13 +29,6 @@ def test_matrix_covers_global_strength_regional_and_duplicate_placement() -> Non
         1.0,
         1.0,
     ]
-    assert [case.expect_overlap_rejection for case in definitions] == [
-        False,
-        False,
-        False,
-        False,
-        True,
-    ]
 
 
 def test_prompt_renderer_places_primary_adapter_only_in_declared_segments() -> None:

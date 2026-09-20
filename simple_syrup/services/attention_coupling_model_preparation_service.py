@@ -26,6 +26,7 @@ from ..runtime.comfy_conditioning_processing import (
     ComfyRegionalConditioningProcessor,
 )
 from ..runtime.comfy_latent_normalization import ComfyLatentNormalizer
+from ..runtime.global_hook_model_resolver import GlobalHookModelResolver
 from ..runtime.regional_lora_conditioning_adapter import (
     RegionalLoraConditioningAdapter,
 )
@@ -82,6 +83,9 @@ class AttentionCouplingModelPreparationService:
     latent_normalizer_class: ClassVar[type[ComfyLatentNormalizer]] = (
         ComfyLatentNormalizer
     )
+    global_hook_model_resolver_class: ClassVar[type[GlobalHookModelResolver]] = (
+        GlobalHookModelResolver
+    )
     model_family_selector_class: ClassVar[
         type[AttentionCouplingModelFamilySelector]
     ] = AttentionCouplingModelFamilySelector
@@ -116,6 +120,11 @@ class AttentionCouplingModelPreparationService:
             )
         interop_validator = self.interop_validator_class()
         interop_report = interop_validator.validate(model, capabilities)
+        model = self.global_hook_model_resolver_class().resolve(
+            model,
+            positive=positive,
+            negative=negative,
+        )
         model_family = self.model_family_selector_class().select(capabilities)
         samples = self.latent_normalizer_class().normalize(
             model=model,

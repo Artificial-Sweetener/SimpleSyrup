@@ -17,8 +17,6 @@ from tools.comfy_integration.portable_font import load_label_font
 
 from .matrix import GlobalLoraVisualCase
 
-_OVERLAP_MESSAGE = "Regional Anima LoRA content is already applied globally"
-
 
 class GlobalLoraVisualProofRecorder:
     """Own ordered proof observations, full images, and the comparison sheet."""
@@ -44,8 +42,6 @@ class GlobalLoraVisualProofRecorder:
     ) -> Path:
         """Persist one successful full-resolution image and exact sidecars."""
 
-        if case.expect_overlap_rejection:
-            raise ValueError("Duplicate LoRA case cannot be recorded as success.")
         _require_status(history, "success")
         path = self._root / f"{case.case_id}.png"
         path.write_bytes(image_bytes)
@@ -67,36 +63,6 @@ class GlobalLoraVisualProofRecorder:
             }
         )
         return path
-
-    def record_overlap_rejection(
-        self,
-        case: GlobalLoraVisualCase,
-        *,
-        workflow: dict[str, JsonObject],
-        history: JsonObject,
-        prompt_id: str,
-    ) -> None:
-        """Persist the intentional pre-sampling duplicate rejection."""
-
-        if not case.expect_overlap_rejection:
-            raise ValueError("Success case cannot be recorded as a rejection.")
-        _require_status(history, "error")
-        serialized = json.dumps(history, sort_keys=True)
-        if (
-            _OVERLAP_MESSAGE not in serialized
-            or "adapter-a.safetensors" not in serialized
-        ):
-            raise ValueError("Duplicate case lacks the exact overlap diagnostic.")
-        self._write_sidecars(case, workflow, history)
-        self._observations.append(
-            {
-                "case_id": case.case_id,
-                "label": case.label,
-                "status": "rejected_before_sampling",
-                "prompt_id": prompt_id,
-                "diagnostic": _OVERLAP_MESSAGE,
-            }
-        )
 
     def finalize(
         self,
@@ -137,14 +103,13 @@ class GlobalLoraVisualProofRecorder:
         self,
         definitions: tuple[GlobalLoraVisualCase, ...],
     ) -> Path:
-        """Render four outputs and the duplicate diagnostic in a labeled grid."""
+        """Render all five placement outputs in a labeled grid."""
 
         panel = 768
         header = 80
         canvas = Image.new("RGB", (panel * 3, (panel + header) * 2), (20, 20, 20))
         draw = ImageDraw.Draw(canvas)
         title_font = load_label_font(24)
-        body_font = load_label_font(20)
         for index, case in enumerate(definitions):
             column = index % 3
             row = index // 3
@@ -153,32 +118,13 @@ class GlobalLoraVisualProofRecorder:
             draw.text((left + 18, top + 25), case.label, fill="white", font=title_font)
             body_top = top + header
             path = self._images.get(case.case_id)
-            if path is not None:
-                with Image.open(path) as source:
-                    image = source.convert("RGB").resize(
-                        (panel, panel), Image.Resampling.LANCZOS
-                    )
-                canvas.paste(image, (left, body_top))
-                continue
-            draw.rectangle(
-                (left, body_top, left + panel - 1, body_top + panel - 1),
-                fill=(45, 28, 28),
-                outline=(220, 90, 90),
-                width=3,
-            )
-            lines = (
-                "REJECTED BEFORE SAMPLING",
-                "The same PRIMARY_ADAPTER weights were already",
-                "installed globally on the input model.",
-                "Current policy prevents double application.",
-            )
-            for line_index, line in enumerate(lines):
-                draw.text(
-                    (left + 48, body_top + 230 + line_index * 42),
-                    line,
-                    fill=(255, 220, 220),
-                    font=body_font,
+            if path is None:
+                raise ValueError(f"Global LoRA proof lacks image for {case.case_id!r}.")
+            with Image.open(path) as source:
+                image = source.convert("RGB").resize(
+                    (panel, panel), Image.Resampling.LANCZOS
                 )
+            canvas.paste(image, (left, body_top))
         path = self._root / "global-lora-placement__labeled-comparison.png"
         canvas.save(path, format="PNG")
         return path

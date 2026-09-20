@@ -20,7 +20,6 @@ from .anima_attention_coupling import anima_attention_coupling_mutations
 from .anima_attention_execution import AnimaRegionalAttentionExecution
 from .anima_composition import AnimaRegionalLoraComposition
 from .anima_execution_scope import AnimaRegionalLoraAdapterExecution
-from .anima_global_lora_overlap import ANIMA_GLOBAL_REGIONAL_LORA_OVERLAP_VALIDATOR
 from .anima_model_patcher_surface import ANIMA_MODEL_PATCHER_SURFACE_RESOLVER
 from .anima_plan_admission import ANIMA_REGIONAL_LORA_PLAN_ADMISSION_SERVICE
 from .execution_cache import ModelCloneLineage, RegionalLoraExecutionCache
@@ -56,7 +55,6 @@ class FullContextAnimaAttentionBackend:
         if negpip is not None and not isinstance(negpip, PpmNegpipInterop):
             raise TypeError("Anima backend NegPiP state has an invalid type.")
         admitted = ANIMA_REGIONAL_LORA_PLAN_ADMISSION_SERVICE.admit(adaptation)
-        ANIMA_GLOBAL_REGIONAL_LORA_OVERLAP_VALIDATOR.validate(model, admitted)
         template = build_regional_attention_template(
             processed_plan,
             latent_batch_size=latent_batch_size,

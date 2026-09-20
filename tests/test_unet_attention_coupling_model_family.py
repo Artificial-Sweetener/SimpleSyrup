@@ -41,9 +41,9 @@ from simple_syrup.runtime.attention_coupling.unet_attention_state import (
 from simple_syrup.runtime.attention_coupling.unet_context import (
     STANDARD_UNET_REGIONAL_CONTEXT_VALIDATOR,
 )
-from simple_syrup.runtime.regional_lora.standard_unet_native_admission import (
-    StandardUnetNativeLoraAdmission,
-    StandardUnetNativeLoraAdmissionService,
+from simple_syrup.runtime.regional_lora.standard_unet_operation_preparation import (
+    StandardUnetOperationAdmission,
+    StandardUnetOperationPreparation,
 )
 from simple_syrup.runtime.regional_lora_host_payload import RegionalLoraHostPayload
 from simple_syrup.runtime.regional_lora_plan_adapter import RegionalLoraPlanAdaptation
@@ -68,8 +68,8 @@ class _Backend:
         return SimpleNamespace(model="derived-unet")
 
 
-class _NativeAdmission:
-    """Capture native adapter admission exactly once."""
+class _OperationPreparation:
+    """Capture operation admission exactly once."""
 
     calls: ClassVar[list[tuple[object, RegionalLoraPlanAdaptation]]] = []
 
@@ -77,34 +77,34 @@ class _NativeAdmission:
         self,
         model: object,
         adaptation: RegionalLoraPlanAdaptation,
-    ) -> StandardUnetNativeLoraAdmission:
-        """Return a recognizable typed empty native admission."""
+    ) -> StandardUnetOperationAdmission:
+        """Return a recognizable typed empty operation admission."""
 
         type(self).calls.append((model, adaptation))
-        return StandardUnetNativeLoraAdmission(adaptation, None)
+        return StandardUnetOperationAdmission(adaptation, None, {}, None)
 
 
-def test_unet_family_selects_native_variant_backend_boundaries() -> None:
-    """Make the standard family own native admission and variant execution."""
+def test_unet_family_selects_spatial_operation_backend_boundaries() -> None:
+    """Make the standard family own operation admission and shared execution."""
 
     family = StandardUnetAttentionCouplingModelFamily()
 
     assert family.backend_class is StandardUnetAttentionBackend
-    assert family.native_admission_class is StandardUnetNativeLoraAdmissionService
+    assert family.operation_preparation_class is StandardUnetOperationPreparation
 
 
 def test_unet_family_builds_shared_state_and_derives_paired_backend() -> None:
-    """Bind native admission, state, diagnostics, and backend exactly once."""
+    """Bind operation admission, state, diagnostics, and backend exactly once."""
 
     family = StandardUnetAttentionCouplingModelFamily()
     plan = _plan()
     adaptation = RegionalLoraPlanAdaptation(EMPTY_REGIONAL_LORA_PLAN, ())
     original_backend = family.backend_class
-    original_admission = family.native_admission_class
+    original_preparation = family.operation_preparation_class
     type(family).backend_class = _Backend  # type: ignore[assignment]
-    type(family).native_admission_class = _NativeAdmission  # type: ignore[assignment]
+    type(family).operation_preparation_class = _OperationPreparation  # type: ignore[assignment]
     _Backend.calls = []
-    _NativeAdmission.calls = []
+    _OperationPreparation.calls = []
     try:
         family.validate_latent(torch.zeros(2, 4, 8, 8))
         admission = family.admit_adaptation("model", adaptation)
@@ -118,12 +118,12 @@ def test_unet_family_builds_shared_state_and_derives_paired_backend() -> None:
         )
     finally:
         type(family).backend_class = original_backend
-        type(family).native_admission_class = original_admission
+        type(family).operation_preparation_class = original_preparation
 
     assert family.context_validator is STANDARD_UNET_REGIONAL_CONTEXT_VALIDATOR
     assert derived == "derived-unet"
     assert admission.adaptation is adaptation
-    assert _NativeAdmission.calls == [("model", adaptation)]
+    assert _OperationPreparation.calls == [("model", adaptation)]
     assert len(_Backend.calls) == 1
     assert _Backend.calls[0]["admission"] is admission
     state = _Backend.calls[0]["state"]
@@ -155,12 +155,12 @@ def test_unet_family_preserves_prompt_only_base_sampler_conditioning() -> None:
     assert built.negative is negative_base
 
 
-def test_unet_family_derives_variant_capable_backend_for_prompt_coupling() -> None:
-    """Keep standard prompt coupling inside the variant-capable backend."""
+def test_unet_family_derives_shared_trajectory_backend_for_prompt_coupling() -> None:
+    """Keep standard prompt coupling inside the shared-trajectory backend."""
 
     family = StandardUnetAttentionCouplingModelFamily()
     adaptation = RegionalLoraPlanAdaptation(EMPTY_REGIONAL_LORA_PLAN, ())
-    admission = StandardUnetNativeLoraAdmission(adaptation, None)
+    admission = StandardUnetOperationAdmission(adaptation, None, {}, None)
     original_backend = family.backend_class
     type(family).backend_class = _Backend  # type: ignore[assignment]
     _Backend.calls = []
@@ -187,7 +187,7 @@ def test_unet_family_requires_matching_family_admission() -> None:
     adaptation = _regional_lora_adaptation()
     _Backend.calls = []
 
-    with pytest.raises(TypeError, match="native admission"):
+    with pytest.raises(TypeError, match="operation admission"):
         family.derive(
             model="model",
             processed_plan=_plan(),
@@ -200,8 +200,10 @@ def test_unet_family_requires_matching_family_admission() -> None:
         family.derive(
             model="model",
             processed_plan=_plan(adaptation.plan),
-            admission=StandardUnetNativeLoraAdmission(
+            admission=StandardUnetOperationAdmission(
                 RegionalLoraPlanAdaptation(EMPTY_REGIONAL_LORA_PLAN, ()),
+                None,
+                {},
                 None,
             ),
             interop_report=_interop_report(),
