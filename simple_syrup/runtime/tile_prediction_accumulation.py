@@ -158,11 +158,18 @@ class TileBlendWeightCache:
 class TilePredictionAccumulator:
     """Evaluate tiled model views and combine them with one selected policy."""
 
-    def __init__(self, plan: TiledDiffusionPlan, *, diffusion_mode: str) -> None:
-        """Bind an immutable plan to its overlap weighting policy."""
+    def __init__(
+        self,
+        plan: TiledDiffusionPlan,
+        *,
+        diffusion_mode: str,
+        project_canvas_reference_latents: bool = False,
+    ) -> None:
+        """Bind a plan to its weighting and reference-projection policies."""
 
         self._plan = plan
         self._blend_weights = TileBlendWeightCache(plan, diffusion_mode)
+        self._project_canvas_reference_latents = project_canvas_reference_latents
 
     def predict(
         self,
@@ -183,6 +190,9 @@ class TilePredictionAccumulator:
                 input_batch_size=input_batch_size,
                 latent_height=self._plan.latent_height,
                 latent_width=self._plan.latent_width,
+                project_canvas_reference_latents=(
+                    self._project_canvas_reference_latents
+                ),
             )
             tile_output = evaluate(tiled_args)
             for index, tile in enumerate(batch):

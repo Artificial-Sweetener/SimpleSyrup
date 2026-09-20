@@ -182,11 +182,16 @@ def test_global_call_uses_one_full_source_reduced_model_layout(
         *,
         args: dict[str, Any],
         layout: SpatialBatchLayout,
+        project_canvas_reference_latents: bool = False,
     ) -> dict[str, Any]:
         """Capture and apply the global model-argument layout."""
 
         layouts.append(layout)
-        return transform(args=args, layout=layout)
+        return transform(
+            args=args,
+            layout=layout,
+            project_canvas_reference_latents=project_canvas_reference_latents,
+        )
 
     monkeypatch.setattr(
         wrapper_module,
@@ -389,8 +394,8 @@ def test_weighted_correction_formula_is_exact_for_both_local_fusion_modes(
     assert torch.allclose(output[:, :, 1::2], torch.full((1, 1, 8, 32), 0.5))
 
 
-def test_local_and_global_calls_receive_complete_reference_latents() -> None:
-    """Keep independent reference images intact through both spatial views."""
+def test_local_and_global_calls_project_canvas_reference_latents() -> None:
+    """Give every Contextual Diffusion view its spatially aligned reference."""
 
     reference = torch.arange(1 * 4 * 16 * 32, dtype=torch.float32).reshape(
         (1, 4, 16, 32)
@@ -419,8 +424,16 @@ def test_local_and_global_calls_receive_complete_reference_latents() -> None:
     )
 
     assert len(received) == 2
-    assert torch.equal(received[0], torch.cat((reference, reference), dim=0))
-    assert torch.equal(received[1], reference)
+    assert torch.equal(
+        received[0],
+        torch.cat((reference[..., :16], reference[..., 16:]), dim=0),
+    )
+    expected_global = torch.nn.functional.interpolate(
+        reference.reshape(-1, 1, 16, 32),
+        size=(8, 16),
+        mode="nearest-exact",
+    ).reshape(1, 4, 8, 16)
+    assert torch.equal(received[1], expected_global)
 
 
 def test_one_tile_plan_delegates_to_one_original_evaluation() -> None:

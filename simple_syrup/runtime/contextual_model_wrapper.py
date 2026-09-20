@@ -49,6 +49,7 @@ class ContextualDiffusionModelWrapper:
         self._tile_predictions = TilePredictionAccumulator(
             plan.tile_plan,
             diffusion_mode=diffusion_mode,
+            project_canvas_reference_latents=True,
         )
 
     @property
@@ -110,6 +111,7 @@ class ContextualDiffusionModelWrapper:
         global_args = make_spatial_view_model_args(
             args=args,
             layout=global_layout,
+            project_canvas_reference_latents=True,
         )
         global_prediction = self._call_original(apply_model, global_args)
         global_view = self._plan.global_view

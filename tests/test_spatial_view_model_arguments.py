@@ -144,6 +144,37 @@ def test_spatial_args_preserve_batch_metadata_references_and_source_args() -> No
     assert "spatial_batch_layout" not in existing_namespace
 
 
+def test_spatial_args_project_canvas_reference_latents_when_requested() -> None:
+    """Crop canvas-aligned references while preserving independent references."""
+
+    canvas_reference = torch.arange(1 * 2 * 4 * 8, dtype=torch.float32).reshape(
+        (1, 2, 4, 8)
+    )
+    independent_reference = torch.full((1, 2, 3, 5), 7.0)
+    layout = _layout(_left_right_views(), input_batch_size=1)
+
+    transformed = make_spatial_view_model_args(
+        args={
+            "input": torch.zeros((1, 1, 4, 8)),
+            "timestep": torch.ones((1,)),
+            "c": {"ref_latents": [canvas_reference, independent_reference]},
+        },
+        layout=layout,
+        project_canvas_reference_latents=True,
+    )
+
+    references = transformed["c"]["ref_latents"]
+    assert isinstance(references, list)
+    assert torch.equal(
+        references[0],
+        torch.cat((canvas_reference[..., :4], canvas_reference[..., 4:]), dim=0),
+    )
+    assert torch.equal(
+        references[1],
+        torch.cat((independent_reference, independent_reference), dim=0),
+    )
+
+
 @pytest.mark.parametrize(
     ("transformer_options", "message"),
     [

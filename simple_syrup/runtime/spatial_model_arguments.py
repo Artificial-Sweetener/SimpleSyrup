@@ -34,8 +34,9 @@ def make_tiled_model_args(
     input_batch_size: int,
     latent_height: int,
     latent_width: int,
+    project_canvas_reference_latents: bool = False,
 ) -> dict[str, Any]:
-    """Create apply-model args for one spatial tile batch."""
+    """Create tile arguments with optional canvas-reference projection."""
 
     layout = tiled_batch_layout(
         tiles=tiles,
@@ -63,6 +64,7 @@ def make_tiled_model_args(
         conditioning=conditioning,
         layout=layout,
         view_timestep=tiled_timestep,
+        project_canvas_reference_latents=project_canvas_reference_latents,
     )
     tiled_args = args.copy()
     tiled_args["input"] = tiled_x
@@ -114,8 +116,9 @@ def make_spatial_view_model_args(
     *,
     args: dict[str, Any],
     layout: SpatialBatchLayout,
+    project_canvas_reference_latents: bool = False,
 ) -> dict[str, Any]:
-    """Create apply-model arguments for equally shaped spatial views."""
+    """Create equal-view arguments with optional canvas-reference projection."""
 
     target_shape = (layout.views[0].model_height, layout.views[0].model_width)
     if any(
@@ -149,6 +152,7 @@ def make_spatial_view_model_args(
         conditioning=conditioning,
         layout=layout,
         view_timestep=view_timestep,
+        project_canvas_reference_latents=project_canvas_reference_latents,
     )
     view_args = args.copy()
     view_args["input"] = view_x
@@ -172,14 +176,18 @@ def spatial_view_conditioning(
     conditioning: dict[str, Any],
     layout: SpatialBatchLayout,
     view_timestep: torch.Tensor,
+    project_canvas_reference_latents: bool = False,
 ) -> dict[str, Any]:
-    """Resize spatial conditioning alongside arbitrary latent views."""
+    """Project spatial conditioning and optionally canvas-aligned references."""
 
     transformed: dict[str, Any] = {}
     for key, value in conditioning.items():
         if key == "transformer_options":
             continue
-        if key in SPATIAL_INVARIANT_CONDITIONING_KEYS:
+        if (
+            key in SPATIAL_INVARIANT_CONDITIONING_KEYS
+            and not project_canvas_reference_latents
+        ):
             transformed[key] = repeat_spatial_invariant_value(
                 value,
                 view_count=layout.view_count,
