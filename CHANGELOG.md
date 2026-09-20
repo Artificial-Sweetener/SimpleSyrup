@@ -1,3 +1,10 @@
+## [1.9.2](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.9.1...v1.9.2) (2026-09-20)
+
+
+### Bug Fixes
+
+* **registry:** remove flagged package content ([f3a53b5](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/f3a53b5ec6c080d98f7e9599cf55e849cf338021))
+
 ## [1.9.1](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.9.0...v1.9.1) (2026-09-20)
 
 
