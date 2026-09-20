@@ -60,8 +60,6 @@ _HIDDEN_INPUTS = {
     "DYNPROMPT": "dynprompt",
     "EXTRA_PNGINFO": "extra_pnginfo",
     "UNIQUE_ID": "unique_id",
-    "AUTH_TOKEN_COMFY_ORG": "auth_token_comfy_org",
-    "API_KEY_COMFY_ORG": "api_key_comfy_org",
 }
 
 

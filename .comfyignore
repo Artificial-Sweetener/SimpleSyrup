@@ -1,0 +1,13 @@
+.github/
+tests/
+tools/
+scripts/
+web/src/
+web/tests/
+AGENTS.md
+.releaserc.cjs
+eslint.config.js
+package-lock.json
+package.json
+tsconfig.json
+vitest.config.ts

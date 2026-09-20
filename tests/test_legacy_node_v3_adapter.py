@@ -41,7 +41,10 @@ class _FakeLegacyNode:
                     {"default": "hello", "tooltip": "Text to delegate."},
                 ),
             },
-            "hidden": {"prompt": "PROMPT"},
+            "hidden": {
+                "prompt": "PROMPT",
+                "ignored": "UNSUPPORTED_SECRET_SENTINEL",
+            },
         }
 
     def run(self, text: str, prompt: object | None = None) -> tuple[str]:
@@ -70,6 +73,7 @@ def test_legacy_node_v3_adapter_builds_schema() -> None:
     assert schema.category == "SimpleSyrup/Test"
     assert schema.inputs[0].id == "text"
     assert schema.inputs[0].tooltip == "Text to delegate."
+    assert len(schema.hidden) == 1
     assert schema.hidden[0].value == "PROMPT"
     assert schema.outputs[0].id == "result"
     assert schema.outputs[0].tooltip == "Delegated result."
