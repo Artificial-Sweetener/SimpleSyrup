@@ -1,3 +1,10 @@
+## [1.9.1](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.9.0...v1.9.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* **contextual-diffusion:** project reference latents into views ([4cd780a](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/4cd780a2451aa472ce826834e4426b65693c46e8))
+
 # [1.9.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.8.0...v1.9.0) (2026-09-19)
 
 
