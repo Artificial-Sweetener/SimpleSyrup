@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.9.3...v1.10.0) (2026-09-21)
+
+
+### Features
+
+* **loaders:** add Krea 2 model loader ([166f029](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/166f029d12e5fce019133cc38be7279d05a5ecbc))
+
 ## [1.9.3](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.9.2...v1.9.3) (2026-09-20)
 
 
