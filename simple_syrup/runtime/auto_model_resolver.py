@@ -150,8 +150,6 @@ class AutoModelResolver:
             return False
         if entry.sha256 != artifact.sha256:
             return False
-        if entry.path.name != artifact.filename:
-            return False
         if not entry.path.is_file():
             return False
         try:
@@ -163,6 +161,8 @@ class AutoModelResolver:
         except ValueError:
             return False
         stat = entry.path.stat()
+        if stat.st_size != artifact.file_size_bytes:
+            return False
         if entry.file_size is not None and entry.modified_time_ns is not None:
             return (
                 entry.file_size == stat.st_size
@@ -175,19 +175,33 @@ def find_model_artifact(
     artifact: AutoModelArtifact,
     folder_paths_module: ModuleType | None = None,
 ) -> Path | None:
-    """Return the first same-named local file matching the catalog checksum."""
+    """Find an artifact by the cheapest reliable checks within its model category."""
 
     _validate_basename(artifact.filename)
-    for root in get_model_folder_paths(artifact.folder_name, folder_paths_module):
+    roots = get_model_folder_paths(artifact.folder_name, folder_paths_module)
+    canonical = canonical_auto_destination(artifact, folder_paths_module)
+    if _candidate_matches_artifact(canonical, artifact):
+        return canonical
+
+    checked: set[Path] = {canonical.resolve()}
+    for root in roots:
         if not root.is_dir():
             continue
         matches = sorted(
             path for path in root.rglob(artifact.filename) if path.is_file()
         )
         for match in matches:
-            if match.name != artifact.filename or not _path_is_under(match, root):
+            if not _candidate_has_expected_size(match, artifact):
                 continue
-            if sha256_file(match).lower() == artifact.sha256.lower():
+            resolved_match = match.resolve()
+            if (
+                resolved_match in checked
+                or match.name != artifact.filename
+                or not _path_is_under(match, root)
+            ):
+                continue
+            checked.add(resolved_match)
+            if _candidate_checksum_matches(match, artifact):
                 return match
             LOGGER.warning(
                 "same-named auto model artifact has a different checksum",
@@ -197,7 +211,61 @@ def find_model_artifact(
                     "artifact_filename": artifact.filename,
                 },
             )
+
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for candidate in root.rglob("*"):
+            if not _candidate_has_expected_size(candidate, artifact):
+                continue
+            if not _path_is_under(candidate, root):
+                continue
+            resolved_candidate = candidate.resolve()
+            if resolved_candidate in checked:
+                continue
+            checked.add(resolved_candidate)
+            if not _candidate_checksum_matches(candidate, artifact):
+                continue
+            LOGGER.info(
+                "auto model artifact found under alternate filename",
+                extra={
+                    "cache_id": artifact.cache_id,
+                    "path": str(candidate),
+                    "artifact_filename": artifact.filename,
+                },
+            )
+            return candidate
     return None
+
+
+def _candidate_matches_artifact(
+    candidate: Path,
+    artifact: AutoModelArtifact,
+) -> bool:
+    """Verify a candidate only when its inexpensive file checks match first."""
+
+    return _candidate_has_expected_size(
+        candidate,
+        artifact,
+    ) and _candidate_checksum_matches(candidate, artifact)
+
+
+def _candidate_has_expected_size(
+    candidate: Path,
+    artifact: AutoModelArtifact,
+) -> bool:
+    """Return whether a regular file has the artifact's exact byte size."""
+
+    return candidate.is_file() and candidate.stat().st_size == artifact.file_size_bytes
+
+
+def _candidate_checksum_matches(
+    candidate: Path,
+    artifact: AutoModelArtifact,
+) -> bool:
+    """Return whether an already size-matched candidate has the trusted digest."""
+
+    return sha256_file(candidate).lower() == artifact.sha256.lower()
 
 
 def find_model_by_basename(

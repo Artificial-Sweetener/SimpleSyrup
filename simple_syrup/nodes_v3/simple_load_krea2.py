@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Expose cohesive FLUX.2 model loading through Comfy's v3 API."""
+"""Expose cohesive Krea 2 component loading through Comfy's v3 API."""
 
 from __future__ import annotations
 
@@ -13,12 +13,16 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from ..nodes import tooltips
 from ..runtime.auto_model_choices import automatic_component_choices
 from ..runtime.diffusion_model_loader import DIFFUSION_WEIGHT_DTYPES
-from ..runtime.flux_artifacts import FLUX2_TEXT_ENCODERS, FLUX2_VAE
+from ..runtime.krea2_artifacts import (
+    KREA2_AUTO_TEXT_ENCODER,
+    KREA2_QWEN3_VL_4B_BF16,
+    KREA2_QWEN3_VL_4B_FP8,
+)
 from ..runtime.model_downloads import ComfyProgressReporter
+from ..runtime.qwen_artifacts import QWEN_IMAGE_VAE
 from ..runtime.text_encoder_loader import TEXT_ENCODER_DEVICES
 from ..runtime.vae_loader import vae_choices
-from ..services.flux2_loader_service import Flux2LoaderService
-from ..services.flux_loader_components import AUTO_CHOICE
+from ..services.krea2_loader_service import AUTO_CHOICE, Krea2LoaderService
 
 if TYPE_CHECKING:
 
@@ -36,33 +40,33 @@ _comfy_io: Any = (
 )
 
 
-class SimpleLoadFlux2V3(_ComfyNodeBase):
-    """Load FLUX.2 diffusion, one profile-specific encoder, and VAE."""
+class SimpleLoadKrea2V3(_ComfyNodeBase):
+    """Load a Krea 2 diffusion model with its Qwen encoder and image VAE."""
 
-    _service = Flux2LoaderService()
+    _service = Krea2LoaderService()
 
     @classmethod
     def define_schema(cls) -> Any:
-        """Declare the separate FLUX.2 loader schema."""
+        """Declare the Krea 2 loader schema and downloadable component choices."""
 
         folder_paths = _folder_paths()
         return _comfy_io.Schema(
-            node_id="SimpleSyrup.SimpleLoadFlux2",
-            display_name="Simple Load FLUX.2",
+            node_id="SimpleSyrup.SimpleLoadKrea2",
+            display_name="Simple Load Krea 2",
             category="SimpleSyrup/Loaders",
             description=(
-                "Loads FLUX.2 with its structurally matched text encoder and common "
-                "VAE; automatic components download checksum-pinned Hugging Face "
-                "files when needed."
+                "Loads Krea 2 with its Qwen3-VL 4B encoder and Qwen Image VAE; "
+                "automatic components are downloaded from checksum-pinned "
+                "Hugging Face files."
             ),
-            search_aliases=["flux 2", "flux2", "klein", "load flux 2"],
+            search_aliases=["krea", "krea 2", "k2", "load krea"],
             inputs=[
                 _comfy_io.Combo.Input(
                     "diffusion_model",
                     options=list(folder_paths.get_filename_list("diffusion_models")),
                     tooltip=(
-                        "FLUX.2 diffusion model to load. This node never downloads "
-                        "the diffusion model."
+                        "Krea 2 Raw or Turbo diffusion model to load. This node "
+                        "validates the architecture and never downloads this file."
                     ),
                 ),
                 _comfy_io.Combo.Input(
@@ -71,24 +75,32 @@ class SimpleLoadFlux2V3(_ComfyNodeBase):
                     default="default",
                     advanced=True,
                     tooltip=(
-                        "Weight precision for the diffusion model; FP8 uses less "
-                        "memory but can slightly change results."
+                        "Load-time diffusion precision; default preserves the "
+                        "selected file's stored BF16, FP8, INT8, MXFP8, or NVFP4 "
+                        "format."
                     ),
                 ),
                 _comfy_io.Combo.Input(
                     "text_encoder",
                     options=automatic_component_choices(
                         installed=list(folder_paths.get_filename_list("text_encoders")),
-                        artifacts=tuple(FLUX2_TEXT_ENCODERS.values()),
-                        leading_choices=(AUTO_CHOICE,),
+                        artifacts=(
+                            KREA2_QWEN3_VL_4B_FP8,
+                            KREA2_QWEN3_VL_4B_BF16,
+                        ),
+                        leading_choices=(
+                            KREA2_AUTO_TEXT_ENCODER,
+                            KREA2_QWEN3_VL_4B_FP8.filename,
+                            KREA2_QWEN3_VL_4B_BF16.filename,
+                        ),
                         folder_paths_module=folder_paths,
                     ),
-                    default=AUTO_CHOICE,
+                    default=KREA2_AUTO_TEXT_ENCODER,
                     advanced=True,
                     tooltip=(
-                        "Text encoder for FLUX.2. Auto detects dev, Klein 4B, or "
-                        "Klein 9B/KV from the loaded model and reports downloads "
-                        "through Comfy node progress."
+                        "Qwen3-VL 4B encoder loaded with Krea 2's required 12-layer "
+                        "conditioning. Auto uses FP8; selecting official FP8 or BF16 "
+                        "downloads that checksum-pinned file when missing."
                     ),
                 ),
                 _comfy_io.Combo.Input(
@@ -97,23 +109,23 @@ class SimpleLoadFlux2V3(_ComfyNodeBase):
                     default="default",
                     advanced=True,
                     tooltip=(
-                        "Device for the text encoder; CPU saves GPU memory but makes "
-                        "prompt encoding slower."
+                        "Device for Qwen3-VL; CPU saves GPU memory but makes prompt "
+                        "encoding slower."
                     ),
                 ),
                 _comfy_io.Combo.Input(
                     "vae",
                     options=automatic_component_choices(
                         installed=vae_choices(folder_paths),
-                        artifacts=(FLUX2_VAE,),
+                        artifacts=(QWEN_IMAGE_VAE,),
                         leading_choices=(AUTO_CHOICE,),
                         folder_paths_module=folder_paths,
                     ),
                     default=AUTO_CHOICE,
                     advanced=True,
                     tooltip=(
-                        "VAE used to decode FLUX.2 latents. Auto finds or downloads "
-                        "the common checksum-pinned VAE with visible node progress."
+                        "VAE used to decode Krea 2 latents. Auto finds or downloads "
+                        "the checksum-pinned Qwen Image VAE with visible progress."
                     ),
                 ),
             ],
@@ -133,7 +145,7 @@ class SimpleLoadFlux2V3(_ComfyNodeBase):
         text_encoder_device: str,
         vae: str,
     ) -> tuple[object, object, object]:
-        """Load and return FLUX.2 MODEL, CLIP, and VAE objects."""
+        """Load and return validated Krea 2 MODEL, CLIP, and VAE objects."""
 
         return cls._service.load_models(
             diffusion_model=diffusion_model,

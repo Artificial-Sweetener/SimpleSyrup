@@ -16,6 +16,7 @@ from simple_syrup.runtime.auto_model_cache import AutoModelCache, AutoModelCache
 from simple_syrup.runtime.auto_model_resolver import (
     AutoModelResolver,
     canonical_auto_destination,
+    find_model_artifact,
     find_model_by_basename,
     relative_model_name,
 )
@@ -158,6 +159,112 @@ def test_resolver_ignores_same_named_file_with_wrong_checksum(tmp_path: Path) ->
     assert len(downloader.requests) == 1
 
 
+def test_resolver_finds_renamed_artifact_by_size_and_checksum(tmp_path: Path) -> None:
+    """A renamed official artifact is reused from its registered model category."""
+
+    fake = FakeFolderPaths(tmp_path / "models")
+    artifact = _artifact("text_encoders", "model.safetensors")
+    renamed_path = (
+        tmp_path / "models" / "text_encoders" / "custom" / "my-qwen.safetensors"
+    )
+    renamed_path.parent.mkdir(parents=True)
+    renamed_path.write_bytes(b"model")
+    cache = AutoModelCache(fake)
+    downloader = RecordingDownloader()
+
+    resolved = AutoModelResolver(cache, downloader, fake).resolve(artifact)
+    cached = AutoModelResolver(cache, downloader, fake).resolve(artifact)
+
+    assert resolved.path == renamed_path
+    assert resolved.source == "found"
+    assert cached.path == renamed_path
+    assert cached.source == "cached"
+    assert cache.load()[artifact.cache_id].path == renamed_path
+    assert downloader.requests == []
+
+
+def test_resolver_does_not_scan_unrelated_model_categories(tmp_path: Path) -> None:
+    """Checksum discovery stays inside the artifact's registered category."""
+
+    fake = FakeFolderPaths(tmp_path / "models")
+    artifact = _artifact("text_encoders", "model.safetensors")
+    unrelated_path = tmp_path / "models" / "vae" / "renamed.safetensors"
+    unrelated_path.parent.mkdir(parents=True)
+    unrelated_path.write_bytes(b"model")
+    downloader = RecordingDownloader()
+
+    resolved = AutoModelResolver(
+        AutoModelCache(fake),
+        downloader,
+        fake,
+    ).resolve(artifact)
+
+    assert resolved.source == "downloaded"
+    assert resolved.path != unrelated_path
+    assert len(downloader.requests) == 1
+
+
+def test_resolver_prefers_canonical_filename_before_renamed_match(
+    tmp_path: Path,
+) -> None:
+    """The direct canonical lookup wins before the broader size-based scan."""
+
+    fake = FakeFolderPaths(tmp_path / "models")
+    artifact = _artifact("text_encoders", "model.safetensors")
+    canonical = canonical_auto_destination(artifact, fake)
+    canonical.parent.mkdir(parents=True)
+    canonical.write_bytes(b"model")
+    renamed = tmp_path / "models" / "text_encoders" / "renamed.safetensors"
+    renamed.write_bytes(b"model")
+
+    assert find_model_artifact(artifact, fake) == canonical
+
+
+def test_resolver_prefers_recursive_official_filename_before_renamed_match(
+    tmp_path: Path,
+) -> None:
+    """Official filenames are searched recursively before alternate names."""
+
+    fake = FakeFolderPaths(tmp_path / "models")
+    artifact = _artifact("text_encoders", "model.safetensors")
+    root = tmp_path / "models" / "text_encoders"
+    renamed = root / "a-renamed.safetensors"
+    official = root / "nested" / artifact.filename
+    official.parent.mkdir(parents=True)
+    renamed.write_bytes(b"model")
+    official.write_bytes(b"model")
+
+    assert find_model_artifact(artifact, fake) == official
+
+
+def test_artifact_discovery_hashes_only_size_matches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The broad category scan avoids hashing files with a different byte size."""
+
+    fake = FakeFolderPaths(tmp_path / "models")
+    artifact = _artifact("text_encoders", "model.safetensors")
+    wrong_size = tmp_path / "models" / "text_encoders" / "other.safetensors"
+    wrong_size.parent.mkdir(parents=True)
+    wrong_size.write_bytes(b"different size")
+    hashed_paths: list[Path] = []
+
+    def record_hash(path: Path) -> str:
+        """Record unexpected hashing while retaining a valid callable shape."""
+
+        hashed_paths.append(path)
+        return artifact.sha256
+
+    monkeypatch.setattr(
+        "simple_syrup.runtime.auto_model_resolver.sha256_file",
+        record_hash,
+    )
+
+    assert find_model_artifact(artifact, fake) is None
+    assert hashed_paths == []
+
+
 def test_find_model_by_basename_respects_folder_priority(tmp_path: Path) -> None:
     """Recursive search prefers earlier ComfyUI model roots."""
 
@@ -212,6 +319,7 @@ def test_canonical_destination_rejects_unsafe_subfolder(tmp_path: Path) -> None:
         source_repo="example/model",
         description="bad",
         sha256="abc",
+        file_size_bytes=1,
     )
 
     with pytest.raises(ValueError, match="not safe"):
@@ -274,4 +382,5 @@ def _artifact(folder_name: str, filename: str) -> AutoModelArtifact:
         source_repo="example/model",
         description=f"test {filename}",
         sha256=hashlib.sha256(b"model").hexdigest(),
+        file_size_bytes=len(b"model"),
     )

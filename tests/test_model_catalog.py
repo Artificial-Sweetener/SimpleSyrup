@@ -8,10 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from simple_syrup.runtime.anima_artifacts import (
-    ANIMA_QWEN_TEXT_ENCODER,
-    ANIMA_QWEN_VAE,
-)
+from simple_syrup.runtime.anima_artifacts import ANIMA_QWEN_TEXT_ENCODER
 from simple_syrup.runtime.model_catalog import (
     BERT_ENTRY,
     GROUNDING_DINO_ENTRIES,
@@ -24,6 +21,7 @@ from simple_syrup.runtime.model_catalog import (
     sam_choices,
     ultralytics_choices,
 )
+from simple_syrup.runtime.qwen_artifacts import QWEN_IMAGE_VAE
 
 
 def test_sam_catalog_exposes_layerstyle_compatible_models() -> None:
@@ -162,10 +160,8 @@ def test_anima_catalog_has_trusted_auto_artifacts() -> None:
     )
     assert len(ANIMA_QWEN_TEXT_ENCODER.sha256) == 64
 
-    assert ANIMA_QWEN_VAE.folder_name == "vae"
-    assert ANIMA_QWEN_VAE.filename == "qwen_image_vae.safetensors"
-    assert ANIMA_QWEN_VAE.canonical_subfolder == "qwen"
-    assert ANIMA_QWEN_VAE.source_url.endswith(
-        "/split_files/vae/qwen_image_vae.safetensors"
-    )
-    assert len(ANIMA_QWEN_VAE.sha256) == 64
+    assert QWEN_IMAGE_VAE.folder_name == "vae"
+    assert QWEN_IMAGE_VAE.filename == "qwen_image_vae.safetensors"
+    assert QWEN_IMAGE_VAE.canonical_subfolder == "qwen"
+    assert QWEN_IMAGE_VAE.source_url.endswith("/vae/qwen_image_vae.safetensors")
+    assert len(QWEN_IMAGE_VAE.sha256) == 64

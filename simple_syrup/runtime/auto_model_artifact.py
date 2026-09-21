@@ -21,3 +21,4 @@ class AutoModelArtifact:
     source_repo: str
     description: str
     sha256: str
+    file_size_bytes: int

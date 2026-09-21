@@ -63,6 +63,7 @@ BASE_NODE_IDS = [
     "SimpleSyrup.SimpleLoadCheckpoint",
     "SimpleSyrup.SimpleLoadFlux",
     "SimpleSyrup.SimpleLoadFlux2",
+    "SimpleSyrup.SimpleLoadKrea2",
     "SimpleSyrup.SimpleVAEEncode",
     "SimpleSyrup.TagSEGSWithExternalLLM",
     "SimpleSyrup.TagSEGSWithWD14",

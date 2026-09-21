@@ -12,7 +12,7 @@ The pack now covers model loading, regional prompting and segmentation, high-res
 
 ## Highlights
 
-- Loaders that keep checkpoints, Anima, FLUX.1, and FLUX.2 models together with the text encoders, VAE, precision, and device choices they need.
+- Loaders that keep checkpoints, Anima, FLUX.1, FLUX.2, and Krea 2 models together with the text encoders, VAE, precision, and device choices they need.
 - My original Contextual Diffusion method for coherent high-resolution edits, plus MultiDiffusion and Mixture of Diffusers tiled sampling.
 - Impact-compatible SEGS detection, segmentation, interactive preview, batching, and detailers.
 - ADetailer-style `[SEP]` prompt batches, masked conditioning, and regional samplers, with optional Prompt Control scheduling and LoRA hooks.
@@ -74,7 +74,9 @@ Loading a checkpoint used to feel like choosing one file. Newer model families c
 
 **Simple Load FLUX** handles FLUX.1 with CLIP-L, T5-XXL, and its VAE. **Simple Load FLUX.2** inspects the selected diffusion model and chooses the matching text encoder family for FLUX.2 dev, Klein 4B, or Klein 9B/KV conditioning. Both loaders can find or download their known text encoders and VAEs with visible Comfy progress.
 
-The FLUX loaders only download those revision-locked, checksum-pinned support files. You still install and select the diffusion model. They also expose manual component selection, diffusion weight precision, and text-encoder device placement. Moving text encoding to the CPU can save VRAM, although it will take longer.
+**Simple Load Krea 2** validates the selected Raw or Turbo diffusion model and loads the required Qwen3-VL 4B encoder with Krea's layered conditioning plus the Qwen Image VAE. Auto uses the official FP8-scaled encoder; the advanced encoder choice can download either the checksum-pinned FP8-scaled or BF16 file.
+
+The FLUX and Krea 2 loaders only download those revision-locked, checksum-pinned support files. You still install and select the diffusion model. They also expose manual component selection, diffusion weight precision, and text-encoder device placement. Moving text encoding to the CPU can save VRAM, although it will take longer.
 
 ## Large images and high-resolution edits
 
@@ -164,7 +166,7 @@ SimpleSyrup adds three ComfyUI settings:
 - **SimpleSyrup: External LLM endpoint** stores the OpenAI-compatible base URL used to discover provider models and run the external prompt nodes.
 - **SimpleSyrup: External LLM API key** stores the provider key in OS credential storage.
 
-With downloadable models enabled, selecting a known missing catalog entry lets its loader download the required files. With the setting disabled, the dropdowns contain models SimpleSyrup can verify locally. Anima, FLUX.1, and FLUX.2 support components are resolved by their own loaders and use checksum-pinned automatic choices.
+With downloadable models enabled, selecting a known missing catalog entry lets its loader download the required files. With the setting disabled, the dropdowns contain models SimpleSyrup can verify locally. Anima, FLUX.1, FLUX.2, and Krea 2 support components are resolved by their own loaders and use checksum-pinned automatic choices. Automatic resolution checks cached and official paths first, then recognizes renamed files with matching size and checksum inside the appropriate ComfyUI model category. Known local support files are represented by their automatic choice instead of appearing again as manual dropdown entries.
 
 Saving the external LLM endpoint and API key refreshes the provider models available in connected SimpleSyrup nodes. Image inputs require a provider model with vision support.
 

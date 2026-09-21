@@ -11,7 +11,9 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..nodes import tooltips
+from ..runtime.auto_model_choices import automatic_component_choices
 from ..runtime.diffusion_model_loader import DIFFUSION_WEIGHT_DTYPES
+from ..runtime.flux_artifacts import FLUX_CLIP_L, FLUX_T5_XXL, FLUX_VAE
 from ..runtime.model_downloads import ComfyProgressReporter
 from ..runtime.text_encoder_loader import TEXT_ENCODER_DEVICES
 from ..runtime.vae_loader import vae_choices
@@ -44,9 +46,7 @@ class SimpleLoadFluxV3(_ComfyNodeBase):
         """Declare the separate FLUX.1 loader schema."""
 
         folder_paths = _folder_paths()
-        text_encoder_choices = _choices_with_auto(
-            list(folder_paths.get_filename_list("text_encoders"))
-        )
+        installed_text_encoders = list(folder_paths.get_filename_list("text_encoders"))
         return _comfy_io.Schema(
             node_id="SimpleSyrup.SimpleLoadFlux",
             display_name="Simple Load FLUX",
@@ -77,7 +77,12 @@ class SimpleLoadFluxV3(_ComfyNodeBase):
                 ),
                 _comfy_io.Combo.Input(
                     "clip_l",
-                    options=text_encoder_choices,
+                    options=automatic_component_choices(
+                        installed=installed_text_encoders,
+                        artifacts=(FLUX_CLIP_L,),
+                        leading_choices=(AUTO_CHOICE,),
+                        folder_paths_module=folder_paths,
+                    ),
                     default=AUTO_CHOICE,
                     advanced=True,
                     tooltip=(
@@ -87,7 +92,12 @@ class SimpleLoadFluxV3(_ComfyNodeBase):
                 ),
                 _comfy_io.Combo.Input(
                     "t5_xxl",
-                    options=text_encoder_choices,
+                    options=automatic_component_choices(
+                        installed=installed_text_encoders,
+                        artifacts=(FLUX_T5_XXL,),
+                        leading_choices=(AUTO_CHOICE,),
+                        folder_paths_module=folder_paths,
+                    ),
                     default=AUTO_CHOICE,
                     advanced=True,
                     tooltip=(
@@ -107,7 +117,12 @@ class SimpleLoadFluxV3(_ComfyNodeBase):
                 ),
                 _comfy_io.Combo.Input(
                     "vae",
-                    options=_choices_with_auto(vae_choices(folder_paths)),
+                    options=automatic_component_choices(
+                        installed=vae_choices(folder_paths),
+                        artifacts=(FLUX_VAE,),
+                        leading_choices=(AUTO_CHOICE,),
+                        folder_paths_module=folder_paths,
+                    ),
                     default=AUTO_CHOICE,
                     advanced=True,
                     tooltip=(
@@ -144,12 +159,6 @@ class SimpleLoadFluxV3(_ComfyNodeBase):
             vae=vae,
             progress=ComfyProgressReporter(),
         )
-
-
-def _choices_with_auto(choices: list[str]) -> list[str]:
-    """Return deduplicated choices with automatic selection first."""
-
-    return [AUTO_CHOICE, *(choice for choice in choices if choice != AUTO_CHOICE)]
 
 
 def _folder_paths() -> ModuleType:

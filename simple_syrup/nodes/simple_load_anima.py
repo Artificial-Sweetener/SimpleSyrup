@@ -11,10 +11,13 @@ from types import ModuleType
 from typing import Any
 
 from ..domain.anima_quantization import AnimaQuantizationRecipe
+from ..runtime.anima_artifacts import ANIMA_QWEN_TEXT_ENCODER
+from ..runtime.auto_model_choices import automatic_component_choices
 from ..runtime.diffusion_model_loader import DIFFUSION_WEIGHT_DTYPES
 from ..runtime.model_downloads import ComfyProgressReporter
 from ..runtime.quantization_capabilities import QuantizationCapabilityCatalog
 from ..runtime.quantization_progress import ComfyQuantizationProgressReporter
+from ..runtime.qwen_artifacts import QWEN_IMAGE_VAE
 from ..runtime.vae_loader import vae_choices
 from ..services.anima_loader_service import (
     AUTO_CHOICE,
@@ -84,7 +87,12 @@ class SimpleLoadAnima:
                     },
                 ),
                 "text_encoder": (
-                    _choices_with_auto(folder_paths.get_filename_list("text_encoders")),
+                    automatic_component_choices(
+                        installed=folder_paths.get_filename_list("text_encoders"),
+                        artifacts=(ANIMA_QWEN_TEXT_ENCODER,),
+                        leading_choices=(AUTO_CHOICE,),
+                        folder_paths_module=folder_paths,
+                    ),
                     {
                         "default": AUTO_CHOICE,
                         "advanced": True,
@@ -106,7 +114,12 @@ class SimpleLoadAnima:
                     },
                 ),
                 "vae": (
-                    _choices_with_auto(vae_choices(folder_paths)),
+                    automatic_component_choices(
+                        installed=vae_choices(folder_paths),
+                        artifacts=(QWEN_IMAGE_VAE,),
+                        leading_choices=(AUTO_CHOICE,),
+                        folder_paths_module=folder_paths,
+                    ),
                     {
                         "default": AUTO_CHOICE,
                         "advanced": True,
@@ -140,12 +153,6 @@ class SimpleLoadAnima:
             progress=ComfyProgressReporter(),
             quantization_progress=ComfyQuantizationProgressReporter(),
         )
-
-
-def _choices_with_auto(choices: list[str]) -> list[str]:
-    """Return choices with the automatic selection first and deduplicated."""
-
-    return [AUTO_CHOICE, *(choice for choice in choices if choice != AUTO_CHOICE)]
 
 
 def _folder_paths() -> ModuleType:

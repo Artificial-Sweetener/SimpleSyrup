@@ -232,7 +232,7 @@ def test_loader_uses_auto_resolver_for_auto_choices(
         progress,
     )
 
-    assert resolver.requests == ["anima_qwen_text_encoder", "anima_qwen_vae"]
+    assert resolver.requests == ["anima_qwen_text_encoder", "qwen_image_vae"]
     assert resolver.progress_reporters == [progress, progress]
     assert comfy_state.clip_calls[0]["ckpt_paths"] == [str(resolver.text_encoder_path)]
     assert comfy_state.vae_paths == [str(resolver.vae_path)]
@@ -265,7 +265,7 @@ def test_anima_auto_downloads_emit_comfy_node_progress_end_to_end(
         "ANIMA_QWEN_TEXT_ENCODER",
         text_artifact,
     )
-    monkeypatch.setattr(anima_loader_module, "ANIMA_QWEN_VAE", vae_artifact)
+    monkeypatch.setattr(anima_loader_module, "QWEN_IMAGE_VAE", vae_artifact)
 
     content_by_url = {
         text_artifact.source_url: text_content,
@@ -494,4 +494,5 @@ def _small_artifact(
         source_repo="example/progress",
         description=f"progress test {filename}",
         sha256=hashlib.sha256(content).hexdigest(),
+        file_size_bytes=len(content),
     )

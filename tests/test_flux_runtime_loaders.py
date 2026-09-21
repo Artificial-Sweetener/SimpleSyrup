@@ -290,4 +290,5 @@ def _artifact() -> AutoModelArtifact:
         source_repo="example/auto",
         description="test encoder",
         sha256="0" * 64,
+        file_size_bytes=0,
     )

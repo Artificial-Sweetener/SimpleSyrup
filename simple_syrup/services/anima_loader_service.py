@@ -13,11 +13,12 @@ from typing import Any, Protocol
 
 import torch
 
-from ..runtime.anima_artifacts import ANIMA_QWEN_TEXT_ENCODER, ANIMA_QWEN_VAE
+from ..runtime.anima_artifacts import ANIMA_QWEN_TEXT_ENCODER
 from ..runtime.auto_model_artifact import AutoModelArtifact
 from ..runtime.auto_model_resolver import AutoModelResolution, AutoModelResolver
 from ..runtime.model_downloads import ProgressReporter
 from ..runtime.quantization_progress import QuantizationProgressReporter
+from ..runtime.qwen_artifacts import QWEN_IMAGE_VAE
 from ..runtime.vae_loader import VaeLoaderService, load_vae_path
 from .anima_diffusion_model_service import AnimaDiffusionModelService
 
@@ -125,7 +126,7 @@ class AnimaLoaderService:
         """Load a VAE using ComfyUI's VAE loader policy."""
 
         if vae == AUTO_CHOICE:
-            vae_path = self._resolver.resolve(ANIMA_QWEN_VAE, progress).path
+            vae_path = self._resolver.resolve(QWEN_IMAGE_VAE, progress).path
             return load_vae_path(vae_path)
 
         return self._vae_loader.load_vae(vae)

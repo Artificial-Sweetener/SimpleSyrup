@@ -21,6 +21,7 @@ FLUX_CLIP_L = AutoModelArtifact(
     source_repo="comfyanonymous/flux_text_encoders",
     description="FLUX CLIP-L text encoder",
     sha256="660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd",
+    file_size_bytes=246_144_152,
 )
 
 FLUX_T5_XXL = AutoModelArtifact(
@@ -35,6 +36,7 @@ FLUX_T5_XXL = AutoModelArtifact(
     source_repo="comfyanonymous/flux_text_encoders",
     description="FLUX T5-XXL FP16 text encoder",
     sha256="6e480b09fae049a72d2a8c5fbccb8d3e92febeb233bbe9dfe7256958a9167635",
+    file_size_bytes=9_787_841_024,
 )
 
 FLUX_VAE = AutoModelArtifact(
@@ -50,6 +52,7 @@ FLUX_VAE = AutoModelArtifact(
     source_repo="Comfy-Org/Lumina_Image_2.0_Repackaged",
     description="FLUX autoencoder VAE",
     sha256="afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+    file_size_bytes=335_304_388,
 )
 
 FLUX2_DEV_TEXT_ENCODER = AutoModelArtifact(
@@ -65,6 +68,7 @@ FLUX2_DEV_TEXT_ENCODER = AutoModelArtifact(
     source_repo="Comfy-Org/flux2-dev",
     description="FLUX.2 dev Mistral 3 Small text encoder",
     sha256="7d79902f60b1aeb3a6de2cfad02f4367b5e300a1387de3d03ac717cfa3df117c",
+    file_size_bytes=35_584_897_447,
 )
 
 FLUX2_KLEIN_4B_TEXT_ENCODER = AutoModelArtifact(
@@ -80,6 +84,7 @@ FLUX2_KLEIN_4B_TEXT_ENCODER = AutoModelArtifact(
     source_repo="Comfy-Org/vae-text-encorder-for-flux-klein-4b",
     description="FLUX.2 Klein 4B Qwen3 text encoder",
     sha256="6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a",
+    file_size_bytes=8_044_982_048,
 )
 
 FLUX2_KLEIN_9B_TEXT_ENCODER = AutoModelArtifact(
@@ -95,6 +100,7 @@ FLUX2_KLEIN_9B_TEXT_ENCODER = AutoModelArtifact(
     source_repo="Comfy-Org/vae-text-encorder-for-flux-klein-9b",
     description="FLUX.2 Klein 9B Qwen3 8B FP8-mixed text encoder",
     sha256="abad16806e0cbabc54e0325d6565847443fe396d5f0be38bb3cd3fe75a1201d6",
+    file_size_bytes=8_664_848_742,
 )
 
 FLUX2_VAE = AutoModelArtifact(
@@ -110,6 +116,7 @@ FLUX2_VAE = AutoModelArtifact(
     source_repo="Comfy-Org/flux2-dev",
     description="FLUX.2 VAE",
     sha256="d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5",
+    file_size_bytes=336_213_556,
 )
 
 FLUX2_TEXT_ENCODERS: dict[Flux2TextEncoderProfile, AutoModelArtifact] = {

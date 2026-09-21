@@ -6,49 +6,42 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
 from ..domain.flux_profiles import FluxModelProfile, classify_flux_profile
-from ..shared.logging import get_logger
-
-LOGGER = get_logger(__name__)
-
-
-@runtime_checkable
-class ModelPatcherBoundary(Protocol):
-    """Expose the loaded model objects required for architecture inspection."""
-
-    def get_model_object(self, name: str) -> object:
-        """Return a named object owned by ComfyUI's model patcher."""
+from .diffusion_model_metadata import (
+    DiffusionModelMetadata,
+    DiffusionModelMetadataInspector,
+)
 
 
 class FluxModelInspector:
     """Read ComfyUI's tensor-derived model configuration after model loading."""
 
+    def __init__(
+        self,
+        metadata_inspector: DiffusionModelMetadataInspectorBoundary | None = None,
+    ) -> None:
+        """Create a FLUX classifier over shared metadata inspection."""
+
+        self._metadata_inspector = (
+            metadata_inspector or DiffusionModelMetadataInspector()
+        )
+
     def inspect(self, model: object) -> FluxModelProfile | None:
         """Return a detected FLUX profile or None for unavailable metadata."""
 
-        if not isinstance(model, ModelPatcherBoundary):
+        metadata = self._metadata_inspector.inspect(model)
+        if metadata is None:
             return None
-        try:
-            model_config = model.get_model_object("model_config")
-        except (AttributeError, KeyError, TypeError, ValueError):
-            LOGGER.warning(
-                "loaded model does not expose inspectable model configuration"
-            )
-            return None
-
-        unet_config = getattr(model_config, "unet_config", None)
-        if not isinstance(unet_config, Mapping):
-            return None
-        image_model_value = unet_config.get("image_model")
-        context_dimension_value = unet_config.get("context_in_dim")
-        image_model = image_model_value if isinstance(image_model_value, str) else None
-        context_dimension = (
-            context_dimension_value
-            if isinstance(context_dimension_value, int)
-            and not isinstance(context_dimension_value, bool)
-            else None
+        return classify_flux_profile(
+            metadata.image_model,
+            metadata.context_input_dimension,
         )
-        return classify_flux_profile(image_model, context_dimension)
+
+
+class DiffusionModelMetadataInspectorBoundary(Protocol):
+    """Expose normalized loaded diffusion-model metadata."""
+
+    def inspect(self, model: object) -> DiffusionModelMetadata | None:
+        """Return normalized metadata when available."""
