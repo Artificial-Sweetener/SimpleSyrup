@@ -50,6 +50,8 @@ jobs:
           "transformers${{ matrix.version }}"
 
       - name: Verify GroundingDINO BERT compatibility
+        env:
+          PYTHONPATH: ${{ github.workspace }}/tests
         run: >-
           python -m pytest -q
           --noconftest
