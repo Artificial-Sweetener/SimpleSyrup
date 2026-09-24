@@ -1,3 +1,11 @@
+## [1.10.1](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.10.0...v1.10.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **ci:** expose test support to compatibility jobs ([0517f71](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/0517f71da891414e9773c5cd47879ff748492e70))
+* **governance:** enforce SugarSubstitute quality standards ([bbaed2c](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/bbaed2c90656cd4e65e5bfcd4c0451f90ec2d7c7))
+
 # [1.10.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.9.3...v1.10.0) (2026-09-21)
 
 
