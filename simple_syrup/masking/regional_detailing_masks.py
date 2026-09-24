@@ -21,8 +21,8 @@ from ..domain.regional_detailing import (
     SegmentConditioningPair,
 )
 from ..domain.segs import CropRegion
+from ..domain.segs_mask_ops import feather_mask, resize_mask
 from .detailer_masks import gaussian_feather_mask
-from .segs_mask_ops import feather_mask, resize_mask
 
 OPERATION = "Detail SEGS as Regions"
 

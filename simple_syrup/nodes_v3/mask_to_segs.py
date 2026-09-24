@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import torch
 
 from ..domain.segs import SORT_ORDER_OPTIONS, NativeSegs
-from ..masking.segs_mask_ops import iter_single_images, validate_image_batch
+from ..domain.segs_mask_ops import iter_single_images, validate_image_batch
 from ..services.mask_to_segs_service import MaskToSEGSService
 from ..services.segs_output_service import (
     CombinedSegsResult,

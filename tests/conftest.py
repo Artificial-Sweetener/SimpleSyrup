@@ -17,10 +17,11 @@ if not CUDA_TESTS_ENABLED:
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+TESTS_ROOT = PROJECT_ROOT / "tests"
 COMFY_ROOT = PROJECT_ROOT.parents[1]
 CUSTOM_NODES_ROOT = PROJECT_ROOT.parent
 
-for path in (PROJECT_ROOT, COMFY_ROOT, CUSTOM_NODES_ROOT):
+for path in reversed((TESTS_ROOT, PROJECT_ROOT, COMFY_ROOT, CUSTOM_NODES_ROOT)):
     path_text = str(path)
     if path_text not in sys.path:
         sys.path.insert(0, path_text)

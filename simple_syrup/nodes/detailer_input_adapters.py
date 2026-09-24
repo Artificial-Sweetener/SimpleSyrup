@@ -12,7 +12,7 @@ import torch
 
 from ..domain.conditioning_batch import ConditioningBatch
 from ..domain.segs import NativeSegs
-from ..masking.segs_mask_ops import iter_single_images, validate_image_batch
+from ..domain.segs_mask_ops import iter_single_images, validate_image_batch
 
 
 def image_inputs(image: object, operation_name: str) -> tuple[torch.Tensor, ...]:

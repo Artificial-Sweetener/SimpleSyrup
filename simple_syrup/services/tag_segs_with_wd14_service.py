@@ -21,7 +21,7 @@ from ..domain.segs import (
     coerce_segs,
     to_impact_compatible_segs,
 )
-from ..masking.segs_mask_ops import crop_image, validate_single_image
+from ..domain.segs_mask_ops import crop_image, validate_single_image
 from ..runtime.conditioning_encoding import ComfyConditioningEncoder
 from ..runtime.loaded_models import LoadedWD14Tagger, unwrap_wd14_tagger
 from ..runtime.progress import ProgressReporter, create_comfy_progress

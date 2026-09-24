@@ -3,20 +3,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  clearQuantCache,
-  enforceQuantCacheLimit,
-  getExternalLLMSettings,
-  getQuantCacheStatus,
   getSettings,
-  saveExternalLLMApiKey,
-  saveExternalLLMSettings,
   saveSettings
 } from "./api";
-import type {
-  ExternalLLMSettings,
-  QuantCacheStatus,
-  SimpleSyrupSettings
-} from "./api";
+import type { SimpleSyrupSettings } from "./api";
+import {
+  getExternalLLMSettings,
+  saveExternalLLMApiKey,
+  saveExternalLLMSettings
+} from "./externalLlmApi";
+import type { ExternalLLMSettings } from "./externalLlmApi";
+import {
+  clearQuantCache,
+  enforceQuantCacheLimit,
+  getQuantCacheStatus
+} from "./quantCacheApi";
+import type { QuantCacheStatus } from "./quantCacheApi";
 import {
   registerDownloadableModelsSetting,
   type GeneralSettingsContext

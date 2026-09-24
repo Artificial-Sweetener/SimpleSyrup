@@ -6,61 +6,23 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from math import ceil, sqrt
 
 import torch
 import torch.nn.functional as functional
 
+from ..domain.seg_preview import AtlasPlacement, SegPreviewDocument, SegPreviewRegion
 from ..domain.seg_visualization import (
     SegVisualizationPlan,
     build_seg_visualization_plan,
 )
-from ..domain.segs import CropRegion, NativeSegs
-from ..masking.segs_mask_ops import validate_single_image
+from ..domain.segs import NativeSegs
+from ..domain.segs_mask_ops import validate_single_image
 
 _MAX_PREVIEW_EDGE = 1024
 _ATLAS_PIXEL_BUDGET = 4 * 1024 * 1024
 _MAX_ATLAS_EDGE = 2048
 _ATLAS_PADDING = 1
-
-
-@dataclass(frozen=True)
-class AtlasPlacement:
-    """Locate one region mask inside the packed mask atlas."""
-
-    left: int
-    top: int
-    width: int
-    height: int
-
-
-@dataclass(frozen=True)
-class SegPreviewRegion:
-    """Describe one interactive region and its packed mask geometry."""
-
-    region_id: str
-    index: int
-    label: str
-    confidence: float
-    active_area: int
-    color: str
-    crop: CropRegion
-    atlas: AtlasPlacement
-
-
-@dataclass(frozen=True)
-class SegPreviewDocument:
-    """Carry bounded image assets and interaction metadata to the UI adapter."""
-
-    source_width: int
-    source_height: int
-    preview_width: int
-    preview_height: int
-    image: torch.Tensor
-    atlas: torch.Tensor
-    region_images: tuple[torch.Tensor, ...]
-    regions: tuple[SegPreviewRegion, ...]
 
 
 class SimplePreviewSEGSService:

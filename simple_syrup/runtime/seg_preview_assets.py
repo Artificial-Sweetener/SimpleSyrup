@@ -12,7 +12,7 @@ from typing import Any, Protocol
 
 import torch
 
-from ..services.simple_preview_segs_service import SegPreviewDocument
+from ..domain.seg_preview import SegPreviewDocument
 
 SEG_PREVIEW_UI_KEY = "simple_syrup_segs_preview"
 

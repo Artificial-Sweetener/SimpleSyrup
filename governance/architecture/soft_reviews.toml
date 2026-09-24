@@ -1,0 +1,59 @@
+schema_version = 1
+review_by = 2027-03-31
+fingerprint = "sha256:0a365aa7572ed38582a6fb4f09acefe700212ba65860e93e8c7cd8d5d7d12c45"
+
+cohesive_paths = [
+  "simple_syrup/masking/prompt_segs_with_sam_service.py",
+  "simple_syrup/nodes/prompt_segs_with_sam.py",
+  "simple_syrup/nodes_v3/legacy_node_wrappers.py",
+  "simple_syrup/runtime/attention_region_affinity.py",
+  "simple_syrup/runtime/attention_region_capture.py",
+  "simple_syrup/runtime/attention_sampler_lineage.py",
+  "simple_syrup/runtime/regional_lora/anima_module_surface.py",
+  "simple_syrup/runtime/spatial_model_arguments.py",
+  "simple_syrup/services/concept_attention_evidence.py",
+  "tests/comfy_integration/test_comfy_regional_adapter_resolver.py",
+  "tests/comfy_integration/test_comfy_regional_conditioning_processing.py",
+  "tests/models/loading/test_checkpoint_quantizer.py",
+  "tests/models/patching/test_model_patcher_mutations.py",
+  "tests/prompting/prompt_control/test_prompt_control_schedule_encode_graph.py",
+  "tests/regional_generation/anima/test_anima_activation_context.py",
+  "tests/regional_generation/anima/test_anima_full_tile_lora_equivalence.py",
+  "tests/regional_generation/anima/test_anima_loader.py",
+  "tests/regional_generation/anima/test_anima_multi_lora_composition.py",
+  "tests/regional_generation/anima/test_anima_regional_diagnostics.py",
+  "tests/regional_generation/anima/test_anima_regional_diagnostics_wrapper.py",
+  "tests/regional_generation/anima/test_anima_regional_permutation_diagnostics.py",
+  "tests/regional_generation/anima/test_anima_single_adapter_mutations.py",
+  "tests/regional_generation/attention_coupling/test_attention_coupling_model_preparation_service.py",
+  "tests/regional_generation/attention_regions/test_attention_region_capture.py",
+  "tests/regional_generation/attention_regions/test_attention_region_completion.py",
+  "tests/regional_generation/attention_regions/test_attention_region_components.py",
+  "tests/regional_generation/attention_regions/test_attention_region_geometry.py",
+  "tests/regional_generation/regional/test_regional_attention_batching.py",
+  "tests/regional_generation/regional/test_regional_linear_execution.py",
+  "tests/regional_generation/regional/test_regional_model_patch_interop.py",
+  "tests/regional_generation/regional/test_regional_multidiffusion_sampling.py",
+  "tests/regional_generation/spatial/test_contextual_model_wrapper.py",
+  "tests/sampling/test_multidiffusion_sampling.py",
+  "tests/sampling/test_sampling_scheduler_references.py",
+  "tests/sampling/test_sampling_schedulers.py",
+  "tests/segmentation/detection/test_ultralytics_loader.py",
+  "tests/segmentation/segs/test_detail_segs_as_regions_service.py",
+  "tests/segmentation/segs/test_prompt_segs_with_sam_node.py",
+  "tools/architecture_governance/validation.py",
+  "tools/attention_coupling_benchmark/comfy_probe/negpip_runtime.py",
+  "tools/negpip_integration/run.py",
+  "tools/prompt_control_attention_coupling_integration/validation.py",
+  "tools/run_global_prompt_lora_proof.py",
+  "tools/test_governance/semantic_patterns.py",
+  "tools/test_governance/validation.py",
+  "web/src/orderedMediaNode.ts",
+  "web/src/orderedMediaPreviewActions.ts",
+  "web/tests/media/orderedMediaPreviewActions.test.ts",
+]
+
+debt_paths = [
+]
+
+remediations = []

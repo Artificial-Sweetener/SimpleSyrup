@@ -21,7 +21,7 @@ from ..domain.segs import (
     sort_segs,
     to_impact_compatible_segs,
 )
-from ..masking.segs_mask_ops import (
+from ..domain.segs_mask_ops import (
     crop_image,
     crop_mask,
     crop_region_for_bbox,

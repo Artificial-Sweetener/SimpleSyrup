@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import torch
 
+from ..domain import attention_coupling_preparation as preparation_domain
 from ..domain.raw_regional_attention import (
     RawRegionalAttentionBranch,
     RawRegionalAttentionPlan,
@@ -29,15 +30,6 @@ _UNSUPPORTED_METADATA_KEYS = frozenset(
         "set_area_to_bounds",
     }
 )
-
-
-@dataclass(frozen=True, slots=True)
-class AttentionCouplingPreparation:
-    """Retain the full raw plan and base-only ordinary sampler inputs."""
-
-    plan: RawRegionalAttentionPlan
-    positive: object
-    negative: object
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +63,9 @@ class AttentionCouplingMetadataError(ValueError):
 class AttentionCouplingPreparationService:
     """Separate regional contexts from ordinary KSampler conditioning."""
 
-    def prepare(self, plan: RawRegionalAttentionPlan) -> AttentionCouplingPreparation:
+    def prepare(
+        self, plan: RawRegionalAttentionPlan
+    ) -> preparation_domain.AttentionCouplingPreparation:
         """Validate all contexts before returning the untouched base conditionings."""
 
         if not isinstance(plan, RawRegionalAttentionPlan):
@@ -82,7 +76,7 @@ class AttentionCouplingPreparationService:
         )
         if issues:
             raise AttentionCouplingMetadataError(issues)
-        return AttentionCouplingPreparation(
+        return preparation_domain.AttentionCouplingPreparation(
             plan=plan,
             positive=plan.positive.base_conditioning,
             negative=plan.negative.base_conditioning,

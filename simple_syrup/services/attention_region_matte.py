@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import torch
 
+from ..domain.segs_mask_ops import feather_mask
 from ..masking.mask_components import connected_mask_components
-from ..masking.segs_mask_ops import feather_mask
 
 
 class AttentionMatteService:

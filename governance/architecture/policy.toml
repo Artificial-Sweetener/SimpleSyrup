@@ -1,0 +1,41 @@
+schema_version = 2
+
+[structure]
+soft_lines = 350
+hard_lines = 500
+source_roots = [
+  "simple_syrup/domain",
+  "simple_syrup/image",
+  "simple_syrup/integration",
+  "simple_syrup/masking",
+  "simple_syrup/nodes",
+  "simple_syrup/nodes_v3",
+  "simple_syrup/runtime",
+  "simple_syrup/services",
+  "simple_syrup/shared",
+  "tests",
+  "tools",
+  "scripts",
+  "web/src",
+  "web/tests",
+]
+source_files = [
+  "__init__.py",
+  ".releaserc.cjs",
+  "eslint.config.js",
+  "simple_syrup/__init__.py",
+  "vitest.config.ts",
+]
+source_extensions = [
+  ".cjs",
+  ".js",
+  ".mjs",
+  ".py",
+  ".pyi",
+  ".ts",
+]
+excluded_paths = []
+
+[registries]
+debt = "governance/architecture/debt.toml"
+waivers = "governance/architecture/waivers.toml"

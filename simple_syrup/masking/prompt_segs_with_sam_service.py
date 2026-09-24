@@ -15,8 +15,7 @@ from ..domain.segs import (
     NativeSegs,
     Segment,
 )
-from ..masking.mask_ops import MaskRefinementSettings, refine_prompt_mask
-from ..masking.segs_mask_ops import (
+from ..domain.segs_mask_ops import (
     crop_image,
     crop_mask,
     crop_region_for_bbox,
@@ -24,6 +23,7 @@ from ..masking.segs_mask_ops import (
     normalize_mask,
     validate_single_image,
 )
+from ..masking.mask_ops import MaskRefinementSettings, refine_prompt_mask
 from ..runtime.sam_segmenter import SAMBoxSegmenter, SAMModelSegmenter
 from ..runtime.text_box_detector import (
     GroundingDINOTextBoxDetector,

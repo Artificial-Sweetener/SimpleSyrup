@@ -1,0 +1,422 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+"""Tests for Prompt-Control schedule and encode lazy graph expansion."""
+
+from __future__ import annotations
+
+import sys
+from importlib import import_module
+from types import ModuleType
+from typing import Any, cast
+
+import pytest
+
+from simple_syrup.services.prompt_control_schedule_encode_graph import (
+    PROMPT_CONTROL_MISSING_MESSAGE,
+    PromptControlScheduleEncodeGraphBuilder,
+)
+
+
+def test_schedule_encode_graph_builds_single_conditioning_outputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Single prompts return direct Prompt-Control conditioning links."""
+
+    calls = _install_fake_prompt_control(monkeypatch)
+
+    output = PromptControlScheduleEncodeGraphBuilder().build(
+        model=["model", 0],
+        clip=["clip", 0],
+        positive_prompt="face <lora:positive:1.0>",
+        negative_prompt="blur <lora:negative:0.5>",
+        encode_style="STYLE(A1111) ",
+    )
+
+    assert output.args[0] == ["lora_negative", 0]
+    assert output.args[1] == ["encode_0", 0]
+    assert output.args[2] == ["encode_1", 0]
+    assert output.expand is not None
+    assert not any(
+        node["class_type"].startswith("SimpleSyrup.ConditioningBatch")
+        for node in output.expand.values()
+    )
+    assert calls["lora"] == [
+        {
+            "model": ["model", 0],
+            "clip": ["clip", 0],
+            "text": "<lora:positive:1.0>",
+        },
+        {
+            "model": ["lora_positive", 0],
+            "clip": ["lora_positive", 1],
+            "text": "<lora:negative:0.5>",
+        },
+    ]
+    assert calls["encode"] == [
+        {"clip": ["lora_negative", 1], "text": "STYLE(A1111) face "},
+        {"clip": ["lora_negative", 1], "text": "STYLE(A1111) blur "},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("positive_prompt", "negative_prompt"),
+    [
+        ("portrait of (1girl:-2.0)", "blur"),
+        ("portrait", "(blur:-0.5)"),
+        ("portrait [SEP] (hands:-1.2)", "blur"),
+        ("portrait [0:(eyes:-1.5):0.5]", "blur"),
+    ],
+)
+def test_schedule_encode_graph_injects_negpip_for_negative_weights(
+    monkeypatch: pytest.MonkeyPatch,
+    positive_prompt: str,
+    negative_prompt: str,
+) -> None:
+    """Any effective negative segment weight prepares MODEL and CLIP first."""
+
+    calls = _install_fake_prompt_control(monkeypatch)
+
+    output = PromptControlScheduleEncodeGraphBuilder().build(
+        model=["model", 0],
+        clip=["clip", 0],
+        positive_prompt=positive_prompt,
+        negative_prompt=negative_prompt,
+    )
+
+    assert output.expand is not None
+    preparation_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "SimpleSyrup.ApplyAutomaticNegpip"
+    ]
+    assert len(preparation_nodes) == 1
+    assert calls["encode"]
+    assert all(call["clip"] != ["clip", 0] for call in calls["encode"])
+
+
+def test_schedule_encode_graph_does_not_inject_negpip_for_nonnegative_weights(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ordinary and positive-weight prompts retain the existing graph path."""
+
+    _install_fake_prompt_control(monkeypatch)
+
+    output = PromptControlScheduleEncodeGraphBuilder().build(
+        model=["model", 0],
+        clip=["clip", 0],
+        positive_prompt="portrait of (1girl:2.0)",
+        negative_prompt="blur",
+    )
+
+    assert output.expand is not None
+    assert not any(
+        node["class_type"] == "SimpleSyrup.ApplyAutomaticNegpip"
+        for node in output.expand.values()
+    )
+
+
+def test_schedule_encode_graph_packs_both_sides_to_matched_segment_counts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing negative region is encoded and packed from global text."""
+
+    calls = _install_fake_prompt_control(monkeypatch)
+
+    output = PromptControlScheduleEncodeGraphBuilder().build(
+        model=["model", 0],
+        clip=["clip", 0],
+        positive_prompt="face [SEP] hair",
+        negative_prompt="blur",
+    )
+
+    assert output.args[1] != ["encode_0", 0]
+    assert output.args[2] != ["encode_2", 0]
+    assert [call["text"] for call in calls["encode"]] == [
+        "face",
+        "hair",
+        "blur",
+        "blur",
+    ]
+    assert output.expand is not None
+    pack_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"].startswith("SimpleSyrup.ConditioningBatch")
+    ]
+    assert [node["class_type"] for node in pack_nodes] == [
+        "SimpleSyrup.ConditioningBatchStart",
+        "SimpleSyrup.ConditioningBatchAppend",
+        "SimpleSyrup.ConditioningBatchStart",
+        "SimpleSyrup.ConditioningBatchAppend",
+    ]
+
+
+def test_schedule_encode_graph_uses_named_default_separators(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recognize named separators on the fixed-default scheduling path."""
+
+    calls = _install_fake_prompt_control(monkeypatch)
+
+    PromptControlScheduleEncodeGraphBuilder().build(
+        model=["model", 0],
+        clip=["clip", 0],
+        positive_prompt="global [SEP|Sky] clouds [SEP|Ground] field",
+        negative_prompt="blur",
+    )
+
+    assert [call["text"] for call in calls["encode"]] == [
+        "global",
+        "clouds",
+        "field",
+        "blur",
+        "blur",
+        "blur",
+    ]
+
+
+def test_schedule_encode_graph_matches_lora_region_on_both_cfg_sides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regional LoRA hooks apply to positive and synthesized negative entries."""
+
+    calls = _install_fake_prompt_control(monkeypatch)
+
+    PromptControlScheduleEncodeGraphBuilder().build(
+        model=["model", 0],
+        clip=["clip", 0],
+        positive_prompt="global [SEP] left <lora:regional:1> [SEP] right",
+        negative_prompt="bad quality",
+    )
+
+    assert [call["text"] for call in calls["encode"]] == [
+        "global",
+        "left ",
+        "right",
+        "global",
+        "bad quality",
+        "bad quality",
+        "bad quality",
+        "bad quality",
+    ]
+    assert calls["encode"][1]["clip"] == calls["encode"][5]["clip"]
+    assert calls["encode"][3]["clip"] == calls["encode"][7]["clip"]
+    assert calls["encode"][0]["clip"] == calls["encode"][4]["clip"]
+    assert calls["encode"][2]["clip"] == calls["encode"][6]["clip"]
+
+
+def test_schedule_encode_graph_keeps_loras_local_to_aligned_segments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each SEP index receives one hook plan shared by both prompt sides."""
+
+    calls = _install_fake_prompt_control(monkeypatch)
+
+    output = PromptControlScheduleEncodeGraphBuilder().build(
+        model=["model", 0],
+        clip=["clip", 0],
+        positive_prompt="face <lora:a:1> [SEP] hair <lora:b:1>",
+        negative_prompt="blur <lora:c:1> [SEP] noise <lora:d:[0:1:0.5]>",
+    )
+
+    assert output.args[0] == ["model", 0]
+    assert calls["lora"] == []
+    assert output.expand is not None
+    parsed_hook_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "CreateHookLora"
+    ]
+    assert [node["inputs"]["lora_name"] for node in parsed_hook_nodes] == [
+        "<lora:a:1>\n<lora:c:1>",
+        "<lora:b:1>\n<lora:d:[0:1:0.5]>",
+    ]
+    assert calls["hook"] == [
+        {"clip": None, "text": "<lora:a:1>\n<lora:c:1>"},
+        {"clip": None, "text": "<lora:b:1>\n<lora:d:[0:1:0.5]>"},
+    ]
+    regional_hook_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "SimpleSyrup.PrepareRegionalLoraHooks"
+    ]
+    assert len(regional_hook_nodes) == 2
+    label_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "SimpleSyrup.LabelRegionalLoraHooks"
+    ]
+    assert len(label_nodes) == 2
+    clip_nodes = [
+        node for node in output.expand.values() if node["class_type"] == "SetClipHooks"
+    ]
+    assert clip_nodes == []
+    attachment_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "ConditioningSetProperties"
+    ]
+    assert len(attachment_nodes) == 6
+    assert all(node["inputs"]["strength"] == 1.0 for node in attachment_nodes)
+    assert all(
+        node["inputs"]["set_cond_area"] == "default" for node in attachment_nodes
+    )
+    companion_nodes = [
+        node
+        for node in output.expand.values()
+        if node["class_type"] == "SimpleSyrup.AttachRegionalGlobalConditioning"
+    ]
+    assert len(companion_nodes) == 2
+    assert calls["encode"][0]["clip"] == calls["encode"][3]["clip"]
+    assert calls["encode"][1]["clip"] == calls["encode"][4]["clip"]
+    assert calls["encode"][2]["clip"] == calls["encode"][5]["clip"]
+    assert calls["encode"][0]["clip"] != calls["encode"][1]["clip"]
+
+
+def test_schedule_encode_graph_reports_duplicate_expand_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Duplicate generated node ids are rejected with context."""
+
+    _install_fake_prompt_control(monkeypatch, duplicate_lora_ids=True)
+
+    with pytest.raises(ValueError, match="negative LoRA scheduling"):
+        PromptControlScheduleEncodeGraphBuilder().build(
+            model=["model", 0],
+            clip=["clip", 0],
+            positive_prompt="face",
+            negative_prompt="blur",
+        )
+
+
+def test_schedule_encode_graph_reports_missing_prompt_control(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing Prompt-Control dependency raises an actionable error."""
+
+    def fake_import_module(name: str) -> Any:
+        if name == "prompt_control.nodes_lazy":
+            raise ModuleNotFoundError(name)
+        return import_module(name)
+
+    monkeypatch.setattr(
+        "simple_syrup.runtime.prompt_control_graph_adapter.import_module",
+        fake_import_module,
+    )
+
+    with pytest.raises(RuntimeError, match="requires comfyui-prompt-control"):
+        PromptControlScheduleEncodeGraphBuilder().build(
+            model=["model", 0],
+            clip=["clip", 0],
+            positive_prompt="face",
+            negative_prompt="blur",
+        )
+    assert PROMPT_CONTROL_MISSING_MESSAGE.startswith("Schedule & Encode Prompts")
+
+
+def _install_fake_prompt_control(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    duplicate_lora_ids: bool = False,
+) -> dict[str, list[dict[str, Any]]]:
+    """Install graph-expanding Prompt-Control stand-ins for builder tests."""
+
+    prompt_control = ModuleType("prompt_control")
+    nodes_lazy = ModuleType("prompt_control.nodes_lazy")
+    io = import_module("comfy_api.latest").io
+    calls: dict[str, list[dict[str, Any]]] = {
+        "lora": [],
+        "hook": [],
+        "encode": [],
+    }
+
+    class FakePCLazyLoraLoaderAdvanced:
+        """Prompt-Control LoRA scheduler test double."""
+
+        @staticmethod
+        def execute(
+            model: Any,
+            clip: Any,
+            text: str,
+            apply_hooks: bool,
+            tags: str,
+            start: float,
+            end: float,
+            num_steps: int,
+        ) -> Any:
+            """Return deterministic model and clip links."""
+
+            assert apply_hooks is True
+            assert tags == ""
+            assert start == 0.0
+            assert end == 1.0
+            assert num_steps == 0
+            if model is None:
+                calls["hook"].append({"clip": clip, "text": text})
+                graph_utils = import_module("comfy_execution.graph_utils")
+                graph = graph_utils.GraphBuilder()
+                hooks = graph.node(
+                    "CreateHookLora",
+                    lora_name=text,
+                    strength_model=1.0,
+                    strength_clip=1.0,
+                )
+                hooked_clip = None
+                if clip is not None:
+                    hooked_clip = graph.node(
+                        "SetClipHooks",
+                        clip=clip,
+                        hooks=hooks.out(0),
+                        apply_to_conds=True,
+                        schedule_clip=True,
+                    )
+                return io.NodeOutput(
+                    None,
+                    None if hooked_clip is None else hooked_clip.out(0),
+                    hooks.out(0),
+                    expand=graph.finalize(),
+                )
+            side = "positive" if not calls["lora"] else "negative"
+            calls["lora"].append({"model": model, "clip": clip, "text": text})
+            node_id = "duplicate_lora" if duplicate_lora_ids else f"lora_{side}"
+            return io.NodeOutput(
+                [f"lora_{side}", 0],
+                [f"lora_{side}", 1],
+                None,
+                expand={node_id: {"class_type": "PromptControl.FakeLora"}},
+            )
+
+    class FakePCLazyTextEncodeAdvanced:
+        """Prompt-Control text encoder test double."""
+
+        @staticmethod
+        def execute(
+            clip: Any,
+            text: str,
+            tags: str,
+            start: float,
+            end: float,
+            num_steps: int,
+        ) -> Any:
+            """Return deterministic conditioning links."""
+
+            assert tags == ""
+            assert start == 0.0
+            assert end == 1.0
+            assert num_steps == 0
+            index = len(calls["encode"])
+            calls["encode"].append({"clip": clip, "text": text})
+            node_id = f"encode_{index}"
+            return io.NodeOutput(
+                [node_id, 0],
+                expand={node_id: {"class_type": "PromptControl.FakeTextEncode"}},
+            )
+
+    cast(Any, nodes_lazy).PCLazyLoraLoaderAdvanced = FakePCLazyLoraLoaderAdvanced
+    cast(Any, nodes_lazy).PCLazyTextEncodeAdvanced = FakePCLazyTextEncodeAdvanced
+    cast(Any, prompt_control).nodes_lazy = nodes_lazy
+    monkeypatch.setitem(sys.modules, "prompt_control", prompt_control)
+    monkeypatch.setitem(sys.modules, "prompt_control.nodes_lazy", nodes_lazy)
+    return calls

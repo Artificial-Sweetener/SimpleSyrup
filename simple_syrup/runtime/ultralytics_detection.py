@@ -12,8 +12,8 @@ from dataclasses import dataclass
 import torch
 
 from ..domain.segs import BoundingBox
-from ..masking.segs_mask_ops import normalize_mask
-from .ultralytics_loader import UltralyticsDetectorModel
+from ..domain.segs_mask_ops import normalize_mask
+from .ultralytics_model_adapter import UltralyticsDetectorModel
 
 
 @dataclass(frozen=True)

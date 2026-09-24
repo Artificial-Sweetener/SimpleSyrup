@@ -11,17 +11,17 @@ from dataclasses import dataclass
 
 import torch
 
-from ..masking.segs_mask_ops import (
-    crop_region_for_bbox,
-    resize_mask,
-    validate_single_image,
-)
 from ..shared.logging import get_logger
 from .segs import (
     BoundingBox,
     CropRegion,
     NativeSegs,
     Segment,
+)
+from .segs_mask_ops import (
+    crop_region_for_bbox,
+    resize_mask,
+    validate_single_image,
 )
 
 LOGGER = get_logger(__name__)

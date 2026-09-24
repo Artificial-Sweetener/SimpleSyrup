@@ -16,9 +16,9 @@ from ..domain.segs import (
     SORT_ORDER_OPTIONS,
     NativeSegs,
 )
+from ..domain.segs_mask_ops import iter_single_images, validate_image_batch
 from ..masking.mask_ops import DETAIL_METHODS
 from ..masking.prompt_segs_with_sam_service import PromptSEGSWithSAMService
-from ..masking.segs_mask_ops import iter_single_images, validate_image_batch
 from ..services.segs_output_service import (
     CombinedSegsResult,
     build_combined_segs_result,

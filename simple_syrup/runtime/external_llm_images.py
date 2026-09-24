@@ -13,7 +13,7 @@ import torch
 from PIL import Image
 
 from ..domain.segs import Segment
-from ..masking.segs_mask_ops import crop_image, crop_mask, resize_mask
+from ..domain.segs_mask_ops import crop_image, crop_mask, resize_mask
 from ..shared.tensor_validation import validate_image_tensor
 
 SEG_IMAGE_MODES = ("transparent mask", "black mask", "full crop")

@@ -55,8 +55,8 @@ jobs:
           --noconftest
           --rootdir=tests
           --confcutdir=tests
-          tests/test_grounding_dino_bert_adapter.py
-          tests/test_grounding_dino_text_token_masks.py
+          tests/segmentation/detection/test_grounding_dino_bert_adapter.py
+          tests/segmentation/detection/test_grounding_dino_text_token_masks.py
 
   release:
     if: github.event_name != 'pull_request'
@@ -97,6 +97,12 @@ jobs:
 
       - name: Verify Python formatting
         run: ruff format --check .
+
+      - name: Check architecture governance
+        run: python -m tools.check_architecture
+
+      - name: Check test governance
+        run: python -m tools.check_test_governance
 
       - name: Verify Python lint
         run: ruff check .

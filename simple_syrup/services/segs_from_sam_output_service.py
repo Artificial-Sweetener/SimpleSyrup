@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as functional
 
 from ..domain.segs import BoundingBox, CropRegion, NativeSegs, Segment
-from ..masking.segs_mask_ops import validate_single_image
+from ..domain.segs_mask_ops import validate_single_image
 from ..runtime.progress import NullPhaseProgressReporter, PhaseProgressReporter
 from ..runtime.sam_automatic_segmenter import (
     AutomaticSAMMask,

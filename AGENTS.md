@@ -35,6 +35,8 @@ Engineering priority is strict architecture, strong separation of concerns, comp
 ### Required Command Forms
 
 - Tests: `..\..\venv\Scripts\python.exe -m pytest -n auto -q`
+- Architecture: `..\..\venv\Scripts\python.exe -m tools.check_architecture`
+- Test governance: `..\..\venv\Scripts\python.exe -m tools.check_test_governance`
 - Lint: `..\..\venv\Scripts\ruff.exe check .`
 - Format: `..\..\venv\Scripts\ruff.exe format .`
 - Type check: `..\..\venv\Scripts\mypy.exe --strict simple_syrup tests`
@@ -93,6 +95,34 @@ If a required tool is missing from `..\..\venv`, install or update development d
 - Current module layout does not constrain improvement.
 - Reorganize modules when it improves architecture.
 - Align touched modules with the ownership and dependency rules in this file.
+
+## Architecture Governance
+
+- Repository governance lives under `governance/`.
+- `governance/architecture/policy.toml` defines every authored-code root,
+  extension, exclusion, and the 350-line soft and 500-line hard structural
+  thresholds.
+- `governance/architecture/debt.toml` records exact assessed mixed ownership.
+- `governance/architecture/waivers.toml` records exact bounded hard-gate
+  exceptions.
+- `governance/architecture/import_debt.toml` records exact current dependency-
+  direction violations; new violations are prohibited.
+- `governance/architecture/soft_reviews.toml` records the current human
+  disposition of every file between the soft and hard thresholds.
+- Every hard-gate file requires source-level ownership review.
+- Use a structural waiver only for one cohesive authoritative owner whose
+  invariants would be divided by extraction.
+- Mixed ownership requires debt and a linked remediation waiver naming the
+  next extraction and a lower next limit.
+- Waivers and debt are fingerprinted current state, not historical ledgers.
+- Delete resolved records; do not extend dates or limits merely to pass the
+  checker.
+- `governance/testing/policy.toml` defines Python and frontend test-layout and
+  reliability discovery.
+- Every test-governance candidate requires an exact classification or
+  debt-remediation disposition.
+- Run both governance checkers after changing authored structure, test
+  placement, isolation, timing, resources, or reviewed state.
 
 ## ComfyUI Node Rules
 

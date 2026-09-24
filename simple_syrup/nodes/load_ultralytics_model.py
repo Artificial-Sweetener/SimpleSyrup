@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from ..runtime.model_downloads import ComfyProgressReporter
-from ..runtime.ultralytics_loader import UltralyticsLoaderService
+from ..services.ultralytics_loader_service import UltralyticsLoaderService
 
 
 class LoadUltralyticsModel:

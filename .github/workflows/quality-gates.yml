@@ -1,0 +1,62 @@
+name: quality gates
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      SIMPLE_SYRUP_TEST_COMFY_CPU: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.14.0
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install ComfyUI host dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git "$RUNNER_TEMP/ComfyUI"
+          rsync -a --exclude=".git" "$RUNNER_TEMP/ComfyUI/" "$GITHUB_WORKSPACE/../.."/
+          pip install -r "$GITHUB_WORKSPACE/../../requirements.txt"
+
+      - name: Install Python dependencies
+        run: pip install -e . pytest pytest-xdist ruff mypy
+
+      - name: Check architecture governance
+        run: python -m tools.check_architecture
+
+      - name: Check test governance
+        run: python -m tools.check_test_governance
+
+      - name: Verify Python formatting
+        run: ruff format --check .
+
+      - name: Verify Python lint
+        run: ruff check .
+
+      - name: Verify Python types
+        run: mypy --strict simple_syrup tests
+
+      - name: Verify Python tests
+        run: pytest -n auto -q -m "not external_artifact"
+
+      - name: Verify frontend
+        run: npm run check:web

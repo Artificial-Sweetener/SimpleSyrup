@@ -1,0 +1,31 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+"""Verify the P9.1 managed coordinator remains a thin explicit entrypoint."""
+
+import sys
+from subprocess import run
+
+
+def test_cli_help_exposes_managed_source_baseline_and_timeout_boundaries() -> None:
+    """Keep external install and evidence locations caller-controlled."""
+
+    completed = run(
+        [
+            sys.executable,
+            "-m",
+            "tools.run_prompt_control_attention_coupling_integration",
+            "--help",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60.0,
+    )
+
+    assert "--comfy-root" in completed.stdout
+    assert "--prompt-control-root" in completed.stdout
+    assert "--baseline-path" in completed.stdout
+    assert "--output-root" in completed.stdout
+    assert "--prompt-timeout" in completed.stdout

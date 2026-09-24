@@ -15,8 +15,8 @@ import torch
 from ..domain.conditioning_batch import ConditioningBatch
 from ..domain.prompt_composition import prefix_prompt
 from ..domain.segs import ImpactSegs, NativeSegs, to_impact_compatible_segs
+from ..domain.segs_mask_ops import crop_image, validate_single_image
 from ..domain.tile_segs import TileSEGSBuilder, TileSEGSControls
-from ..masking.segs_mask_ops import crop_image, validate_single_image
 from ..runtime.conditioning_encoding import ComfyConditioningEncoder
 from ..runtime.loaded_models import LoadedWD14Tagger, unwrap_wd14_tagger
 from ..runtime.progress import ProgressReporter, create_comfy_progress

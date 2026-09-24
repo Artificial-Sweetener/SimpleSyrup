@@ -21,6 +21,7 @@ from ..domain.regional_detailing import (
     pair_segments_with_conditioning,
 )
 from ..domain.segs import CropRegion, coerce_segs
+from ..domain.segs_mask_ops import validate_single_image
 from ..masking.regional_detailing_masks import (
     build_image_regions,
     build_latent_regions,
@@ -28,11 +29,10 @@ from ..masking.regional_detailing_masks import (
     scale_image_regions,
     union_masks,
 )
-from ..masking.segs_mask_ops import validate_single_image
-from ..runtime import regional_multidiffusion_sampling
 from ..runtime.detail_previews import DetailPreviewContext, work_region_from_mask
 from ..runtime.detail_resize import DetailImageResizer
-from ..runtime.detail_sampling import DetailSampler, Latent
+from ..runtime.detail_sampling import Latent
+from ..runtime.regional_detail_sampler import RegionalDetailSampler
 from ..shared.logging import get_logger
 
 LOGGER = get_logger(__name__)
@@ -95,62 +95,6 @@ class DetailSEGSAsRegionsResult:
     """Return the detailed image from a regional detail pass."""
 
     image: torch.Tensor
-
-
-class RegionalDetailSampler:
-    """Adapt shared detail sampling helpers to regional MultiDiffusion."""
-
-    def __init__(self, detail_sampler: DetailSampler | None = None) -> None:
-        """Create the runtime adapter with injectable encode/decode helper."""
-
-        self._detail_sampler = detail_sampler or DetailSampler()
-
-    def encode(self, vae: Any, pixels: torch.Tensor, tiled: bool) -> Latent:
-        """Encode pixels into a latent dictionary."""
-
-        return self._detail_sampler.encode(vae, pixels, tiled)
-
-    def decode(self, vae: Any, latent: Latent, tiled: bool) -> torch.Tensor:
-        """Decode latent samples into pixels."""
-
-        return self._detail_sampler.decode(vae, latent, tiled)
-
-    def sample_regions(
-        self,
-        *,
-        model: Any,
-        seed: int,
-        steps: int,
-        cfg: float,
-        sampler_name: str,
-        scheduler: str,
-        positive: Any,
-        negative: Any,
-        latent_image: Latent,
-        regions: tuple[LatentRegion, ...],
-        denoise: float,
-        global_prompt_weight: float,
-        preview_context: DetailPreviewContext | None = None,
-        differential_diffusion: bool = False,
-    ) -> Latent:
-        """Sample one full latent with regional MultiDiffusion."""
-
-        return regional_multidiffusion_sampling.sample_regional_multidiffusion(
-            model=model,
-            seed=seed,
-            steps=steps,
-            cfg=cfg,
-            sampler_name=sampler_name,
-            scheduler=scheduler,
-            positive=positive,
-            negative=negative,
-            latent_image=latent_image,
-            regions=regions,
-            denoise=denoise,
-            global_prompt_weight=global_prompt_weight,
-            preview_context=preview_context,
-            differential_diffusion=differential_diffusion,
-        )
 
 
 class DetailSEGSAsRegionsService:

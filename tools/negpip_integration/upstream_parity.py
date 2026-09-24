@@ -59,6 +59,7 @@ def prove_upstream_parity(ppm_root: Path) -> dict[str, object]:
         check=True,
         capture_output=True,
         text=True,
+        timeout=30.0,
     ).stdout.strip()
     if revision != PPM_REVISION:
         raise ValueError(

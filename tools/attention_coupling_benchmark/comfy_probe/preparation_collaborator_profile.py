@@ -10,6 +10,9 @@ from typing import ClassVar
 
 import torch
 
+from simple_syrup.domain.attention_coupling_preparation import (
+    AttentionCouplingPreparation,
+)
 from simple_syrup.domain.processed_regional_attention import (
     ProcessedRegionalAttentionPlan,
 )
@@ -38,7 +41,6 @@ from simple_syrup.services.attention_coupling_model_preparation_service import (
     AttentionCouplingModelPreparationService,
 )
 from simple_syrup.services.attention_coupling_preparation_service import (
-    AttentionCouplingPreparation,
     AttentionCouplingPreparationService,
 )
 

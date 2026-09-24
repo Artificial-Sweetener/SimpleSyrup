@@ -76,6 +76,7 @@ def _tracked_source_files() -> list[Path]:
             capture_output=True,
             check=True,
             text=True,
+            timeout=30.0,
         )
     except subprocess.CalledProcessError as exc:
         print(f"Error running git ls-files: {exc}", file=sys.stderr)

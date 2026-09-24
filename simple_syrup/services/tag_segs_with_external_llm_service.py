@@ -25,7 +25,7 @@ from ..domain.segs import (
     coerce_segs,
     to_impact_compatible_segs,
 )
-from ..masking.segs_mask_ops import validate_single_image
+from ..domain.segs_mask_ops import validate_single_image
 from ..runtime.conditioning_encoding import ComfyConditioningEncoder
 from ..runtime.external_llm_images import ExternalLLMSegsImageEncoder
 from ..runtime.progress import ProgressReporter, create_comfy_progress

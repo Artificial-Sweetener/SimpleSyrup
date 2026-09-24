@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..runtime.prompt_control_schedule_encode_graph import (
+from ..services.prompt_control_schedule_encode_graph import (
     PromptControlScheduleEncodeGraphBuilder,
 )
 

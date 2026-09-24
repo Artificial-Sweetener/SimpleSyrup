@@ -9,7 +9,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ..runtime.prompt_control_schedule_encode_graph import (
+from ..services.prompt_control_schedule_encode_graph import (
     PromptControlScheduleEncodeGraphBuilder,
 )
 

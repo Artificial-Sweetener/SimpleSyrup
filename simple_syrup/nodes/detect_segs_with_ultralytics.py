@@ -16,8 +16,8 @@ from ..domain.segs import (
     SORT_ORDER_OPTIONS,
     NativeSegs,
 )
-from ..masking.segs_mask_ops import iter_single_images, validate_image_batch
-from ..runtime.ultralytics_loader import UltralyticsDetectorModel
+from ..domain.segs_mask_ops import iter_single_images, validate_image_batch
+from ..runtime.ultralytics_model_adapter import UltralyticsDetectorModel
 from ..services.segs_detection_service import (
     SegsDetectionService,
 )

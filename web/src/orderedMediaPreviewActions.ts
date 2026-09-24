@@ -2,7 +2,6 @@
 // Copyright (C) 2026  Artificial Sweetener and contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { NativeNodePreview } from "./nativeNodePreview";
 import { subscribeNativePreviewLifecycle } from "./nativePreviewLifecycle";
 import {
   OrderedMediaPreviewAffordances,
@@ -11,66 +10,43 @@ import {
 } from "./orderedMediaPreviewAffordances";
 import {
   OrderedMediaPreviewTransaction,
-  type OrderedMediaPreviewItem,
   type OrderedMediaPreviewSurface
 } from "./orderedMediaPreviewTransaction";
-import type { ComfyApp, ComfyImageResult } from "./types";
+import { OrderedMediaDetailSelection } from "./orderedMediaDetailSelection";
+import type {
+  CubeFaceProjection,
+  OrderedMediaPreviewActionOptions
+} from "./orderedMediaPreviewActionTypes";
+import {
+  elementSlot,
+  imageArea,
+  imageSlot,
+  indexedSlots,
+  type NativeImageRect,
+  previewItems,
+  unionImageRects,
+  validSlot
+} from "./orderedMediaPreviewGeometry";
+import type { ComfyImageResult } from "./types";
 import {
   comfyImageReferenceKey,
   comfyImageSourceKey
 } from "./comfyImageReference";
 
-type NativeImageRect = readonly [number, number, number, number];
 const CUBE_FACE_PROJECTION_SYMBOL = Symbol.for(
   "sugarcubes.cube-face-projection.v1"
 );
 
-interface CubeFaceProjection {
-  readonly container: HTMLElement;
-  readonly projectRect: (rect: NativeImageRect) => NativePreviewSlot;
-}
-
-interface ActionPreviewNode {
-  readonly id?: string | number;
-  readonly pos?: readonly [number, number];
-  readonly size?: readonly [number, number];
-  readonly flags?: { readonly collapsed?: boolean };
-  widgets?: ActionPreviewWidget[];
-  imageIndex?: number | null;
-  imageRects?: NativeImageRect[];
-  imgs?: HTMLImageElement[];
-  graph?: {
-    _rootGraph?: object;
-    setDirtyCanvas?: (foreground: boolean, background: boolean) => void;
-  };
-}
-
-interface ActionPreviewWidget {
-  readonly y?: number;
-  readonly computedHeight?: number;
-  readonly options?: { readonly canvasOnly?: boolean };
-}
-
-export interface OrderedMediaPreviewActionOptions {
-  readonly app: ComfyApp;
-  readonly node: ActionPreviewNode;
-  readonly preview: NativeNodePreview;
-  readonly itemLabel: string;
-  readonly getFiles: () => string[];
-  readonly moveEarlier: (index: number) => void;
-  readonly moveLater: (index: number) => void;
-  readonly remove: (index: number) => void;
-}
+export type { OrderedMediaPreviewActionOptions } from "./orderedMediaPreviewActionTypes";
 
 /** Position deterministic list actions over Comfy's native preview cells. */
 export class OrderedMediaPreviewActions {
   private readonly affordances: OrderedMediaPreviewAffordances;
   private readonly transaction: OrderedMediaPreviewTransaction;
+  private readonly detailSelection: OrderedMediaDetailSelection;
   private readonly unsubscribePreview: () => void;
   private readonly unsubscribeLifecycle: () => void;
   private lastCanvasPreviewRect: NativeImageRect | null = null;
-  private pendingDetailIndex: number | null = null;
-  private detailRestoreFrame: number | null = null;
 
   constructor(private readonly options: OrderedMediaPreviewActionOptions) {
     this.transaction = new OrderedMediaPreviewTransaction({
@@ -83,20 +59,20 @@ export class OrderedMediaPreviewActions {
     const moveEarlier = (index: number): void => {
       const destination = index - 1;
       this.transaction.move(index, destination);
-      this.followMovedDetail(index, destination);
+      this.detailSelection.followMoved(index, destination);
       options.moveEarlier(index);
     };
     const moveLater = (index: number): void => {
       const destination = index + 1;
       this.transaction.move(index, destination);
-      this.followMovedDetail(index, destination);
+      this.detailSelection.followMoved(index, destination);
       options.moveLater(index);
     };
     const remove = (index: number): void => {
       const removedDetail = this.selectedItemIndex() === index;
       this.transaction.remove(index);
       options.remove(index);
-      this.followRemovedDetail(index, removedDetail);
+      this.detailSelection.followRemoved(index, removedDetail);
     };
     const actionOptions = {
       getItemCount: () => this.itemCount(),
@@ -109,10 +85,30 @@ export class OrderedMediaPreviewActions {
       getSlots: () => this.nativeActionSlots(),
       ...actionOptions
     });
+    this.detailSelection = new OrderedMediaDetailSelection({
+      selectedIndex: () => this.selectedItemIndex(),
+      canvasIndex: () => this.options.node.imageIndex,
+      setCanvasIndex: (index) => {
+        this.options.node.imageIndex = index;
+      },
+      itemCount: () => this.itemCount(),
+      domSelectedIndex: () => {
+        const selectedIndex = this.domDetailButtons().findIndex(
+          (button) => button.getAttribute("aria-current") === "true"
+        );
+        return selectedIndex >= 0 ? selectedIndex : null;
+      },
+      selectDomIndex: (index) => {
+        this.domDetailButtons()[index]?.click();
+      },
+      refreshActions: () => {
+        this.affordances.refresh();
+      }
+    });
     this.unsubscribePreview = options.preview.subscribe(() => {
       this.affordances.refresh();
       this.transaction.authoritativePublished();
-      this.restorePendingDetail();
+      this.detailSelection.restorePending();
     });
     this.unsubscribeLifecycle = subscribeNativePreviewLifecycle(() => {
       this.affordances.refresh();
@@ -125,10 +121,7 @@ export class OrderedMediaPreviewActions {
     this.unsubscribeLifecycle();
     this.transaction.dispose();
     this.affordances.dispose();
-    if (this.detailRestoreFrame !== null) {
-      cancelAnimationFrame(this.detailRestoreFrame);
-      this.detailRestoreFrame = null;
-    }
+    this.detailSelection.dispose();
   }
 
   private itemCount(): number {
@@ -492,64 +485,6 @@ export class OrderedMediaPreviewActions {
       : null;
   }
 
-  /** Keep the moved item selected across both native renderer state models. */
-  private followMovedDetail(index: number, destination: number): void {
-    if (this.selectedItemIndex() !== index) return;
-    this.pendingDetailIndex = destination;
-    if (this.options.node.imageIndex === index) {
-      this.options.node.imageIndex = destination;
-    } else {
-      this.domDetailButtons()[destination]?.click();
-    }
-    this.affordances.refresh();
-  }
-
-  /** Select the nearest remaining item after removing an inspected item. */
-  private followRemovedDetail(index: number, removedDetail: boolean): void {
-    if (!removedDetail) return;
-    const remaining = this.itemCount();
-    const destination = remaining > 0 ? Math.min(index, remaining - 1) : null;
-    this.pendingDetailIndex = destination;
-    if (this.options.node.imageIndex === index) {
-      this.options.node.imageIndex = destination;
-    } else if (destination !== null) {
-      this.domDetailButtons()[destination]?.click();
-    }
-    this.affordances.refresh();
-  }
-
-  /** Re-enter Nodes 2.0 detail mode after output publication resets its grid. */
-  private restorePendingDetail(): void {
-    if (this.pendingDetailIndex === null || this.detailRestoreFrame !== null) {
-      return;
-    }
-    let stableFrames = 0;
-    let remainingFrames = 12;
-    const restore = (): void => {
-      this.detailRestoreFrame = null;
-      const destination = this.pendingDetailIndex;
-      if (destination === null) return;
-      const buttons = this.domDetailButtons();
-      const selected = buttons.findIndex(
-        (button) => button.getAttribute("aria-current") === "true"
-      );
-      if (selected === destination) {
-        stableFrames += 1;
-      } else {
-        stableFrames = 0;
-        buttons[destination]?.click();
-      }
-      remainingFrames -= 1;
-      if (stableFrames >= 3 || remainingFrames <= 0) {
-        this.pendingDetailIndex = null;
-        this.affordances.refresh();
-        return;
-      }
-      this.detailRestoreFrame = requestAnimationFrame(restore);
-    };
-    this.detailRestoreFrame = requestAnimationFrame(restore);
-  }
-
   /** Return Comfy's ordered detail navigation controls for this node. */
   private domDetailButtons(): HTMLButtonElement[] {
     const root = this.domRoot();
@@ -565,62 +500,4 @@ export class OrderedMediaPreviewActions {
     const nodeId = this.options.node.id;
     return nodeId === undefined ? undefined : String(nodeId);
   }
-}
-
-function previewItems(images: HTMLImageElement[]): OrderedMediaPreviewItem[] {
-  return images.map((image) => ({
-    sourceUrl: image.currentSrc || image.src,
-    image
-  }));
-}
-
-function imageSlot(image: HTMLImageElement): () => NativePreviewSlot {
-  return () => elementSlot(image);
-}
-
-function elementSlot(element: Element): NativePreviewSlot {
-  const rect = element.getBoundingClientRect();
-  return {
-    left: rect.left,
-    top: rect.top,
-    width: rect.width,
-    height: rect.height
-  };
-}
-
-/** Reject malformed cross-extension projection geometry. */
-function validSlot(slot: NativePreviewSlot): boolean {
-  return (
-    Number.isFinite(slot.left) &&
-    Number.isFinite(slot.top) &&
-    Number.isFinite(slot.width) &&
-    Number.isFinite(slot.height) &&
-    slot.width >= 0 &&
-    slot.height >= 0
-  );
-}
-
-/** Measure a rendered image when native detail contains multiple candidates. */
-function imageArea(image: HTMLImageElement): number {
-  const rect = image.getBoundingClientRect();
-  return rect.width * rect.height;
-}
-
-/** Attach authoritative list positions to native preview footprints. */
-function indexedSlots(
-  slots: NativePreviewSlot[],
-  container: HTMLElement | null = null
-): NativePreviewActionSlot[] {
-  return slots.map((bounds, itemIndex) =>
-    container ? { itemIndex, bounds, container } : { itemIndex, bounds }
-  );
-}
-
-/** Return the smallest node-local rectangle containing every grid cell. */
-function unionImageRects(rects: NativeImageRect[]): NativeImageRect {
-  const left = Math.min(...rects.map(([x]) => x));
-  const top = Math.min(...rects.map(([, y]) => y));
-  const right = Math.max(...rects.map(([x, , width]) => x + width));
-  const bottom = Math.max(...rects.map(([, y, , height]) => y + height));
-  return [left, top, right - left, bottom - top];
 }

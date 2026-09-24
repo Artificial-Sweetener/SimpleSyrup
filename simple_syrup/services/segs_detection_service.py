@@ -11,7 +11,7 @@ from typing import Protocol
 import torch
 
 from ..domain.segs import NativeSegs, Segment, coerce_segment_mask
-from ..masking.segs_mask_ops import (
+from ..domain.segs_mask_ops import (
     crop_image,
     crop_mask,
     crop_region_for_bbox,
@@ -23,7 +23,7 @@ from ..runtime.ultralytics_detection import (
     UltralyticsDetection,
     run_ultralytics_detection,
 )
-from ..runtime.ultralytics_loader import UltralyticsDetectorModel
+from ..runtime.ultralytics_model_adapter import UltralyticsDetectorModel
 from ..shared.logging import get_logger
 from .segs_output_service import combined_mask_from_segs
 

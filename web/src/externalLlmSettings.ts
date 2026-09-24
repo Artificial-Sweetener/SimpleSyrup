@@ -8,8 +8,8 @@ import {
   getExternalLLMSettings,
   saveExternalLLMApiKey,
   saveExternalLLMSettings
-} from "./api";
-import type { ExternalLLMSettings } from "./api";
+} from "./externalLlmApi";
+import type { ExternalLLMSettings } from "./externalLlmApi";
 import {
   createElement,
   installSimpleSyrupSettingsStyle,

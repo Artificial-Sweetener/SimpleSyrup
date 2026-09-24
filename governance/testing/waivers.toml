@@ -1,0 +1,153 @@
+schema_version = 1
+
+[[waivers]]
+id = "SSY-TEST-WAIVER-C001"
+owner = "pytest CUDA isolation bootstrap"
+kind = "classification"
+disposition = "framework_infrastructure"
+rule = "ENV001"
+candidates = ["ENV001|tests/conftest.py|<module>:environment-mutation:1"]
+paths = ["tests/conftest.py"]
+fingerprint = "sha256:481069f16237eff312f817f1e4dd3213e804eee0f3341e3f6c4aa2ba73066af3"
+rationale = "The root pytest bootstrap disables CUDA visibility before Torch and ComfyUI are imported unless the maintainer explicitly enables hardware tests. Every xdist worker receives the same inherited setting before collection, so this is suite framework configuration rather than mutable test-owned state."
+issue = "chore:SSY-TEST-WAIVER-C001"
+review_by = 2027-03-31
+
+[[waivers]]
+id = "SSY-TEST-WAIVER-C002"
+owner = "native checkpoint quantization proofs"
+kind = "classification"
+disposition = "platform_native"
+rule = "OPTIONAL001"
+candidates = [
+  "OPTIONAL001|tests/models/loading/test_checkpoint_quantizer.py|<module>:optional-proof:1",
+  "OPTIONAL001|tests/models/loading/test_checkpoint_quantizer.py|<module>:optional-proof:2",
+  "OPTIONAL001|tests/models/loading/test_checkpoint_quantizer.py|<module>:optional-proof:3",
+  "OPTIONAL001|tests/models/loading/test_checkpoint_quantizer.py|<module>:optional-proof:4",
+  "OPTIONAL001|tests/models/loading/test_checkpoint_quantizer.py|<module>:optional-proof:5",
+]
+paths = ["tests/models/loading/test_checkpoint_quantizer.py"]
+fingerprint = "sha256:bc2bee06ddb6cf41ba66497855e7349e5aa5dd5292f732284a812a615fa65c49"
+rationale = "These proofs exercise installed ComfyUI NVFP4/MXFP8 kernels, GPU compute capability, and optional comfy-aimdo reload behavior. CPU fake-boundary tests in the same module always run; only the native serialization contracts are skipped when their external runtime or hardware capability does not exist."
+issue = "chore:SSY-TEST-WAIVER-C002"
+review_by = 2027-03-31
+
+[[waivers]]
+id = "SSY-TEST-WAIVER-C003"
+owner = "CUDA Anima projection precision proof"
+kind = "classification"
+disposition = "platform_native"
+rule = "OPTIONAL001"
+candidates = ["OPTIONAL001|tests/regional_generation/anima/test_anima_projection_batch.py|<module>:optional-proof:1"]
+paths = ["tests/regional_generation/anima/test_anima_projection_batch.py"]
+fingerprint = "sha256:cb5e280524450a58144b350799129b3c27a6d4ce430867de582da19303987c33"
+rationale = "This exact comparison bounds BF16 batched projection error on CUDA tensors against independently generated projections. Its behavior depends on the installed CUDA execution path and cannot truthfully be substituted by CPU arithmetic; all device-independent projection contracts remain mandatory."
+issue = "chore:SSY-TEST-WAIVER-C003"
+review_by = 2027-03-31
+
+[[waivers]]
+id = "SSY-TEST-WAIVER-C004"
+owner = "native Anima quantization workflow"
+kind = "classification"
+disposition = "platform_native"
+rule = "OPTIONAL001"
+candidates = ["OPTIONAL001|tests/regional_generation/anima/test_anima_quantization_workflow.py|<module>:optional-proof:1"]
+paths = ["tests/regional_generation/anima/test_anima_quantization_workflow.py"]
+fingerprint = "sha256:ff02416ea8c16112605b221975425a6f88013f66e2a8bc66bdc2d1a0ecfa5053"
+rationale = "The workflow proof intentionally uses the installed ComfyUI NVFP4 implementation and the active GPU's native compute support before loading the generated Anima artifact. It remains optional only where that hardware capability is absent; the portable resolver and policy tests still run everywhere."
+issue = "chore:SSY-TEST-WAIVER-C004"
+review_by = 2027-03-31
+
+[[waivers]]
+id = "SSY-TEST-WAIVER-C005"
+owner = "installed Anima CUDA smoke"
+kind = "classification"
+disposition = "platform_native"
+rule = "OPTIONAL001"
+candidates = ["OPTIONAL001|tests/regional_generation/anima/test_anima_regional_model_smoke.py|<module>:optional-proof:1"]
+paths = ["tests/regional_generation/anima/test_anima_regional_model_smoke.py"]
+fingerprint = "sha256:73b3bde9d6009b71608aec73dde862d963a3a723d5ad5d57c130428a4c1511c6"
+rationale = "This smoke test constructs the installed Comfy Anima model and executes its complete patched forward on CUDA tensors. It proves the native device/runtime integration and is skipped only without CUDA; deterministic component and surface contracts cover the same code boundaries on every host."
+issue = "chore:SSY-TEST-WAIVER-C005"
+review_by = 2027-03-31
+
+[[waivers]]
+id = "SSY-TEST-WAIVER-C006"
+owner = "regional convolution CUDA precision"
+kind = "classification"
+disposition = "platform_native"
+rule = "OPTIONAL001"
+candidates = ["OPTIONAL001|tests/regional_generation/regional/test_regional_convolution_execution.py|<module>:optional-proof:1"]
+paths = ["tests/regional_generation/regional/test_regional_convolution_execution.py"]
+fingerprint = "sha256:f197de881034f1c11b46ce290f3b6c515fe251d5bdef7efb419f43ad7257bf40"
+rationale = "The optional parameterized cases prove FP16 and BF16 regional convolution behavior through the installed CUDA kernels. CPU tests in the same contract cover dimensions, grouping, stride, masking, ordering, and reference math; only device-specific low-precision execution requires CUDA."
+issue = "chore:SSY-TEST-WAIVER-C006"
+review_by = 2027-03-31
+
+[[waivers]]
+id = "SSY-TEST-WAIVER-C007"
+owner = "regional linear CUDA precision"
+kind = "classification"
+disposition = "platform_native"
+rule = "OPTIONAL001"
+candidates = [
+  "OPTIONAL001|tests/regional_generation/regional/test_regional_linear_execution.py|<module>:optional-proof:1",
+  "OPTIONAL001|tests/regional_generation/regional/test_regional_linear_execution.py|<module>:optional-proof:2",
+]
+paths = ["tests/regional_generation/regional/test_regional_linear_execution.py"]
+fingerprint = "sha256:d8a833ef160838b80db21d7240d789879deb8a4dc39f89d52145b1ebf580f765"
+rationale = "These cases validate installed CUDA FP16/BF16 projection rounding and compatible-adapter accumulation on the actual device execution path. The module's CPU contracts always prove masking, ordering, preparation, and reference deltas; the classified cases add hardware-specific numerical evidence."
+issue = "chore:SSY-TEST-WAIVER-C007"
+review_by = 2027-03-31
+
+[[waivers]]
+id = "SSY-TEST-WAIVER-C008"
+owner = "fused regional LoRA CUDA kernel"
+kind = "classification"
+disposition = "platform_native"
+rule = "OPTIONAL001"
+candidates = ["OPTIONAL001|tests/regional_generation/regional/test_regional_lora_fused_active_accumulation.py|<module>:optional-proof:1"]
+paths = ["tests/regional_generation/regional/test_regional_lora_fused_active_accumulation.py"]
+fingerprint = "sha256:2053ff281c4e707c99db6424074ef3526c901ad84f0f750e044c35116981cd9c"
+rationale = "The entire module qualifies the CUDA-only fused regional LoRA accumulator across low-precision dtypes, adapter counts, and indexed paths. There is no CPU implementation to exercise, while the non-fused accumulation owner has mandatory portable reference coverage."
+issue = "chore:SSY-TEST-WAIVER-C008"
+review_by = 2027-03-31
+
+[[waivers]]
+id = "SSY-TEST-WAIVER-C009"
+owner = "fused multiplier CUDA transport"
+kind = "classification"
+disposition = "platform_native"
+rule = "OPTIONAL001"
+candidates = ["OPTIONAL001|tests/regional_generation/regional/test_regional_lora_fused_multiplier_transport.py|<module>:optional-proof:1"]
+paths = ["tests/regional_generation/regional/test_regional_lora_fused_multiplier_transport.py"]
+fingerprint = "sha256:56ef4217551bdccc97fc6277bd2ade11ac10b9512ee3725c46b210044f380f21"
+rationale = "This module proves multiple adapter multipliers reach the CUDA fused kernel without an intermediate stack. The production behavior exists only for a CUDA-capable device, and portable composition tests independently cover ordering and multiplier semantics outside this native optimization."
+issue = "chore:SSY-TEST-WAIVER-C009"
+review_by = 2027-03-31
+
+[[waivers]]
+id = "SSY-TEST-WAIVER-C010"
+owner = "ordered tensor CUDA accumulation"
+kind = "classification"
+disposition = "platform_native"
+rule = "OPTIONAL001"
+candidates = ["OPTIONAL001|tests/sampling/test_ordered_tensor_accumulation.py|<module>:optional-proof:1"]
+paths = ["tests/sampling/test_ordered_tensor_accumulation.py"]
+fingerprint = "sha256:b6306323fd555706f0b7525078acfa199c657f47f96432ce320da9057fc41709"
+rationale = "The parameter matrix compares stepwise CUDA accumulation and its exact low-precision rounding across one and multiple Triton launches. Mandatory CPU contracts prove ordered in-place accumulation; only the GPU kernel and device dtypes are capability-gated."
+issue = "chore:SSY-TEST-WAIVER-C010"
+review_by = 2027-03-31
+
+[[waivers]]
+id = "SSY-TEST-WAIVER-C011"
+owner = "managed Windows Comfy process lifetime"
+kind = "classification"
+disposition = "platform_native"
+rule = "PROCESS001"
+candidates = ["PROCESS001|tools/comfy_integration/server_process.py|<module>:unscoped-child-process:1"]
+paths = ["tools/comfy_integration/server_process.py"]
+fingerprint = "sha256:6892815fbffe96d59bbb3f9069e44bfcdb9d6ea39e3f17f844695408af4233c0"
+rationale = "WindowsComfyProcess intentionally transfers the created Popen and log handles into an explicit long-lived owner because the integration run must use the server after start returns. Its stop method signals the exact process group, bounds both graceful and forced waits, retries bounded taskkill calls, and closes both logs in finally."
+issue = "chore:SSY-TEST-WAIVER-C011"
+review_by = 2027-03-31

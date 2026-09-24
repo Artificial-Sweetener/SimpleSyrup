@@ -12,22 +12,24 @@ from . import simple_syrup as _simple_syrup_package
 
 sys.modules.setdefault("simple_syrup", _simple_syrup_package)
 
+from .simple_syrup.integration.external_llm_routes import (  # noqa: E402
+    register_external_llm_routes,
+)
+from .simple_syrup.integration.mask_batch_preview_routes import (  # noqa: E402
+    register_mask_batch_preview_routes,
+)
+from .simple_syrup.integration.quant_cache_routes import (  # noqa: E402
+    register_quant_cache_routes,
+)
+from .simple_syrup.integration.settings_routes import (  # noqa: E402
+    register_settings_routes,
+)
 from .simple_syrup.runtime.attention_region_prompt_handler import (  # noqa: E402
     register_attention_region_prompt_handler,
 )
 from .simple_syrup.runtime.comfy_safetensors_dtypes import (  # noqa: E402
     register_comfy_safetensors_dtypes,
 )
-from .simple_syrup.runtime.external_llm_routes import (  # noqa: E402
-    register_external_llm_routes,
-)
-from .simple_syrup.runtime.mask_batch_preview_routes import (  # noqa: E402
-    register_mask_batch_preview_routes,
-)
-from .simple_syrup.runtime.quant_cache_routes import (  # noqa: E402
-    register_quant_cache_routes,
-)
-from .simple_syrup.runtime.settings_routes import register_settings_routes  # noqa: E402
 
 WEB_DIRECTORY = "./web/dist"
 

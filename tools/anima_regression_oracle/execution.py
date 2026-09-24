@@ -55,6 +55,7 @@ class OracleCommandExecutor:
                     stdout=stdout,
                     stderr=stderr,
                     text=True,
+                    timeout=1800.0,
                 )
             observation = CommandObservation(
                 command.identity,

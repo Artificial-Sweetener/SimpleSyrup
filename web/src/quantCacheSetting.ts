@@ -2,7 +2,7 @@
 // Copyright (C) 2026  Artificial Sweetener and contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { QuantCacheStatus } from "./api";
+import type { QuantCacheStatus } from "./quantCacheApi";
 import type { ComfyApp, Logger } from "./types";
 import type { GeneralSettingsContext } from "./downloadableModelsSetting";
 import {

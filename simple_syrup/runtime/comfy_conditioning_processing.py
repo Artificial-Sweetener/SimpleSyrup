@@ -13,6 +13,7 @@ from uuid import UUID
 import torch
 from comfy import sampler_helpers, samplers
 
+from ..domain.attention_coupling_preparation import AttentionCouplingPreparation
 from ..domain.conditioning_schedule import ConditioningScheduleRange
 from ..domain.processed_regional_attention import (
     ProcessedRegionalAttentionBranch,
@@ -22,9 +23,6 @@ from ..domain.processed_regional_attention import (
 )
 from ..domain.raw_regional_attention import (
     RawRegionalAttentionBranch,
-)
-from ..services.attention_coupling_preparation_service import (
-    AttentionCouplingPreparation,
 )
 from .attention_coupling.context_validation import RegionalContextValidator
 from .ppm_negpip_interop import PpmNegpipInterop

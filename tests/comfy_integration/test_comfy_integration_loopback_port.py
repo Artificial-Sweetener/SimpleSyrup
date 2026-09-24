@@ -1,0 +1,40 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+"""Test isolated loopback-port selection and validation."""
+
+from __future__ import annotations
+
+import socket
+
+import pytest
+
+from tools.comfy_integration.loopback_port import (
+    is_loopback_port_available,
+    reserve_loopback_port,
+    validate_loopback_port,
+)
+
+
+def test_reserved_port_remains_exclusive_until_owner_releases_it() -> None:
+    """Keep the OS-assigned port unavailable throughout reservation ownership."""
+
+    with reserve_loopback_port() as reservation:
+        port = reservation.port
+        assert port not in {8188, 8297}
+        assert not is_loopback_port_available(port)
+
+    assert is_loopback_port_available(port)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", port))
+        assert not is_loopback_port_available(port)
+    assert is_loopback_port_available(port)
+
+
+@pytest.mark.parametrize("port", [True, 0, 1023, 8188, 8297, 65536])
+def test_invalid_managed_ports_are_rejected(port: int) -> None:
+    """Reject unsafe and default managed-server ports."""
+
+    with pytest.raises(ValueError, match="non-protected"):
+        validate_loopback_port(port)

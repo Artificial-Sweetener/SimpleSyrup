@@ -11,7 +11,7 @@ from typing import Any, ClassVar
 
 import torch
 
-from ..masking.segs_mask_ops import iter_single_images, validate_image_batch
+from ..domain.segs_mask_ops import iter_single_images, validate_image_batch
 from ..runtime.progress import PhaseProgressReporter, create_comfy_phase_progress
 from ..services.segs_from_sam_output_service import SEGSFromSAMOutputService
 

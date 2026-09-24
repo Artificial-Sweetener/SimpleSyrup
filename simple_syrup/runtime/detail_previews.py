@@ -15,6 +15,12 @@ import torch
 from PIL import Image, ImageDraw
 
 from ..domain.segs import CropRegion
+from .detail_preview_images import (
+    detail_alpha_mask,
+    image_tensor_to_rgb_pil,
+    normalize_mask_tensor,
+    validate_crop_region,
+)
 
 DETAIL_PREVIEW_WASH_OPACITY = 0.55
 DETAIL_PREVIEW_OUTLINE_RGB = (255, 0, 0)
@@ -126,7 +132,7 @@ class DetailPreviewCompositor:
     ) -> DetailPreviewCompositor:
         """Create a compositor with detailer background work precomputed."""
 
-        source_image = _image_tensor_to_rgb_pil(context.image)
+        source_image = image_tensor_to_rgb_pil(context.image)
         sampled_region = context.sampled_region or context.work_region
         geometry = build_detail_preview_geometry(
             source_width=source_image.width,
@@ -147,7 +153,7 @@ class DetailPreviewCompositor:
         )
         left, top, right, bottom = geometry.crop_box
         crop_size = (max(1, right - left), max(1, bottom - top))
-        detail_alpha_mask = _detail_alpha_mask(
+        detail_alpha = detail_alpha_mask(
             context.work_mask,
             source_size=(source_image.width, source_image.height),
             preview_size=geometry.preview_size,
@@ -157,7 +163,7 @@ class DetailPreviewCompositor:
         return cls(
             geometry=geometry,
             washed_background=washed_background,
-            detail_alpha_mask=detail_alpha_mask,
+            detail_alpha_mask=detail_alpha,
         )
 
     def compose(self, crop_preview: Image.Image) -> Image.Image:
@@ -211,9 +217,9 @@ def build_detail_preview_geometry(
         source_height,
         max_preview_resolution,
     )
-    _validate_crop_region(crop_region, source_width, source_height)
+    validate_crop_region(crop_region, source_width, source_height)
     resolved_outline_region = outline_region or crop_region
-    _validate_crop_region(resolved_outline_region, source_width, source_height)
+    validate_crop_region(resolved_outline_region, source_width, source_height)
 
     preview_width, preview_height = preview_size
     scale_x = float(preview_width) / float(source_width)
@@ -238,7 +244,7 @@ def build_detail_preview_geometry(
 def work_region_from_mask(mask: torch.Tensor) -> CropRegion:
     """Return the tight work region around a non-empty HW or single-item BHW mask."""
 
-    working = _normalize_mask_tensor(mask)
+    working = normalize_mask_tensor(mask)
     coordinates = torch.nonzero(working > 0, as_tuple=False)
     if coordinates.numel() == 0:
         raise ValueError("detail preview work mask must contain at least one pixel.")
@@ -365,83 +371,6 @@ def _source_outline_box(
         if crop_region.bottom < source_height
         else crop_region.bottom - 1,
     )
-
-
-def _image_tensor_to_rgb_pil(image: torch.Tensor) -> Image.Image:
-    """Convert a single-image BHWC tensor to an RGB PIL image."""
-
-    import numpy as np
-
-    if image.ndim != 4:
-        raise ValueError("detail preview image must be a BHWC tensor.")
-    if int(image.shape[0]) != 1:
-        raise ValueError("detail preview image must contain exactly one image.")
-    if int(image.shape[-1]) < 1:
-        raise ValueError("detail preview image must contain at least one channel.")
-
-    array = image[0].detach().cpu().float().clamp(0.0, 1.0).numpy()
-    if array.shape[-1] == 1:
-        array = np.repeat(array, 3, axis=-1)
-    elif array.shape[-1] >= 3:
-        array = array[..., :3]
-    else:
-        array = np.repeat(array[..., :1], 3, axis=-1)
-    return Image.fromarray((array * 255.0).round().astype(np.uint8))
-
-
-def _mask_tensor_to_l_pil(mask: torch.Tensor) -> Image.Image:
-    """Convert an HW or single-item BHW mask tensor to a grayscale alpha image."""
-
-    import numpy as np
-
-    working = _normalize_mask_tensor(mask).detach().cpu().clamp(0.0, 1.0)
-    return Image.fromarray((working.numpy() * 255.0).round().astype(np.uint8))
-
-
-def _normalize_mask_tensor(mask: torch.Tensor) -> torch.Tensor:
-    """Normalize an HW or single-item BHW mask tensor to HW float."""
-
-    working = mask.detach().float()
-    if working.ndim == 3 and int(working.shape[0]) == 1:
-        working = working[0]
-    if working.ndim != 2:
-        raise ValueError("detail preview work mask must be an HW tensor.")
-    return working
-
-
-def _detail_alpha_mask(
-    mask: torch.Tensor,
-    *,
-    source_size: tuple[int, int],
-    preview_size: tuple[int, int],
-    sampled_box: CropBox,
-    target_size: tuple[int, int],
-) -> Image.Image:
-    """Return an alpha mask aligned to the sampled preview paste box."""
-
-    mask_image = _mask_tensor_to_l_pil(mask)
-    if mask_image.size == source_size:
-        preview_mask = mask_image.resize(preview_size, Image.Resampling.BILINEAR)
-        return preview_mask.crop(sampled_box).resize(
-            target_size,
-            Image.Resampling.BILINEAR,
-        )
-    return mask_image.resize(target_size, Image.Resampling.BILINEAR)
-
-
-def _validate_crop_region(
-    crop_region: CropRegion,
-    source_width: int,
-    source_height: int,
-) -> None:
-    """Reject crop regions that cannot be mapped into the source image."""
-
-    if crop_region.left < 0 or crop_region.top < 0:
-        raise ValueError("crop_region left and top must be non-negative.")
-    if crop_region.right <= crop_region.left or crop_region.bottom <= crop_region.top:
-        raise ValueError("crop_region right/bottom must be greater than left/top.")
-    if crop_region.right > source_width or crop_region.bottom > source_height:
-        raise ValueError("crop_region must fit within the source image.")
 
 
 def _validate_positive_int(name: str, value: int) -> None:

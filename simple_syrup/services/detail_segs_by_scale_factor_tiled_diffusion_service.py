@@ -14,47 +14,20 @@ import torch
 from ..domain.conditioning_batch import select_conditioning
 from ..domain.detail_geometry import DetailScalePlan, build_detail_scale_plan
 from ..domain.segs import Segment, coerce_segs
-from ..domain.tiled_diffusion import validate_tiled_diffusion_mode
-from ..image.crop_composite import composite_crop
-from ..masking.detailer_masks import gaussian_feather_mask
-from ..masking.segs_mask_ops import (
+from ..domain.segs_mask_ops import (
     crop_image,
     validate_single_image,
 )
+from ..domain.tiled_diffusion import validate_tiled_diffusion_mode
+from ..image.crop_composite import composite_crop
+from ..masking.detailer_masks import gaussian_feather_mask
 from ..runtime.detail_previews import DetailPreviewContext
 from ..runtime.detail_resize import DetailImageResizer
-from ..runtime.detail_sampling import DetailSampler, Latent
+from ..runtime.detail_sampling import Latent
 from ..shared.logging import get_logger
-from .tiled_diffusion_sampling_service import TiledDiffusionSamplingService
+from .tiled_detail_sampler import TiledDetailSampler
 
 LOGGER = get_logger(__name__)
-
-
-class TiledDiffusionLatentSamplingBoundary(Protocol):
-    """Latent sampling boundary for selectable tiled diffusion modes."""
-
-    def sample(
-        self,
-        *,
-        diffusion_mode: str,
-        model: Any,
-        seed: int,
-        steps: int,
-        cfg: float,
-        sampler_name: str,
-        scheduler: str,
-        positive: Any,
-        negative: Any,
-        latent_image: Latent,
-        denoise: float,
-        latent_tile_width: int,
-        latent_tile_height: int,
-        latent_tile_overlap: int,
-        latent_tile_batch_size: int,
-        preview_context: DetailPreviewContext | None = None,
-        differential_diffusion: bool = False,
-    ) -> Latent:
-        """Sample a latent using the selected tiled diffusion mode."""
 
 
 class TiledDetailSamplingBoundary(Protocol):
@@ -116,75 +89,6 @@ class TiledDetailerResult:
     """Return the detailed image from a tiled detail pass."""
 
     image: torch.Tensor
-
-
-class TiledDetailSampler:
-    """Adapt shared VAE helpers and tiled diffusion runtimes."""
-
-    def __init__(
-        self,
-        detail_sampler: DetailSampler | None = None,
-        tiled_sampling_service: TiledDiffusionLatentSamplingBoundary | None = None,
-    ) -> None:
-        """Create the adapter with injectable encode/decode behavior."""
-
-        self._detail_sampler = detail_sampler or DetailSampler()
-        self._tiled_sampling_service = (
-            tiled_sampling_service or TiledDiffusionSamplingService()
-        )
-
-    def encode(self, vae: Any, pixels: torch.Tensor, tiled: bool) -> Latent:
-        """Encode pixels into a latent dictionary."""
-
-        return self._detail_sampler.encode(vae, pixels, tiled)
-
-    def decode(self, vae: Any, latent: Latent, tiled: bool) -> torch.Tensor:
-        """Decode latent samples into pixels."""
-
-        return self._detail_sampler.decode(vae, latent, tiled)
-
-    def sample_tiled(
-        self,
-        *,
-        diffusion_mode: str,
-        model: Any,
-        seed: int,
-        steps: int,
-        cfg: float,
-        sampler_name: str,
-        scheduler: str,
-        positive: Any,
-        negative: Any,
-        latent_image: Latent,
-        denoise: float,
-        latent_tile_width: int,
-        latent_tile_height: int,
-        latent_tile_overlap: int,
-        latent_tile_batch_size: int,
-        preview_context: DetailPreviewContext | None = None,
-        differential_diffusion: bool = False,
-    ) -> Latent:
-        """Sample one latent crop with the selected tiled diffusion runtime."""
-
-        return self._tiled_sampling_service.sample(
-            diffusion_mode=diffusion_mode,
-            model=model,
-            seed=seed,
-            steps=steps,
-            cfg=cfg,
-            sampler_name=sampler_name,
-            scheduler=scheduler,
-            positive=positive,
-            negative=negative,
-            latent_image=latent_image,
-            denoise=denoise,
-            latent_tile_width=latent_tile_width,
-            latent_tile_height=latent_tile_height,
-            latent_tile_overlap=latent_tile_overlap,
-            latent_tile_batch_size=latent_tile_batch_size,
-            preview_context=preview_context,
-            differential_diffusion=differential_diffusion,
-        )
 
 
 class DetailSEGSByScaleFactorTiledDiffusionService:

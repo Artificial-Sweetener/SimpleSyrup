@@ -1,40 +1,21 @@
 // web/src/main.ts
 import { app } from "../../../scripts/app.js";
 
+// web/src/apiTransport.ts
+async function backendErrorMessage(response, fallback) {
+  try {
+    const payload = await response.json();
+    if (typeof payload === "object" && payload !== null && typeof payload.error === "string") {
+      return payload.error;
+    }
+  } catch {
+    return fallback;
+  }
+  return fallback;
+}
+
 // web/src/api.ts
 var SETTINGS_ROUTE = "/simple-syrup/settings";
-var QUANT_CACHE_ROUTE = "/simple-syrup/quant-cache";
-var EXTERNAL_LLM_SETTINGS_ROUTE = "/simple-syrup/external-llm/settings";
-var EXTERNAL_LLM_API_KEY_ROUTE = "/simple-syrup/external-llm/api-key";
-var EXTERNAL_LLM_MODELS_REFRESH_ROUTE = "/simple-syrup/external-llm/models/refresh";
-var MASK_BATCH_PREVIEW_ROUTE = "/simple-syrup/mask-batch/preview";
-async function getMaskBatchPreview(files, channel, fetchImpl = fetch) {
-  const response = await fetchImpl(MASK_BATCH_PREVIEW_ROUTE, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ files, channel })
-  });
-  if (!response.ok) {
-    throw new Error(
-      await backendErrorMessage(
-        response,
-        `Could not render Load Mask Batch preview. Backend returned ${String(response.status)}.`
-      )
-    );
-  }
-  return parseMaskBatchPreview(await response.json());
-}
-function parseMaskBatchPreview(payload) {
-  if (!isMaskBatchPreviewPayload(payload)) {
-    throw new Error(
-      "SimpleSyrup mask batch preview payload is invalid. Expected native images and animation flags."
-    );
-  }
-  return {
-    images: payload.images.map((image) => ({ ...image })),
-    animated: [...payload.animated]
-  };
-}
 async function getSettings(fetchImpl = fetch) {
   const response = await fetchImpl(SETTINGS_ROUTE);
   if (!response.ok) {
@@ -74,107 +55,55 @@ function parseSettings(payload) {
     quant_cache_limit_gib: payload.quant_cache_limit_gib
   };
 }
-async function getQuantCacheStatus(fetchImpl = fetch) {
-  const response = await fetchImpl(QUANT_CACHE_ROUTE);
-  if (!response.ok) {
-    throw new Error(
-      await backendErrorMessage(
-        response,
-        `Could not load quant cache status. Backend returned ${String(response.status)}.`
-      )
-    );
-  }
-  return parseQuantCacheStatus(await response.json());
+function isSettingsPayload(payload) {
+  return typeof payload === "object" && payload !== null && typeof payload.show_downloadable_models === "boolean" && Number.isInteger(
+    payload.quant_cache_limit_gib
+  ) && Number(payload.quant_cache_limit_gib) > 0;
 }
-async function clearQuantCache(fetchImpl = fetch) {
-  const response = await fetchImpl(QUANT_CACHE_ROUTE, { method: "DELETE" });
-  if (!response.ok) {
-    throw new Error(
-      await backendErrorMessage(
-        response,
-        `Could not clear quant cache. Backend returned ${String(response.status)}.`
-      )
-    );
-  }
-  return parseQuantCacheStatus(await response.json());
-}
-async function enforceQuantCacheLimit(fetchImpl = fetch) {
-  const response = await fetchImpl(QUANT_CACHE_ROUTE, { method: "POST" });
-  if (!response.ok) {
-    throw new Error(
-      await backendErrorMessage(
-        response,
-        `Could not enforce quant cache limit. Backend returned ${String(response.status)}.`
-      )
-    );
-  }
-  return parseQuantCacheStatus(await response.json());
-}
-function parseQuantCacheStatus(payload) {
-  if (!isQuantCacheStatusPayload(payload)) {
-    throw new Error(
-      "SimpleSyrup quant cache status is invalid. Expected path, byte usage, limit, and artifact counts."
-    );
-  }
-  return { ...payload };
-}
+
+// web/src/externalLlmApi.ts
+var SETTINGS_ROUTE2 = "/simple-syrup/external-llm/settings";
+var API_KEY_ROUTE = "/simple-syrup/external-llm/api-key";
+var MODELS_REFRESH_ROUTE = "/simple-syrup/external-llm/models/refresh";
 async function getExternalLLMSettings(fetchImpl = fetch) {
-  const response = await fetchImpl(EXTERNAL_LLM_SETTINGS_ROUTE);
-  if (!response.ok) {
-    throw new Error(
-      await backendErrorMessage(
-        response,
-        `Could not load external LLM settings. Backend returned ${String(response.status)}.`
-      )
-    );
-  }
-  return parseExternalLLMSettings(await response.json());
+  return requestSettings(
+    fetchImpl,
+    SETTINGS_ROUTE2,
+    void 0,
+    "Could not load external LLM settings"
+  );
 }
 async function saveExternalLLMSettings(settings, fetchImpl = fetch) {
-  const response = await fetchImpl(EXTERNAL_LLM_SETTINGS_ROUTE, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(settings)
-  });
-  if (!response.ok) {
-    throw new Error(
-      await backendErrorMessage(
-        response,
-        `Could not save external LLM settings. Backend returned ${String(response.status)}.`
-      )
-    );
-  }
-  return parseExternalLLMSettings(await response.json());
+  return requestSettings(
+    fetchImpl,
+    SETTINGS_ROUTE2,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings)
+    },
+    "Could not save external LLM settings"
+  );
 }
 async function saveExternalLLMApiKey(payload, fetchImpl = fetch) {
-  const response = await fetchImpl(EXTERNAL_LLM_API_KEY_ROUTE, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) {
-    throw new Error(
-      await backendErrorMessage(
-        response,
-        `Could not save external LLM API key. Backend returned ${String(response.status)}.`
-      )
-    );
-  }
-  return parseExternalLLMSettings(await response.json());
+  return requestSettings(
+    fetchImpl,
+    API_KEY_ROUTE,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    },
+    "Could not save external LLM API key"
+  );
 }
 async function refreshExternalLLMModels(fetchImpl = fetch) {
-  const response = await fetchImpl(EXTERNAL_LLM_MODELS_REFRESH_ROUTE, {
-    method: "POST"
-  });
-  if (!response.ok) {
-    throw new Error(
-      await backendErrorMessage(
-        response,
-        `Could not refresh external LLM models. Backend returned ${String(response.status)}.`
-      )
-    );
-  }
-  return parseExternalLLMSettings(await response.json());
+  return requestSettings(
+    fetchImpl,
+    MODELS_REFRESH_ROUTE,
+    { method: "POST" },
+    "Could not refresh external LLM models"
+  );
 }
 function parseExternalLLMSettings(payload) {
   if (!isExternalLLMSettingsPayload(payload)) {
@@ -189,10 +118,52 @@ function parseExternalLLMSettings(payload) {
     has_api_key: payload.has_api_key
   };
 }
-function isSettingsPayload(payload) {
-  return typeof payload === "object" && payload !== null && typeof payload.show_downloadable_models === "boolean" && Number.isInteger(
-    payload.quant_cache_limit_gib
-  ) && Number(payload.quant_cache_limit_gib) > 0;
+async function requestSettings(fetchImpl, route, init, errorPrefix) {
+  const response = init === void 0 ? await fetchImpl(route) : await fetchImpl(route, init);
+  if (!response.ok) {
+    throw new Error(
+      await backendErrorMessage(
+        response,
+        `${errorPrefix}. Backend returned ${String(response.status)}.`
+      )
+    );
+  }
+  return parseExternalLLMSettings(await response.json());
+}
+function isExternalLLMSettingsPayload(payload) {
+  return typeof payload === "object" && payload !== null && typeof payload.base_url === "string" && Array.isArray(payload.cached_models) && payload.cached_models?.every(
+    (model) => typeof model === "string"
+  ) === true && typeof payload.default_model === "string" && typeof payload.has_api_key === "boolean";
+}
+
+// web/src/quantCacheApi.ts
+var QUANT_CACHE_ROUTE = "/simple-syrup/quant-cache";
+async function getQuantCacheStatus(fetchImpl = fetch) {
+  return requestQuantCache(fetchImpl);
+}
+async function clearQuantCache(fetchImpl = fetch) {
+  return requestQuantCache(fetchImpl, "DELETE");
+}
+async function enforceQuantCacheLimit(fetchImpl = fetch) {
+  return requestQuantCache(fetchImpl, "POST");
+}
+function parseQuantCacheStatus(payload) {
+  if (!isQuantCacheStatusPayload(payload)) {
+    throw new Error(
+      "SimpleSyrup quant cache status is invalid. Expected path, byte usage, limit, and artifact counts."
+    );
+  }
+  return { ...payload };
+}
+async function requestQuantCache(fetchImpl, method) {
+  const response = method === void 0 ? await fetchImpl(QUANT_CACHE_ROUTE) : await fetchImpl(QUANT_CACHE_ROUTE, { method });
+  if (!response.ok) {
+    const fallback = method === "DELETE" ? `Could not clear quant cache. Backend returned ${String(response.status)}.` : method === "POST" ? `Could not enforce quant cache limit. Backend returned ${String(response.status)}.` : `Could not load quant cache status. Backend returned ${String(response.status)}.`;
+    throw new Error(
+      await backendErrorMessage(response, fallback)
+    );
+  }
+  return parseQuantCacheStatus(await response.json());
 }
 function isQuantCacheStatusPayload(payload) {
   if (typeof payload !== "object" || payload === null) return false;
@@ -201,32 +172,6 @@ function isQuantCacheStatusPayload(payload) {
 }
 function isNonNegativeInteger(value) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
-}
-function isExternalLLMSettingsPayload(payload) {
-  return typeof payload === "object" && payload !== null && typeof payload.base_url === "string" && Array.isArray(payload.cached_models) && payload.cached_models?.every(
-    (model) => typeof model === "string"
-  ) === true && typeof payload.default_model === "string" && typeof payload.has_api_key === "boolean";
-}
-function isMaskBatchPreviewPayload(payload) {
-  if (typeof payload !== "object" || payload === null) return false;
-  const candidate = payload;
-  return Array.isArray(candidate.images) && candidate.images.every(isComfyImageResult) && Array.isArray(candidate.animated) && candidate.animated.every((value) => typeof value === "boolean");
-}
-function isComfyImageResult(value) {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate = value;
-  return typeof candidate.filename === "string" && typeof candidate.subfolder === "string" && (candidate.type === "input" || candidate.type === "output" || candidate.type === "temp");
-}
-async function backendErrorMessage(response, fallback) {
-  try {
-    const payload = await response.json();
-    if (typeof payload === "object" && payload !== null && typeof payload.error === "string") {
-      return payload.error;
-    }
-  } catch {
-    return fallback;
-  }
-  return fallback;
 }
 
 // web/src/downloadableModelsSetting.ts
@@ -745,6 +690,46 @@ function registerExternalLLMRefreshHook(app2, api = { refreshExternalLLMModels }
   };
 }
 
+// web/src/maskBatchPreviewApi.ts
+var MASK_BATCH_PREVIEW_ROUTE = "/simple-syrup/mask-batch/preview";
+async function getMaskBatchPreview(files, channel, fetchImpl = fetch) {
+  const response = await fetchImpl(MASK_BATCH_PREVIEW_ROUTE, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ files, channel })
+  });
+  if (!response.ok) {
+    throw new Error(
+      await backendErrorMessage(
+        response,
+        `Could not render Load Mask Batch preview. Backend returned ${String(response.status)}.`
+      )
+    );
+  }
+  return parseMaskBatchPreview(await response.json());
+}
+function parseMaskBatchPreview(payload) {
+  if (!isMaskBatchPreviewPayload(payload)) {
+    throw new Error(
+      "SimpleSyrup mask batch preview payload is invalid. Expected native images and animation flags."
+    );
+  }
+  return {
+    images: payload.images.map((image) => ({ ...image })),
+    animated: [...payload.animated]
+  };
+}
+function isMaskBatchPreviewPayload(payload) {
+  if (typeof payload !== "object" || payload === null) return false;
+  const candidate = payload;
+  return Array.isArray(candidate.images) && candidate.images.every(isComfyImageResult) && Array.isArray(candidate.animated) && candidate.animated.every((value) => typeof value === "boolean");
+}
+function isComfyImageResult(value) {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value;
+  return typeof candidate.filename === "string" && typeof candidate.subfolder === "string" && (candidate.type === "input" || candidate.type === "output" || candidate.type === "temp");
+}
+
 // web/src/nativeNodePreview.ts
 var NativeNodePreview = class {
   constructor(app2, api, node) {
@@ -1235,6 +1220,110 @@ var OrderedMediaPreviewTransaction = class {
   }
 };
 
+// web/src/orderedMediaDetailSelection.ts
+var OrderedMediaDetailSelection = class {
+  constructor(options) {
+    this.options = options;
+  }
+  options;
+  pendingIndex = null;
+  restoreFrame = null;
+  /** Keep the moved item selected across both native renderer state models. */
+  followMoved(index, destination) {
+    if (this.options.selectedIndex() !== index) return;
+    this.pendingIndex = destination;
+    if (this.options.canvasIndex() === index) {
+      this.options.setCanvasIndex(destination);
+    } else {
+      this.options.selectDomIndex(destination);
+    }
+    this.options.refreshActions();
+  }
+  /** Select the nearest remaining item after removing an inspected item. */
+  followRemoved(index, removedDetail) {
+    if (!removedDetail) return;
+    const remaining = this.options.itemCount();
+    const destination = remaining > 0 ? Math.min(index, remaining - 1) : null;
+    this.pendingIndex = destination;
+    if (this.options.canvasIndex() === index) {
+      this.options.setCanvasIndex(destination);
+    } else if (destination !== null) {
+      this.options.selectDomIndex(destination);
+    }
+    this.options.refreshActions();
+  }
+  /** Re-enter Nodes 2.0 detail mode after output publication resets its grid. */
+  restorePending() {
+    if (this.pendingIndex === null || this.restoreFrame !== null) return;
+    let stableFrames = 0;
+    let remainingFrames = 12;
+    const restore = () => {
+      this.restoreFrame = null;
+      const destination = this.pendingIndex;
+      if (destination === null) return;
+      if (this.options.domSelectedIndex() === destination) {
+        stableFrames += 1;
+      } else {
+        stableFrames = 0;
+        this.options.selectDomIndex(destination);
+      }
+      remainingFrames -= 1;
+      if (stableFrames >= 3 || remainingFrames <= 0) {
+        this.pendingIndex = null;
+        this.options.refreshActions();
+        return;
+      }
+      this.restoreFrame = requestAnimationFrame(restore);
+    };
+    this.restoreFrame = requestAnimationFrame(restore);
+  }
+  /** Cancel any selection restoration still waiting for native publication. */
+  dispose() {
+    if (this.restoreFrame === null) return;
+    cancelAnimationFrame(this.restoreFrame);
+    this.restoreFrame = null;
+  }
+};
+
+// web/src/orderedMediaPreviewGeometry.ts
+function previewItems(images) {
+  return images.map((image) => ({
+    sourceUrl: image.currentSrc || image.src,
+    image
+  }));
+}
+function imageSlot(image) {
+  return () => elementSlot(image);
+}
+function elementSlot(element) {
+  const rect = element.getBoundingClientRect();
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height
+  };
+}
+function validSlot(slot) {
+  return Number.isFinite(slot.left) && Number.isFinite(slot.top) && Number.isFinite(slot.width) && Number.isFinite(slot.height) && slot.width >= 0 && slot.height >= 0;
+}
+function imageArea(image) {
+  const rect = image.getBoundingClientRect();
+  return rect.width * rect.height;
+}
+function indexedSlots(slots, container = null) {
+  return slots.map(
+    (bounds, itemIndex) => container ? { itemIndex, bounds, container } : { itemIndex, bounds }
+  );
+}
+function unionImageRects(rects) {
+  const left = Math.min(...rects.map(([x]) => x));
+  const top = Math.min(...rects.map(([, y]) => y));
+  const right = Math.max(...rects.map(([x, , width]) => x + width));
+  const bottom = Math.max(...rects.map(([, y, , height]) => y + height));
+  return [left, top, right - left, bottom - top];
+}
+
 // web/src/comfyImageReference.ts
 function comfyImageReferenceKey(reference) {
   return `${reference.type}
@@ -1275,20 +1364,20 @@ var OrderedMediaPreviewActions = class {
     const moveEarlier = (index) => {
       const destination = index - 1;
       this.transaction.move(index, destination);
-      this.followMovedDetail(index, destination);
+      this.detailSelection.followMoved(index, destination);
       options.moveEarlier(index);
     };
     const moveLater = (index) => {
       const destination = index + 1;
       this.transaction.move(index, destination);
-      this.followMovedDetail(index, destination);
+      this.detailSelection.followMoved(index, destination);
       options.moveLater(index);
     };
     const remove = (index) => {
       const removedDetail = this.selectedItemIndex() === index;
       this.transaction.remove(index);
       options.remove(index);
-      this.followRemovedDetail(index, removedDetail);
+      this.detailSelection.followRemoved(index, removedDetail);
     };
     const actionOptions = {
       getItemCount: () => this.itemCount(),
@@ -1301,10 +1390,30 @@ var OrderedMediaPreviewActions = class {
       getSlots: () => this.nativeActionSlots(),
       ...actionOptions
     });
+    this.detailSelection = new OrderedMediaDetailSelection({
+      selectedIndex: () => this.selectedItemIndex(),
+      canvasIndex: () => this.options.node.imageIndex,
+      setCanvasIndex: (index) => {
+        this.options.node.imageIndex = index;
+      },
+      itemCount: () => this.itemCount(),
+      domSelectedIndex: () => {
+        const selectedIndex = this.domDetailButtons().findIndex(
+          (button) => button.getAttribute("aria-current") === "true"
+        );
+        return selectedIndex >= 0 ? selectedIndex : null;
+      },
+      selectDomIndex: (index) => {
+        this.domDetailButtons()[index]?.click();
+      },
+      refreshActions: () => {
+        this.affordances.refresh();
+      }
+    });
     this.unsubscribePreview = options.preview.subscribe(() => {
       this.affordances.refresh();
       this.transaction.authoritativePublished();
-      this.restorePendingDetail();
+      this.detailSelection.restorePending();
     });
     this.unsubscribeLifecycle = subscribeNativePreviewLifecycle(() => {
       this.affordances.refresh();
@@ -1313,21 +1422,17 @@ var OrderedMediaPreviewActions = class {
   options;
   affordances;
   transaction;
+  detailSelection;
   unsubscribePreview;
   unsubscribeLifecycle;
   lastCanvasPreviewRect = null;
-  pendingDetailIndex = null;
-  detailRestoreFrame = null;
   /** Remove layout listeners and every loader-owned overlay control. */
   dispose() {
     this.unsubscribePreview();
     this.unsubscribeLifecycle();
     this.transaction.dispose();
     this.affordances.dispose();
-    if (this.detailRestoreFrame !== null) {
-      cancelAnimationFrame(this.detailRestoreFrame);
-      this.detailRestoreFrame = null;
-    }
+    this.detailSelection.dispose();
   }
   itemCount() {
     const files = this.options.getFiles();
@@ -1621,61 +1726,6 @@ var OrderedMediaPreviewActions = class {
     const detailIndex = this.domDetailButtons().indexOf(currentButton);
     return detailIndex >= 0 && detailIndex < this.itemCount() ? detailIndex : null;
   }
-  /** Keep the moved item selected across both native renderer state models. */
-  followMovedDetail(index, destination) {
-    if (this.selectedItemIndex() !== index) return;
-    this.pendingDetailIndex = destination;
-    if (this.options.node.imageIndex === index) {
-      this.options.node.imageIndex = destination;
-    } else {
-      this.domDetailButtons()[destination]?.click();
-    }
-    this.affordances.refresh();
-  }
-  /** Select the nearest remaining item after removing an inspected item. */
-  followRemovedDetail(index, removedDetail) {
-    if (!removedDetail) return;
-    const remaining = this.itemCount();
-    const destination = remaining > 0 ? Math.min(index, remaining - 1) : null;
-    this.pendingDetailIndex = destination;
-    if (this.options.node.imageIndex === index) {
-      this.options.node.imageIndex = destination;
-    } else if (destination !== null) {
-      this.domDetailButtons()[destination]?.click();
-    }
-    this.affordances.refresh();
-  }
-  /** Re-enter Nodes 2.0 detail mode after output publication resets its grid. */
-  restorePendingDetail() {
-    if (this.pendingDetailIndex === null || this.detailRestoreFrame !== null) {
-      return;
-    }
-    let stableFrames = 0;
-    let remainingFrames = 12;
-    const restore = () => {
-      this.detailRestoreFrame = null;
-      const destination = this.pendingDetailIndex;
-      if (destination === null) return;
-      const buttons = this.domDetailButtons();
-      const selected = buttons.findIndex(
-        (button) => button.getAttribute("aria-current") === "true"
-      );
-      if (selected === destination) {
-        stableFrames += 1;
-      } else {
-        stableFrames = 0;
-        buttons[destination]?.click();
-      }
-      remainingFrames -= 1;
-      if (stableFrames >= 3 || remainingFrames <= 0) {
-        this.pendingDetailIndex = null;
-        this.affordances.refresh();
-        return;
-      }
-      this.detailRestoreFrame = requestAnimationFrame(restore);
-    };
-    this.detailRestoreFrame = requestAnimationFrame(restore);
-  }
   /** Return Comfy's ordered detail navigation controls for this node. */
   domDetailButtons() {
     const root = this.domRoot();
@@ -1691,43 +1741,6 @@ var OrderedMediaPreviewActions = class {
     return nodeId === void 0 ? void 0 : String(nodeId);
   }
 };
-function previewItems(images) {
-  return images.map((image) => ({
-    sourceUrl: image.currentSrc || image.src,
-    image
-  }));
-}
-function imageSlot(image) {
-  return () => elementSlot(image);
-}
-function elementSlot(element) {
-  const rect = element.getBoundingClientRect();
-  return {
-    left: rect.left,
-    top: rect.top,
-    width: rect.width,
-    height: rect.height
-  };
-}
-function validSlot(slot) {
-  return Number.isFinite(slot.left) && Number.isFinite(slot.top) && Number.isFinite(slot.width) && Number.isFinite(slot.height) && slot.width >= 0 && slot.height >= 0;
-}
-function imageArea(image) {
-  const rect = image.getBoundingClientRect();
-  return rect.width * rect.height;
-}
-function indexedSlots(slots, container = null) {
-  return slots.map(
-    (bounds, itemIndex) => container ? { itemIndex, bounds, container } : { itemIndex, bounds }
-  );
-}
-function unionImageRects(rects) {
-  const left = Math.min(...rects.map(([x]) => x));
-  const top = Math.min(...rects.map(([, y]) => y));
-  const right = Math.max(...rects.map(([x, , width]) => x + width));
-  const bottom = Math.max(...rects.map(([, y, , height]) => y + height));
-  return [left, top, right - left, bottom - top];
-}
 
 // web/src/orderedMediaSelection.ts
 var OrderedMediaSelection = class {

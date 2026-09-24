@@ -1,0 +1,78 @@
+schema_version = 1
+
+[[waivers]]
+id = "SSY-WAIVER-S001"
+owner = "model catalog"
+rule = "STRUCT003"
+path = "simple_syrup/runtime/model_catalog.py"
+kind = "structural"
+justification = "This module is the single immutable catalog authority for supported model families and artifacts. Most of its size is declarative checksums, repository identities, filenames, and URLs; its small query surface and entry constructors enforce one catalog schema and change with that same metadata contract. Splitting entries by provider would scatter uniqueness and lookup review without separating behavior or ownership."
+issue = "chore:SSY-WAIVER-S001"
+review_by = 2027-03-31
+max_lines = 687
+
+[[waivers]]
+id = "SSY-WAIVER-S002"
+owner = "sampling scheduler policy"
+rule = "STRUCT003"
+path = "simple_syrup/runtime/sampling_schedulers.py"
+kind = "structural"
+justification = "This module owns the complete sigma-schedule policy exposed to every sampler: supported names, fixed published AYS/GITS tables, Comfy delegation, local schedule calculation, denoise truncation, and sampler-specific terminal handling. Roughly half the file is immutable numeric reference data, while the executable functions share one public calculation boundary and dependency direction."
+issue = "chore:SSY-WAIVER-S002"
+review_by = 2027-03-31
+max_lines = 588
+
+[[waivers]]
+id = "SSY-WAIVER-S003"
+owner = "Anima cross-attention patch contracts"
+rule = "STRUCT003"
+path = "tests/regional_generation/anima/test_anima_cross_attention.py"
+kind = "structural"
+justification = "This module is one integration contract for AnimaRegionalCrossAttentionPatch: it installs the exact Anima module surface, supplies one deterministic attention double, drives branch/mask/context alignment, verifies failure restoration, and proves all 28 clone-local patches. The sizable builders encode a single valid execution context and are not independent production responsibilities."
+issue = "chore:SSY-WAIVER-S003"
+review_by = 2027-03-31
+max_lines = 661
+
+[[waivers]]
+id = "SSY-WAIVER-S004"
+owner = "Anima multi-LoRA fidelity contracts"
+rule = "STRUCT003"
+path = "tests/regional_generation/anima/test_anima_multi_lora_fidelity.py"
+kind = "structural"
+justification = "This module owns one numerical fidelity matrix for ordered multi-LoRA composition across schedules, branches, regions, target families, and the complete Anima surface. Its execution and reference helpers intentionally remain adjacent so every permutation is compared through the same independently calculated oracle; splitting by scenario would duplicate or conceal that shared proof authority."
+issue = "chore:SSY-WAIVER-S004"
+review_by = 2027-03-31
+max_lines = 678
+
+[[waivers]]
+id = "SSY-WAIVER-S005"
+owner = "regional convolution execution contracts"
+rule = "STRUCT003"
+path = "tests/regional_generation/regional/test_regional_convolution_execution.py"
+kind = "structural"
+justification = "This module is the complete numerical contract for RegionalConvolutionExecutor across direct, pointwise, LoCon, strided, grouped, tiled-batch, ordered-adapter, and low-precision execution. Its fixture builds the same execution plan and independent convolution reference for every case, so the tests share one owner, oracle, dependency surface, and change cadence."
+issue = "chore:SSY-WAIVER-S005"
+review_by = 2027-03-31
+max_lines = 556
+
+[[waivers]]
+id = "SSY-WAIVER-S006"
+owner = "Ultralytics detection node contracts"
+rule = "STRUCT003"
+path = "tests/segmentation/detection/test_detect_segs_with_ultralytics_node.py"
+kind = "structural"
+justification = "This module owns the workflow-facing contract of one Comfy node, including its schema, exact input order, batch behavior, sorting/ranking limits, union mode, and output shape. The service and builder doubles are deliberately local representations of that node boundary; every test changes with the same node API and persisted workflow contract."
+issue = "chore:SSY-WAIVER-S006"
+review_by = 2027-03-31
+max_lines = 592
+
+[[waivers]]
+id = "SSY-WAIVER-S007"
+owner = "scale-factor detail service contracts"
+rule = "STRUCT003"
+path = "tests/segmentation/segs/test_detail_segs_by_scale_factor_service.py"
+kind = "structural"
+justification = "This module is the end-to-end behavioral contract for DetailSEGSByScaleFactorService, whose single orchestration transaction selects per-segment conditioning, sizes and resizes crops, applies masks, samples, decodes, and pastes results. Its sampler and resizer doubles record that one transaction; splitting them would duplicate setup without creating a distinct behavior owner."
+issue = "chore:SSY-WAIVER-S007"
+review_by = 2027-03-31
+max_lines = 532

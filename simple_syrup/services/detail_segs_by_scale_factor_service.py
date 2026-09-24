@@ -14,12 +14,12 @@ import torch
 from ..domain.conditioning_batch import select_conditioning
 from ..domain.detail_geometry import DetailScalePlan, build_detail_scale_plan
 from ..domain.segs import Segment, coerce_segs
-from ..image.crop_composite import composite_crop
-from ..masking.detailer_masks import gaussian_feather_mask
-from ..masking.segs_mask_ops import (
+from ..domain.segs_mask_ops import (
     crop_image,
     validate_single_image,
 )
+from ..image.crop_composite import composite_crop
+from ..masking.detailer_masks import gaussian_feather_mask
 from ..runtime.detail_previews import DetailPreviewContext
 from ..runtime.detail_resize import DetailImageResizer
 from ..runtime.detail_sampling import DetailSampler, Latent

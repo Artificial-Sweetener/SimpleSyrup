@@ -9,14 +9,14 @@ from __future__ import annotations
 import torch
 
 from ..domain.segs import NativeSegs, Segment
-from ..masking.mask_components import connected_mask_components
-from ..masking.segs_mask_ops import (
+from ..domain.segs_mask_ops import (
     crop_image,
     crop_mask,
     crop_region_for_bbox,
     dilate_mask,
     validate_single_image,
 )
+from ..masking.mask_components import connected_mask_components
 from ..shared.logging import get_logger
 
 LOGGER = get_logger(__name__)

@@ -13,9 +13,11 @@ from pathlib import Path
 from tools.comfy_api import JsonObject, LoopbackComfyClient
 
 from .artifacts import IntegrationArtifacts
-from .loopback_port import select_unused_loopback_port
+from .loopback_port import is_loopback_port_available, reserve_loopback_port
 from .readiness import wait_for_server
 from .server_process import ComfyServerCommand, WindowsComfyProcess
+
+MAX_LAUNCH_ATTEMPTS = 4
 
 
 @dataclass(frozen=True)
@@ -50,9 +52,22 @@ class ManagedComfyServer:
         self._running: RunningManagedComfy | None = None
 
     def __enter__(self) -> RunningManagedComfy:
-        """Start and verify a new loopback server."""
+        """Start and verify a server, retrying only a proven port collision."""
 
-        port = select_unused_loopback_port()
+        for attempt in range(1, MAX_LAUNCH_ATTEMPTS + 1):
+            reservation = reserve_loopback_port()
+            port = reservation.port
+            reservation.release()
+            try:
+                return self._start_on_port(port)
+            except Exception:
+                if attempt == MAX_LAUNCH_ATTEMPTS or is_loopback_port_available(port):
+                    raise
+        raise AssertionError("Managed Comfy launch attempts were not exhausted.")
+
+    def _start_on_port(self, port: int) -> RunningManagedComfy:
+        """Launch and verify one server attempt on an owned candidate port."""
+
         command = ComfyServerCommand(
             self._root,
             self._root / "venv" / "Scripts" / "python.exe",

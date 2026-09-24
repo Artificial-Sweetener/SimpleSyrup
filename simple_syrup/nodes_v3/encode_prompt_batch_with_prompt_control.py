@@ -10,7 +10,7 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..domain.prompt_batch_parser import DEFAULT_PROMPT_BATCH_SEPARATOR
-from ..runtime.prompt_control_batch_graph import PromptControlBatchGraphBuilder
+from ..services.prompt_control_batch_graph import PromptControlBatchGraphBuilder
 
 if TYPE_CHECKING:
 
