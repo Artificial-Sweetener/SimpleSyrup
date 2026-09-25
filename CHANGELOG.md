@@ -1,3 +1,10 @@
+## [1.11.1](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.11.0...v1.11.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **release:** attribute automation to Daisy ([2ae545d](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/2ae545d64d70a454f635ee647fb7e6a1c3500b9b))
+
 # [1.11.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.10.1...v1.11.0) (2026-09-25)
 
 
