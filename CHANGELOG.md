@@ -1,3 +1,10 @@
+# [1.11.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.10.1...v1.11.0) (2026-09-25)
+
+
+### Features
+
+* **sampling:** make negative conditioning optional ([0bc81dc](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/0bc81dc4d00a13d42c65440da2058e94a505e8d5))
+
 ## [1.10.1](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.10.0...v1.10.1) (2026-09-24)
 
 
