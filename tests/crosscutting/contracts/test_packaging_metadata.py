@@ -27,6 +27,12 @@ EXPECTED_RUNTIME_REQUIREMENTS = (
     "huggingface-hub",
     "keyring",
 )
+EXPECTED_RELEASE_IDENTITY = (
+    "GIT_AUTHOR_NAME: Daisy",
+    "GIT_AUTHOR_EMAIL: daisy@artificialsweetener.ai",
+    "GIT_COMMITTER_NAME: Daisy",
+    "GIT_COMMITTER_EMAIL: daisy@artificialsweetener.ai",
+)
 
 
 def _requirements(path: Path) -> tuple[Requirement, ...]:
@@ -124,3 +130,14 @@ def test_frontend_dist_bundle_is_tracked_for_comfy_serving() -> None:
     dist_bundle = REPO_ROOT / "web" / "dist" / "simple-syrup.js"
 
     assert dist_bundle.is_file()
+
+
+def test_release_automation_uses_daisy_git_identity() -> None:
+    """Keep automated release commits attributed to the project account."""
+
+    workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert all(identity in workflow for identity in EXPECTED_RELEASE_IDENTITY)
+    assert "semantic-release-bot@martynus.net" not in workflow
