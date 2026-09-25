@@ -42,7 +42,6 @@ def test_input_types_expose_concise_klein_oriented_controls(
         "sampler_name",
         "scheduler",
         "positive",
-        "negative",
         "latent_image",
         "denoise",
         "diffusion_mode",
@@ -53,6 +52,8 @@ def test_input_types_expose_concise_klein_oriented_controls(
         "global_steps",
         "global_decay",
     )
+    assert optional["negative"].io_type == "CONDITIONING,CONDITIONING_BATCH"
+    assert "positive-only" in optional["negative"].tooltip
     assert required["steps"].default == 4
     assert required["cfg"].default == 1.0
     assert required["diffusion_mode"].options == [

@@ -107,6 +107,7 @@ class AttentionCouplingModelPreparationService:
     ) -> PreparedAttentionCouplingModel:
         """Return one admitted derived model ready for spatial sampling."""
 
+        preparation_negative = positive if negative is None else negative
         samples = self._latent_samples(latent_image)
         admission = self.capability_service_class().admit(
             request=_ATTENTION_REQUEST,
@@ -123,7 +124,7 @@ class AttentionCouplingModelPreparationService:
         model = self.global_hook_model_resolver_class().resolve(
             model,
             positive=positive,
-            negative=negative,
+            negative=preparation_negative,
         )
         model_family = self.model_family_selector_class().select(capabilities)
         samples = self.latent_normalizer_class().normalize(
@@ -146,7 +147,8 @@ class AttentionCouplingModelPreparationService:
             return self._prepare_uncached(
                 model=model,
                 positive=positive,
-                negative=negative,
+                negative=preparation_negative,
+                sampling_negative=negative,
                 region_masks=region_masks,
                 regional_prompt_weight=regional_prompt_weight,
                 region_mask_feather=region_mask_feather,
@@ -182,6 +184,7 @@ class AttentionCouplingModelPreparationService:
         model: object,
         positive: object,
         negative: object,
+        sampling_negative: object | None,
         region_masks: object,
         regional_prompt_weight: float,
         region_mask_feather: int,
@@ -245,7 +248,7 @@ class AttentionCouplingModelPreparationService:
         return PreparedAttentionCouplingModel(
             derived_model,
             sampler_conditioning.positive,
-            sampler_conditioning.negative,
+            (None if sampling_negative is None else sampler_conditioning.negative),
             mask_bank,
         )
 

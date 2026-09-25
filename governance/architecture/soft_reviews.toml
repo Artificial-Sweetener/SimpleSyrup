@@ -1,6 +1,6 @@
 schema_version = 1
 review_by = 2027-03-31
-fingerprint = "sha256:0a365aa7572ed38582a6fb4f09acefe700212ba65860e93e8c7cd8d5d7d12c45"
+fingerprint = "sha256:4b78e0caf8bf4f90d5a7a46ff32b28b01c94c034efc3ddbc24cfa16b8e132ea0"
 
 cohesive_paths = [
   "simple_syrup/masking/prompt_segs_with_sam_service.py",

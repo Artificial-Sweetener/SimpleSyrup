@@ -70,15 +70,19 @@ class KSamplerPromptByRegionV3(_ComfyNodeBase):
         sampler_name: str,
         scheduler: str,
         positive: object,
-        negative: object,
-        region_masks: object,
-        regional_prompt_weight: float,
-        region_mask_feather: int,
-        latent_image: dict[str, Any],
-        denoise: float,
+        negative: object | None = None,
+        region_masks: object | None = None,
+        regional_prompt_weight: float = 0.5,
+        region_mask_feather: int = 0,
+        latent_image: dict[str, Any] | None = None,
+        denoise: float = 1.0,
     ) -> tuple[dict[str, Any]]:
         """Assemble regional conditioning and sample the full latent."""
 
+        if region_masks is None:
+            raise TypeError("KSampler Prompt by Region requires region_masks.")
+        if latent_image is None:
+            raise TypeError("KSampler Prompt by Region requires latent_image.")
         assembled_positive, assembled_negative = (
             cls.conditioning_service_class().assemble(
                 positive=positive,

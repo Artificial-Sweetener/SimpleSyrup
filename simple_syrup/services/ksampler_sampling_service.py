@@ -14,6 +14,7 @@ import torch
 from ..domain.conditioning_batch import ConditioningBatch, select_conditioning
 from ..runtime import sampling_samplers, sampling_schedulers
 from ..runtime.comfy_latent_normalization import COMFY_LATENT_NORMALIZER
+from ..runtime.guided_sampling import sample_with_optional_negative
 from ..shared.logging import get_logger
 
 Latent: TypeAlias = dict[str, Any]
@@ -91,15 +92,16 @@ class KSamplerSamplingService:
                 seed=seed,
             )
         else:
-            samples = comfy_sample.sample_custom(
-                model,
-                noise,
-                cfg,
-                sampler,
-                sigmas,
-                positive,
-                negative,
-                latent_samples,
+            samples = sample_with_optional_negative(
+                comfy_sample=comfy_sample,
+                model=model,
+                noise=noise,
+                cfg=cfg,
+                sampler=sampler,
+                sigmas=sigmas,
+                positive=positive,
+                negative=negative,
+                latent_image=latent_samples,
                 noise_mask=noise_mask,
                 callback=callback,
                 disable_pbar=disable_pbar,
@@ -148,15 +150,16 @@ class KSamplerSamplingService:
         sampled: list[torch.Tensor] = []
         for index in range(int(latent_samples.shape[0])):
             sampled.append(
-                comfy_sample.sample_custom(
-                    model,
-                    noise[index : index + 1],
-                    cfg,
-                    sampler,
-                    sigmas,
-                    select_conditioning(positive, index),
-                    select_conditioning(negative, index),
-                    latent_samples[index : index + 1],
+                sample_with_optional_negative(
+                    comfy_sample=comfy_sample,
+                    model=model,
+                    noise=noise[index : index + 1],
+                    cfg=cfg,
+                    sampler=sampler,
+                    sigmas=sigmas,
+                    positive=select_conditioning(positive, index),
+                    negative=select_conditioning(negative, index),
+                    latent_image=latent_samples[index : index + 1],
                     noise_mask=self._slice_noise_mask(
                         noise_mask,
                         index,

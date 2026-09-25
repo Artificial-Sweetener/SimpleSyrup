@@ -23,6 +23,7 @@ from ..domain.regional_features import (
 from ..shared.logging import get_logger
 from . import sampling_samplers, sampling_schedulers
 from .contextual_model_wrapper import ContextualDiffusionModelWrapper
+from .guided_sampling import sample_with_optional_negative
 from .model_patcher_mutations import ModelUnetWrapperMutation
 from .patcher_lifecycle import PATCHER_LIFECYCLE
 from .sampling_model_types import ModelFunctionWrapper
@@ -117,15 +118,16 @@ def sample_contextual_diffusion(
     batch_inds = latent_image.get("batch_index")
     noise = comfy_sample.prepare_noise(latent_samples, seed, batch_inds)
     callback = _latent_preview().prepare_callback(sampling_model, steps)
-    samples = comfy_sample.sample_custom(
-        sampling_model,
-        noise,
-        cfg,
-        sampler,
-        sigmas,
-        positive,
-        negative,
-        latent_samples,
+    samples = sample_with_optional_negative(
+        comfy_sample=comfy_sample,
+        model=sampling_model,
+        noise=noise,
+        cfg=cfg,
+        sampler=sampler,
+        sigmas=sigmas,
+        positive=positive,
+        negative=negative,
+        latent_image=latent_samples,
         noise_mask=latent_image.get("noise_mask"),
         callback=callback,
         disable_pbar=not comfy_utils.PROGRESS_BAR_ENABLED,

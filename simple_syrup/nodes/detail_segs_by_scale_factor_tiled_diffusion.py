@@ -70,10 +70,6 @@ class DetailSEGSByScaleFactorTiledDiffusion:
                     "CONDITIONING,CONDITIONING_BATCH",
                     {"tooltip": tooltips.DETAIL_POSITIVE},
                 ),
-                "negative": (
-                    "CONDITIONING,CONDITIONING_BATCH",
-                    {"tooltip": tooltips.DETAIL_NEGATIVE},
-                ),
                 "scale_factor": (
                     "FLOAT",
                     scale_factor_options(default=1.5),
@@ -231,7 +227,13 @@ class DetailSEGSByScaleFactorTiledDiffusion:
                         "tooltip": tooltips.LATENT_TILE_BATCH_SIZE,
                     },
                 ),
-            }
+            },
+            "optional": {
+                "negative": (
+                    "CONDITIONING,CONDITIONING_BATCH",
+                    {"tooltip": tooltips.DETAIL_NEGATIVE},
+                ),
+            },
         }
 
     def detail(
@@ -241,26 +243,26 @@ class DetailSEGSByScaleFactorTiledDiffusion:
         model: Any,
         vae: Any,
         positive: Any,
-        negative: Any,
-        scale_factor: object,
-        upscale_method: object,
-        clamp_size: object,
-        seed: object,
-        steps: object,
-        cfg: object,
-        sampler_name: object,
-        scheduler: object,
-        denoise: object,
-        feather: object,
-        noise_mask: object,
-        noise_mask_feather: object,
-        tiled_encode: object,
-        tiled_decode: object,
-        diffusion_mode: object,
-        latent_tile_width: object,
-        latent_tile_height: object,
-        latent_tile_overlap: object,
-        latent_tile_batch_size: object,
+        negative: Any | None = None,
+        scale_factor: object = 1.5,
+        upscale_method: object = "lanczos",
+        clamp_size: object = 0,
+        seed: object = 0,
+        steps: object = 20,
+        cfg: object = 8.0,
+        sampler_name: object = "euler",
+        scheduler: object = "normal",
+        denoise: object = 0.5,
+        feather: object = 5,
+        noise_mask: object = True,
+        noise_mask_feather: object = 20,
+        tiled_encode: object = False,
+        tiled_decode: object = False,
+        diffusion_mode: object = "multidiffusion",
+        latent_tile_width: object = 128,
+        latent_tile_height: object = 128,
+        latent_tile_overlap: object = 16,
+        latent_tile_batch_size: object = 4,
     ) -> tuple[object]:
         """Run tiled diffusion scale-factor detailing and return the image."""
 

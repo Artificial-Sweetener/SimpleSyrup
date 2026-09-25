@@ -78,10 +78,6 @@ class KSamplerExtras:
                     "CONDITIONING,CONDITIONING_BATCH",
                     {"tooltip": tooltips.POSITIVE_CONDITIONING},
                 ),
-                "negative": (
-                    "CONDITIONING,CONDITIONING_BATCH",
-                    {"tooltip": tooltips.NEGATIVE_CONDITIONING},
-                ),
                 "latent_image": ("LATENT", {"tooltip": tooltips.LATENT_IMAGE}),
                 "denoise": (
                     "FLOAT",
@@ -93,7 +89,13 @@ class KSamplerExtras:
                         "tooltip": tooltips.DENOISE_STRENGTH,
                     },
                 ),
-            }
+            },
+            "optional": {
+                "negative": (
+                    "CONDITIONING,CONDITIONING_BATCH",
+                    {"tooltip": tooltips.NEGATIVE_CONDITIONING},
+                ),
+            },
         }
 
     def sample(
@@ -105,12 +107,14 @@ class KSamplerExtras:
         sampler_name: str,
         scheduler: str,
         positive: Any,
-        negative: Any,
-        latent_image: Latent,
+        negative: Any | None = None,
+        latent_image: Latent | None = None,
         denoise: float = 1.0,
     ) -> tuple[Latent]:
         """Sample a latent with ComfyUI samplers and extra scheduler sigmas."""
 
+        if latent_image is None:
+            raise TypeError("KSampler Extras requires a latent_image input.")
         output = self.service_class().sample(
             model=model,
             seed=seed,

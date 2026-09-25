@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, overload
 
 import torch
 from comfy.hooks import HookGroup
@@ -27,11 +27,45 @@ from ..runtime.regional_conditioning_companion import detach_global_companion
 from ..shared.logging import get_logger
 
 Conditioning: TypeAlias = list[list[Any]]
+ConditioningInput: TypeAlias = Conditioning | ConditioningBatch
 LOGGER = get_logger(__name__)
 
 
 class RegionalConditioningService:
     """Combine global and ordered regional conditioning without sampling."""
+
+    @overload
+    def assemble(
+        self,
+        *,
+        positive: object,
+        negative: None,
+        masks: object,
+        regional_prompt_weight: float,
+        region_mask_feather: int,
+    ) -> tuple[Conditioning, None]: ...
+
+    @overload
+    def assemble(
+        self,
+        *,
+        positive: object,
+        negative: ConditioningInput,
+        masks: object,
+        regional_prompt_weight: float,
+        region_mask_feather: int,
+    ) -> tuple[Conditioning, Conditioning]: ...
+
+    @overload
+    def assemble(
+        self,
+        *,
+        positive: object,
+        negative: object,
+        masks: object,
+        regional_prompt_weight: float,
+        region_mask_feather: int,
+    ) -> tuple[Conditioning, Conditioning | None]: ...
 
     def assemble(
         self,
@@ -41,8 +75,8 @@ class RegionalConditioningService:
         masks: object,
         regional_prompt_weight: float,
         region_mask_feather: int,
-    ) -> tuple[Conditioning, Conditioning]:
-        """Return standard Comfy positive and negative masked conditioning."""
+    ) -> tuple[Conditioning, Conditioning | None]:
+        """Return masked positive and any connected negative conditioning."""
 
         validate_regional_prompt_weight(regional_prompt_weight)
         mask_batch = prepare_regional_mask_batch(masks, region_mask_feather)
@@ -54,6 +88,29 @@ class RegionalConditioningService:
             region_mask_feather=region_mask_feather,
         )
 
+    @overload
+    def assemble_prepared(
+        self,
+        *,
+        positive: object,
+        negative: None,
+        mask_batch: torch.Tensor,
+        regional_prompt_weight: float,
+        region_mask_feather: int = 0,
+    ) -> tuple[Conditioning, None]: ...
+
+    @overload
+    def assemble_prepared(
+        self,
+        *,
+        positive: object,
+        negative: ConditioningInput,
+        mask_batch: torch.Tensor,
+        regional_prompt_weight: float,
+        region_mask_feather: int = 0,
+    ) -> tuple[Conditioning, Conditioning]: ...
+
+    @overload
     def assemble_prepared(
         self,
         *,
@@ -62,7 +119,17 @@ class RegionalConditioningService:
         mask_batch: torch.Tensor,
         regional_prompt_weight: float,
         region_mask_feather: int = 0,
-    ) -> tuple[Conditioning, Conditioning]:
+    ) -> tuple[Conditioning, Conditioning | None]: ...
+
+    def assemble_prepared(
+        self,
+        *,
+        positive: object,
+        negative: object,
+        mask_batch: torch.Tensor,
+        regional_prompt_weight: float,
+        region_mask_feather: int = 0,
+    ) -> tuple[Conditioning, Conditioning | None]:
         """Assemble conditioning from a validated, already-feathered mask batch."""
 
         validate_regional_prompt_weight(regional_prompt_weight)
@@ -73,11 +140,15 @@ class RegionalConditioningService:
             regional_prompt_weight=regional_prompt_weight,
             input_name="positive",
         )
-        assembled_negative = self._assemble_input(
-            negative,
-            prepared_mask_batch,
-            regional_prompt_weight=regional_prompt_weight,
-            input_name="negative",
+        assembled_negative = (
+            None
+            if negative is None
+            else self._assemble_input(
+                negative,
+                prepared_mask_batch,
+                regional_prompt_weight=regional_prompt_weight,
+                input_name="negative",
+            )
         )
         LOGGER.info(
             "Regional conditioning assembled",
@@ -85,7 +156,9 @@ class RegionalConditioningService:
                 "operation": "assemble_regional_conditioning",
                 "region_count": int(prepared_mask_batch.shape[0]),
                 "positive_entry_count": len(assembled_positive),
-                "negative_entry_count": len(assembled_negative),
+                "negative_entry_count": (
+                    0 if assembled_negative is None else len(assembled_negative)
+                ),
                 "regional_prompt_weight": regional_prompt_weight,
                 "region_mask_feather": region_mask_feather,
             },

@@ -42,7 +42,6 @@ def test_detail_segs_as_regions_node_contract(
         "image",
         "model",
         "vae",
-        "negative",
         "positive",
         "segs",
         "region_positive",
@@ -61,6 +60,8 @@ def test_detail_segs_as_regions_node_contract(
         "tiled_encode",
         "tiled_decode",
     ]
+    assert list(inputs["optional"]) == ["negative"]
+    assert "positive-only" in inputs["optional"]["negative"][1]["tooltip"]
     assert inputs["required"]["region_positive"][0] == "CONDITIONING_BATCH"
     assert inputs["required"]["global_prompt_weight"][1]["default"] == 0.25
     assert inputs["required"]["global_prompt_weight"][1]["min"] == 0.0

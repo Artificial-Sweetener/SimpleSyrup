@@ -63,6 +63,31 @@ class _FakeAdapter(LegacyNodeV3Adapter):
     hidden = _FakeHidden()
 
 
+class _FakeOptionalLegacyNode(_FakeLegacyNode):
+    """Expose one optional socket that historically preceded a required socket."""
+
+    @classmethod
+    def INPUT_TYPES(cls) -> dict[str, dict[str, tuple[Any, ...] | str]]:
+        """Return split legacy sections for an interleaved v3 socket order."""
+
+        return {
+            "required": {
+                "first": ("STRING", {"default": ""}),
+                "last": ("STRING", {"default": ""}),
+            },
+            "optional": {"middle": ("STRING", {"default": ""})},
+        }
+
+
+class _FakeOrderedAdapter(LegacyNodeV3Adapter):
+    """Preserve historical socket indices while changing requiredness."""
+
+    LEGACY_NODE_CLASS = _FakeOptionalLegacyNode
+    NODE_ID = "SimpleSyrup.FakeOrderedAdapter"
+    DISPLAY_NAME = "Fake Ordered Adapter"
+    WORKFLOW_INPUT_ORDER = ("first", "middle", "last")
+
+
 def test_legacy_node_v3_adapter_builds_schema() -> None:
     """The adapter converts legacy metadata into a v3 schema."""
 
@@ -86,3 +111,12 @@ def test_legacy_node_v3_adapter_delegates_execution_with_hidden_inputs() -> None
 
     assert _FakeAdapter.execute(text="value") == ("value",)
     assert _FakeLegacyNode.calls == [("value", {"node": "metadata"})]
+
+
+def test_legacy_node_v3_adapter_preserves_explicit_workflow_socket_order() -> None:
+    """Interleave optional inputs without shifting persisted connection slots."""
+
+    schema = _FakeOrderedAdapter.define_schema()
+
+    assert [value.id for value in schema.inputs] == ["first", "middle", "last"]
+    assert [value.optional for value in schema.inputs] == [False, True, False]

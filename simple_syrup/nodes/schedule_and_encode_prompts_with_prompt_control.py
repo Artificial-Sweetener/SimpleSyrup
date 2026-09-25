@@ -74,20 +74,21 @@ class ScheduleAndEncodePromptsWithPromptControl:
                         ),
                     },
                 ),
+            },
+            "optional": {
                 "negative_prompt": (
                     "STRING",
                     {
                         "default": "",
                         "multiline": False,
                         "tooltip": (
-                            "Negative Prompt-Control text; [SEP] or [SEP|name] "
-                            "creates ordered entries, and global text fills missing "
-                            "negative regions."
+                            "Optional negative Prompt-Control text; [SEP] or "
+                            "[SEP|name] creates ordered entries, and global text "
+                            "fills missing negative regions. Leave disconnected "
+                            "to encode an empty negative prompt."
                         ),
                     },
                 ),
-            },
-            "optional": {
                 "encode_style": (
                     "STRING",
                     {
@@ -107,7 +108,7 @@ class ScheduleAndEncodePromptsWithPromptControl:
         model: Any,
         clip: Any,
         positive_prompt: str,
-        negative_prompt: str,
+        negative_prompt: str = "",
         encode_style: str = "",
     ) -> Any:
         """Build lazy Prompt-Control graph expansion for prompts."""

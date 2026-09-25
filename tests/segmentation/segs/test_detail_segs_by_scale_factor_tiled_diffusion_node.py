@@ -42,7 +42,6 @@ def test_tiled_detailer_node_contract(monkeypatch: pytest.MonkeyPatch) -> None:
         "model",
         "vae",
         "positive",
-        "negative",
         "scale_factor",
         "upscale_method",
         "clamp_size",
@@ -63,6 +62,8 @@ def test_tiled_detailer_node_contract(monkeypatch: pytest.MonkeyPatch) -> None:
         "latent_tile_overlap",
         "latent_tile_batch_size",
     ]
+    assert list(inputs["optional"]) == ["negative"]
+    assert "positive-only" in inputs["optional"]["negative"][1]["tooltip"]
     assert inputs["required"]["diffusion_mode"][0] == [
         "multidiffusion",
         "mixture_of_diffusers",

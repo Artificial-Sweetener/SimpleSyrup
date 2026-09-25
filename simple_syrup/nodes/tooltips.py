@@ -143,7 +143,8 @@ SCHEDULER = (
 )
 POSITIVE_CONDITIONING = "Positive conditioning that guides what the sampler should add."
 NEGATIVE_CONDITIONING = (
-    "Negative conditioning that guides what the sampler should avoid."
+    "Optional conditioning that guides what the sampler should avoid. Leave "
+    "disconnected for positive-only sampling without CFG."
 )
 LATENT_IMAGE = "Latent input whose samples will be denoised."
 DENOISE_STRENGTH = (
@@ -226,8 +227,8 @@ DETAIL_POSITIVE = (
     "order."
 )
 DETAIL_NEGATIVE = (
-    "Negative conditioning for detailing. A conditioning batch is matched to SEGS "
-    "order."
+    "Optional negative conditioning for detailing; leave disconnected for "
+    "positive-only sampling. A conditioning batch is matched to SEGS order."
 )
 DETAIL_SCALE_FACTOR = (
     "Crop enlargement multiplier. Larger values give the sampler more detail room "
@@ -266,7 +267,8 @@ DETAIL_IMAGE_OUTPUT = "Image with the detailed regions blended back into place."
 SCALE_FACTOR_OUTPUT = "Multiplier used to scale a connected target."
 
 REGIONAL_GLOBAL_NEGATIVE = (
-    "Negative conditioning applied across the full regional pass."
+    "Optional negative conditioning applied across the full regional pass; leave "
+    "disconnected for positive-only sampling."
 )
 REGIONAL_GLOBAL_POSITIVE = (
     "Positive conditioning that gives full-image context to the regional pass."

@@ -38,15 +38,15 @@ def test_legacy_schedule_and_encode_prompt_control_node_contract() -> None:
         "model",
         "clip",
         "positive_prompt",
-        "negative_prompt",
     ]
-    assert list(inputs["optional"]) == ["encode_style"]
+    assert list(inputs["optional"]) == ["negative_prompt", "encode_style"]
     assert inputs["required"]["model"][0] == "MODEL"
     assert inputs["required"]["clip"][0] == "CLIP"
     assert inputs["optional"]["encode_style"][0] == "STRING"
     assert inputs["optional"]["encode_style"][1]["forceInput"] is True
     assert inputs["required"]["positive_prompt"][1]["multiline"] is False
-    assert inputs["required"]["negative_prompt"][1]["multiline"] is False
+    assert inputs["optional"]["negative_prompt"][1]["multiline"] is False
+    assert inputs["optional"]["negative_prompt"][1]["default"] == ""
     assert "[sep|name]" in inputs["required"]["positive_prompt"][1]["tooltip"].lower()
 
 
@@ -162,6 +162,7 @@ def test_schedule_and_encode_prompt_control_node_schema() -> None:
         "negative_prompt",
     ]
     assert schema.inputs[2].optional is True
+    assert schema.inputs[4].optional is True
 
 
 def test_schedule_and_encode_prompt_control_input_types() -> None:
@@ -183,15 +184,15 @@ def test_schedule_and_encode_prompt_control_input_types() -> None:
         "model",
         "clip",
         "positive_prompt",
-        "negative_prompt",
     ]
-    assert list(inputs["optional"]) == ["encode_style"]
+    assert list(inputs["optional"]) == ["encode_style", "negative_prompt"]
     assert inputs["required"]["model"][0] == "MODEL"
     assert inputs["required"]["clip"][0] == "CLIP"
     assert inputs["optional"]["encode_style"][0] == "STRING"
     assert inputs["optional"]["encode_style"][1]["forceInput"] is True
     assert inputs["required"]["positive_prompt"][1]["multiline"] is False
-    assert inputs["required"]["negative_prompt"][1]["multiline"] is False
+    assert inputs["optional"]["negative_prompt"][1]["multiline"] is False
+    assert inputs["optional"]["negative_prompt"][1]["default"] == ""
     assert "[sep|name]" in inputs["required"]["positive_prompt"][1]["tooltip"].lower()
 
 
@@ -276,3 +277,49 @@ def test_schedule_and_encode_prompt_control_omits_encode_style(
             "negative_prompt": "negative",
         }
     ]
+
+
+def test_schedule_and_encode_nodes_default_disconnected_negative_to_empty(
+    monkeypatch: Any,
+) -> None:
+    """Encode an explicit empty negative output when the prompt socket is absent."""
+
+    calls: list[dict[str, Any]] = []
+
+    class FakeBuilder:
+        """Record both legacy and v3 omitted-negative executions."""
+
+        def build(self, **kwargs: Any) -> str:
+            """Retain graph arguments and return a recognizable output."""
+
+            calls.append(kwargs)
+            return "output"
+
+    monkeypatch.setattr(
+        "simple_syrup.nodes.schedule_and_encode_prompts_with_prompt_control."
+        "PromptControlScheduleEncodeGraphBuilder",
+        FakeBuilder,
+    )
+    monkeypatch.setattr(
+        "simple_syrup.nodes_v3.schedule_and_encode_prompts_with_prompt_control."
+        "PromptControlScheduleEncodeGraphBuilder",
+        FakeBuilder,
+    )
+
+    assert (
+        LegacyScheduleAndEncode().execute(
+            model="model",
+            clip="clip",
+            positive_prompt="positive",
+        )
+        == "output"
+    )
+    assert (
+        ScheduleAndEncodePromptsWithPromptControl.execute(
+            model="model",
+            clip="clip",
+            positive_prompt="positive",
+        )
+        == "output"
+    )
+    assert [call["negative_prompt"] for call in calls] == ["", ""]

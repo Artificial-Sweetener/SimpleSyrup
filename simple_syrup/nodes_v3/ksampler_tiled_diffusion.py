@@ -84,8 +84,8 @@ class KSamplerTiledDiffusionV3(_ComfyNodeBase):
         sampler_name: str,
         scheduler: str,
         positive: Any,
-        negative: Any,
-        latent_image: dict[str, Any],
+        negative: Any | None = None,
+        latent_image: dict[str, Any] | None = None,
         denoise: float = 1.0,
         diffusion_mode: str = "multidiffusion",
         latent_tile_width: int = 128,
@@ -99,6 +99,8 @@ class KSamplerTiledDiffusionV3(_ComfyNodeBase):
     ) -> tuple[dict[str, Any]]:
         """Delegate tiled diffusion sampling to its application service."""
 
+        if latent_image is None:
+            raise TypeError("KSampler Tiled Diffusion requires latent_image.")
         output = cls.service_class().sample(
             diffusion_mode=diffusion_mode,
             model=model,

@@ -51,6 +51,8 @@ def test_schema_exposes_stable_full_context_contract_and_guidance() -> None:
         "denoise",
     ]
     inputs = {item.id: item for item in schema.inputs}
+    assert inputs["negative"].optional is True
+    assert "positive-only" in inputs["negative"].tooltip
     assert inputs["region_masks"].optional is True
     assert inputs["regional_prompt_weight"].default == 1.0
     assert [output.id for output in schema.outputs] == ["latent"]

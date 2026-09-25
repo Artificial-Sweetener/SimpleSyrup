@@ -67,15 +67,19 @@ class ProfiledKSamplerAttentionCouplingV3(_ComfyNodeBase):
         sampler_name: str,
         scheduler: str,
         positive: object,
-        negative: object,
-        latent_image: dict[str, Any],
-        denoise: float,
+        negative: object | None = None,
+        latent_image: dict[str, Any] | None = None,
+        denoise: float = 1.0,
         region_masks: object | None = None,
-        regional_prompt_weight: float = 0.5,
+        regional_prompt_weight: float = 1.0,
         region_mask_feather: int = 0,
     ) -> tuple[dict[str, Any]]:
         """Bridge canonical host batches, then run the inherited exact delegate."""
 
+        if latent_image is None:
+            raise TypeError(
+                "Profiled KSampler Attention Coupling requires latent_image."
+            )
         return super().execute(
             model=model,
             seed=seed,

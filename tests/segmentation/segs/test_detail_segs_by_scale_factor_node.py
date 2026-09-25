@@ -38,7 +38,6 @@ def test_detail_segs_by_scale_factor_node_contract(
         "model",
         "vae",
         "positive",
-        "negative",
         "scale_factor",
         "upscale_method",
         "clamp_size",
@@ -55,7 +54,8 @@ def test_detail_segs_by_scale_factor_node_contract(
         "tiled_decode",
     ]
     assert inputs["required"]["positive"][0] == "CONDITIONING,CONDITIONING_BATCH"
-    assert inputs["required"]["negative"][0] == "CONDITIONING,CONDITIONING_BATCH"
+    assert inputs["optional"]["negative"][0] == "CONDITIONING,CONDITIONING_BATCH"
+    assert "positive-only" in inputs["optional"]["negative"][1]["tooltip"]
     assert inputs["required"]["upscale_method"][0] == [
         "nearest-exact",
         "bilinear",

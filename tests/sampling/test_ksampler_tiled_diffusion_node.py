@@ -40,7 +40,6 @@ def test_input_types_match_tiled_diffusion_contract(
         "sampler_name",
         "scheduler",
         "positive",
-        "negative",
         "latent_image",
         "denoise",
         "diffusion_mode",
@@ -55,7 +54,8 @@ def test_input_types_match_tiled_diffusion_contract(
     ]
     assert required["diffusion_mode"].default == "multidiffusion"
     assert required["positive"].io_type == "CONDITIONING,CONDITIONING_BATCH"
-    assert required["negative"].io_type == "CONDITIONING,CONDITIONING_BATCH"
+    assert optional["negative"].io_type == "CONDITIONING,CONDITIONING_BATCH"
+    assert "positive-only" in optional["negative"].tooltip
     assert required["latent_tile_width"].default == 128
     assert required["latent_tile_width"].max == 512
     assert required["latent_tile_height"].default == 128

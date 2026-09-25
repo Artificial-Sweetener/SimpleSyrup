@@ -79,20 +79,24 @@ class KSamplerPromptByTiledRegionV3(_ComfyNodeBase):
         sampler_name: str,
         scheduler: str,
         positive: object,
-        negative: object,
-        region_masks: object,
-        regional_prompt_weight: float,
-        region_mask_feather: int,
-        latent_image: dict[str, Any],
-        denoise: float,
-        diffusion_mode: str,
-        latent_tile_width: int,
-        latent_tile_height: int,
-        latent_tile_overlap: int,
-        latent_tile_batch_size: int,
+        negative: object | None = None,
+        region_masks: object | None = None,
+        regional_prompt_weight: float = 0.5,
+        region_mask_feather: int = 0,
+        latent_image: dict[str, Any] | None = None,
+        denoise: float = 1.0,
+        diffusion_mode: str = "multidiffusion",
+        latent_tile_width: int = 128,
+        latent_tile_height: int = 128,
+        latent_tile_overlap: int = 16,
+        latent_tile_batch_size: int = 4,
     ) -> tuple[dict[str, Any]]:
         """Assemble regional conditioning and sample overlapping latent tiles."""
 
+        if region_masks is None:
+            raise TypeError("KSampler Prompt by Tiled Region requires region_masks.")
+        if latent_image is None:
+            raise TypeError("KSampler Prompt by Tiled Region requires latent_image.")
         assembled_positive, assembled_negative = (
             cls.conditioning_service_class().assemble(
                 positive=positive,

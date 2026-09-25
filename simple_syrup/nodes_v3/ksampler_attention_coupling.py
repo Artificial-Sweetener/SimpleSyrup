@@ -90,9 +90,9 @@ class KSamplerAttentionCouplingV3(_ComfyNodeBase):
         sampler_name: str,
         scheduler: str,
         positive: object,
-        negative: object,
-        latent_image: dict[str, Any],
-        denoise: float,
+        negative: object | None = None,
+        latent_image: dict[str, Any] | None = None,
+        denoise: float = 1.0,
         region_masks: object | None = None,
         regional_prompt_weight: float = (
             ATTENTION_COUPLING_REGIONAL_PROMPT_WEIGHT_DEFAULT
@@ -101,6 +101,8 @@ class KSamplerAttentionCouplingV3(_ComfyNodeBase):
     ) -> tuple[dict[str, Any]]:
         """Delegate ordinary or regional sampling to the routing service."""
 
+        if latent_image is None:
+            raise TypeError("KSampler Attention Coupling requires latent_image.")
         output = cls.sampling_service_class().sample(
             model=model,
             seed=seed,

@@ -50,7 +50,9 @@ class FakeSampler:
 def test_input_types_match_simple_ksampler_contract() -> None:
     """The node exposes the same inputs as ComfyUI's simple KSampler."""
 
-    required = KSamplerExtras.INPUT_TYPES()["required"]
+    inputs = KSamplerExtras.INPUT_TYPES()
+    required = inputs["required"]
+    optional = inputs["optional"]
 
     assert tuple(required) == (
         "model",
@@ -60,12 +62,13 @@ def test_input_types_match_simple_ksampler_contract() -> None:
         "sampler_name",
         "scheduler",
         "positive",
-        "negative",
         "latent_image",
         "denoise",
     )
     assert required["positive"][0] == "CONDITIONING,CONDITIONING_BATCH"
-    assert required["negative"][0] == "CONDITIONING,CONDITIONING_BATCH"
+    assert tuple(optional) == ("negative",)
+    assert optional["negative"][0] == "CONDITIONING,CONDITIONING_BATCH"
+    assert "positive-only" in optional["negative"][1]["tooltip"]
 
 
 def test_node_metadata_matches_contract() -> None:

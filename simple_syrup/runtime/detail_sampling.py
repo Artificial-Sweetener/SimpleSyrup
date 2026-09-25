@@ -14,6 +14,7 @@ import torch
 from . import sampling_samplers, sampling_schedulers
 from .detail_previews import DetailPreviewContext, prepare_detail_preview_callback
 from .differential_diffusion import clone_with_differential_diffusion
+from .guided_sampling import sample_with_optional_negative
 
 Latent: TypeAlias = dict[str, Any]
 
@@ -86,15 +87,16 @@ class DetailSampler:
             callback = _latent_preview().prepare_callback(model, steps)
         else:
             callback = prepare_detail_preview_callback(model, steps, preview_context)
-        samples = comfy_sample.sample_custom(
-            model,
-            noise,
-            cfg,
-            sampler,
-            sigmas,
-            positive,
-            negative,
-            latent_samples,
+        samples = sample_with_optional_negative(
+            comfy_sample=comfy_sample,
+            model=model,
+            noise=noise,
+            cfg=cfg,
+            sampler=sampler,
+            sigmas=sigmas,
+            positive=positive,
+            negative=negative,
+            latent_image=latent_samples,
             noise_mask=noise_mask,
             callback=callback,
             disable_pbar=not comfy_utils.PROGRESS_BAR_ENABLED,

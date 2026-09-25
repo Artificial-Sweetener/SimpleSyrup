@@ -98,11 +98,11 @@ class KSamplerContextualAttentionCouplingV3(_ComfyNodeBase):
         sampler_name: str,
         scheduler: str,
         positive: object,
-        negative: object,
-        region_masks: object,
-        regional_prompt_weight: float,
-        region_mask_feather: int,
-        latent_image: dict[str, Any],
+        negative: object | None = None,
+        region_masks: object | None = None,
+        regional_prompt_weight: float = 1.0,
+        region_mask_feather: int = 0,
+        latent_image: dict[str, Any] | None = None,
         denoise: float = 1.0,
         diffusion_mode: str = "multidiffusion",
         latent_context_size: int = 96,
@@ -115,6 +115,14 @@ class KSamplerContextualAttentionCouplingV3(_ComfyNodeBase):
     ) -> tuple[dict[str, Any], object]:
         """Delegate the complete request to the combined application service."""
 
+        if latent_image is None:
+            raise TypeError(
+                "KSampler Contextual Attention Coupling requires latent_image."
+            )
+        if region_masks is None:
+            raise TypeError(
+                "KSampler Contextual Attention Coupling requires region_masks."
+            )
         result = cls.sampling_service_class().sample(
             model=model,
             seed=seed,

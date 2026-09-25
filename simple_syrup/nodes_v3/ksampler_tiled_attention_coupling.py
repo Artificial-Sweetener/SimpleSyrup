@@ -97,8 +97,8 @@ class KSamplerTiledAttentionCouplingV3(_ComfyNodeBase):
         sampler_name: str,
         scheduler: str,
         positive: object,
-        negative: object,
-        latent_image: dict[str, Any],
+        negative: object | None = None,
+        latent_image: dict[str, Any] | None = None,
         denoise: float = 1.0,
         diffusion_mode: str = "multidiffusion",
         latent_tile_width: int = 128,
@@ -113,6 +113,8 @@ class KSamplerTiledAttentionCouplingV3(_ComfyNodeBase):
     ) -> tuple[dict[str, Any]]:
         """Delegate ordinary or regional tiled sampling to the routing service."""
 
+        if latent_image is None:
+            raise TypeError("KSampler Tiled Attention Coupling requires latent_image.")
         output = cls.sampling_service_class().sample(
             diffusion_mode=diffusion_mode,
             model=model,

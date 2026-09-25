@@ -40,6 +40,12 @@ from ..nodes.segs_from_sam_output import SEGSFromSAMOutput
 from ..nodes.simple_load_anima import SimpleLoadAnima
 from ..nodes.simple_preview_segs import SimplePreviewSEGS
 from ..nodes.vitmatte_model_loader import ViTMatteModelLoader
+from .legacy_workflow_input_order import (
+    DETAIL_SEGS_AS_REGIONS_INPUT_ORDER,
+    DETAIL_SEGS_BY_SCALE_FACTOR_INPUT_ORDER,
+    DETAIL_SEGS_BY_SCALE_FACTOR_TILED_INPUT_ORDER,
+    KSAMPLER_EXTRAS_INPUT_ORDER,
+)
 
 if TYPE_CHECKING:
 
@@ -70,6 +76,7 @@ class LegacyNodeV3Adapter(_ComfyNodeBase):
     NODE_ID: ClassVar[str]
     DISPLAY_NAME: ClassVar[str]
     ENABLE_EXPAND: ClassVar[bool] = False
+    WORKFLOW_INPUT_ORDER: ClassVar[tuple[str, ...] | None] = None
 
     @classmethod
     def define_schema(cls) -> Any:
@@ -82,7 +89,10 @@ class LegacyNodeV3Adapter(_ComfyNodeBase):
             category=str(getattr(legacy, "CATEGORY", "SimpleSyrup")),
             description=str(getattr(legacy, "DESCRIPTION", "")),
             search_aliases=list(getattr(legacy, "SEARCH_ALIASES", [])),
-            inputs=_v3_inputs(legacy.INPUT_TYPES()),
+            inputs=_v3_inputs(
+                legacy.INPUT_TYPES(),
+                workflow_order=cls.WORKFLOW_INPUT_ORDER,
+            ),
             outputs=_v3_outputs(legacy),
             hidden=_v3_hidden_inputs(legacy.INPUT_TYPES()),
             is_input_list=bool(getattr(legacy, "INPUT_IS_LIST", False)),
@@ -145,6 +155,7 @@ class KSamplerExtrasV3(LegacyNodeV3Adapter):
     LEGACY_NODE_CLASS = KSamplerExtras
     NODE_ID = "SimpleSyrup.KSamplerExtras"
     DISPLAY_NAME = "KSampler (Extras)"
+    WORKFLOW_INPUT_ORDER = KSAMPLER_EXTRAS_INPUT_ORDER
 
 
 class LayerStyleSAMModelsAdapterV3(LegacyNodeV3Adapter):
@@ -219,6 +230,7 @@ class DetailSEGSAsRegionsV3(LegacyNodeV3Adapter):
     LEGACY_NODE_CLASS = DetailSEGSAsRegions
     NODE_ID = "SimpleSyrup.DetailSEGSAsRegions"
     DISPLAY_NAME = "Detail SEGS as Regions"
+    WORKFLOW_INPUT_ORDER = DETAIL_SEGS_AS_REGIONS_INPUT_ORDER
 
 
 class DetailSEGSByScaleFactorV3(LegacyNodeV3Adapter):
@@ -227,6 +239,7 @@ class DetailSEGSByScaleFactorV3(LegacyNodeV3Adapter):
     LEGACY_NODE_CLASS = DetailSEGSByScaleFactor
     NODE_ID = "SimpleSyrup.DetailSEGSByScaleFactor"
     DISPLAY_NAME = "Detail SEGS by Scale Factor"
+    WORKFLOW_INPUT_ORDER = DETAIL_SEGS_BY_SCALE_FACTOR_INPUT_ORDER
 
 
 class DetailSEGSByScaleFactorTiledDiffusionV3(LegacyNodeV3Adapter):
@@ -235,6 +248,7 @@ class DetailSEGSByScaleFactorTiledDiffusionV3(LegacyNodeV3Adapter):
     LEGACY_NODE_CLASS = DetailSEGSByScaleFactorTiledDiffusion
     NODE_ID = "SimpleSyrup.DetailSEGSByScaleFactorTiledDiffusion"
     DISPLAY_NAME = "Detail SEGS by Scale Factor w/ Tiled Diffusion"
+    WORKFLOW_INPUT_ORDER = DETAIL_SEGS_BY_SCALE_FACTOR_TILED_INPUT_ORDER
 
 
 class SAMModelLoaderV3(LegacyNodeV3Adapter):
@@ -309,15 +323,27 @@ class ViTMatteModelLoaderV3(LegacyNodeV3Adapter):
     DISPLAY_NAME = "ViTMatte Model Loader"
 
 
-def _v3_inputs(input_types: Mapping[str, Mapping[str, object]]) -> list[Any]:
-    """Return v3 input declarations from legacy required and optional inputs."""
+def _v3_inputs(
+    input_types: Mapping[str, Mapping[str, object]],
+    *,
+    workflow_order: tuple[str, ...] | None = None,
+) -> list[Any]:
+    """Return v3 inputs while preserving any explicit persisted socket order."""
 
-    inputs: list[Any] = []
+    declarations: dict[str, tuple[object, bool]] = {}
     for section_name, optional in (("required", False), ("optional", True)):
         section = input_types.get(section_name, {})
         for name, declaration in section.items():
-            inputs.append(_v3_input(name, declaration, optional=optional))
-    return inputs
+            if name in declarations:
+                raise ValueError(f"legacy input {name} is declared more than once.")
+            declarations[name] = (declaration, optional)
+    order = tuple(declarations) if workflow_order is None else workflow_order
+    if len(order) != len(set(order)) or set(order) != set(declarations):
+        raise ValueError("legacy workflow input order must name every input once.")
+    return [
+        _v3_input(name, declarations[name][0], optional=declarations[name][1])
+        for name in order
+    ]
 
 
 def _v3_input(name: str, declaration: object, *, optional: bool) -> Any:

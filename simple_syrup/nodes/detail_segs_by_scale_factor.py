@@ -61,10 +61,6 @@ class DetailSEGSByScaleFactor:
                     "CONDITIONING,CONDITIONING_BATCH",
                     {"tooltip": tooltips.DETAIL_POSITIVE},
                 ),
-                "negative": (
-                    "CONDITIONING,CONDITIONING_BATCH",
-                    {"tooltip": tooltips.DETAIL_NEGATIVE},
-                ),
                 "scale_factor": (
                     "FLOAT",
                     scale_factor_options(default=1.5),
@@ -171,7 +167,13 @@ class DetailSEGSByScaleFactor:
                         "tooltip": tooltips.DETAIL_TILED_DECODE,
                     },
                 ),
-            }
+            },
+            "optional": {
+                "negative": (
+                    "CONDITIONING,CONDITIONING_BATCH",
+                    {"tooltip": tooltips.DETAIL_NEGATIVE},
+                ),
+            },
         }
 
     def detail(
@@ -181,21 +183,21 @@ class DetailSEGSByScaleFactor:
         model: Any,
         vae: Any,
         positive: Any,
-        negative: Any,
-        scale_factor: object,
-        upscale_method: object,
-        clamp_size: object,
-        seed: object,
-        steps: object,
-        cfg: object,
-        sampler_name: object,
-        scheduler: object,
-        denoise: object,
-        feather: object,
-        noise_mask: object,
-        noise_mask_feather: object,
-        tiled_encode: object,
-        tiled_decode: object,
+        negative: Any | None = None,
+        scale_factor: object = 1.5,
+        upscale_method: object = "lanczos",
+        clamp_size: object = 0,
+        seed: object = 0,
+        steps: object = 20,
+        cfg: object = 8.0,
+        sampler_name: object = "euler",
+        scheduler: object = "normal",
+        denoise: object = 0.5,
+        feather: object = 5,
+        noise_mask: object = True,
+        noise_mask_feather: object = 20,
+        tiled_encode: object = False,
+        tiled_decode: object = False,
     ) -> tuple[object]:
         """Run scale-factor detailing and return the detailed image."""
 

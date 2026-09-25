@@ -64,10 +64,6 @@ class DetailSEGSAsRegions:
                 "image": ("IMAGE", {"tooltip": tooltips.DETAIL_IMAGE}),
                 "model": ("MODEL", {"tooltip": tooltips.DETAIL_MODEL}),
                 "vae": ("VAE", {"tooltip": tooltips.DETAIL_VAE}),
-                "negative": (
-                    "CONDITIONING",
-                    {"tooltip": tooltips.REGIONAL_GLOBAL_NEGATIVE},
-                ),
                 "positive": (
                     "CONDITIONING",
                     {"tooltip": tooltips.REGIONAL_GLOBAL_POSITIVE},
@@ -187,7 +183,13 @@ class DetailSEGSAsRegions:
                         "tooltip": tooltips.DETAIL_TILED_DECODE,
                     },
                 ),
-            }
+            },
+            "optional": {
+                "negative": (
+                    "CONDITIONING",
+                    {"tooltip": tooltips.REGIONAL_GLOBAL_NEGATIVE},
+                ),
+            },
         }
 
     def detail(
@@ -195,24 +197,24 @@ class DetailSEGSAsRegions:
         image: object,
         model: Any,
         vae: Any,
-        negative: Any,
-        positive: Any,
-        segs: object,
-        region_positive: object,
-        global_prompt_weight: object,
-        scale_factor: object,
-        upscale_method: object,
-        seed: object,
-        steps: object,
-        cfg: object,
-        sampler_name: object,
-        scheduler: object,
-        denoise: object,
-        feather: object,
-        noise_mask: object,
-        noise_mask_feather: object,
-        tiled_encode: object,
-        tiled_decode: object,
+        negative: Any | None = None,
+        positive: Any = None,
+        segs: object = None,
+        region_positive: object = None,
+        global_prompt_weight: object = 0.25,
+        scale_factor: object = 1.0,
+        upscale_method: object = "lanczos",
+        seed: object = 0,
+        steps: object = 20,
+        cfg: object = 8.0,
+        sampler_name: object = "euler",
+        scheduler: object = "normal",
+        denoise: object = 0.5,
+        feather: object = 5,
+        noise_mask: object = True,
+        noise_mask_feather: object = 20,
+        tiled_encode: object = False,
+        tiled_decode: object = False,
     ) -> tuple[object]:
         """Run regional detailing and return the detailed image."""
 

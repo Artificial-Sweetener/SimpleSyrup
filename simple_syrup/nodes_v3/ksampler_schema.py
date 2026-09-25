@@ -64,7 +64,11 @@ def ksampler_inputs(
             tooltip=tooltips.SCHEDULER,
         ),
         conditioning.Input("positive", tooltip=tooltips.POSITIVE_CONDITIONING),
-        conditioning.Input("negative", tooltip=tooltips.NEGATIVE_CONDITIONING),
+        conditioning.Input(
+            "negative",
+            optional=True,
+            tooltip=tooltips.NEGATIVE_CONDITIONING,
+        ),
         comfy_io.Latent.Input("latent_image", tooltip=tooltips.LATENT_IMAGE),
         comfy_io.Float.Input(
             "denoise",
@@ -266,8 +270,10 @@ def attention_coupling_ksampler_inputs(
         comfy_io.MultiType.Input(
             "negative",
             [comfy_io.Conditioning, conditioning_batch],
+            optional=True,
             tooltip=(
-                "Global-first negative conditioning aligned to the same masks; "
+                "Optional global-first negative conditioning aligned to the same "
+                "masks; leave disconnected for positive-only sampling. When used, "
                 "its global model hooks must match the positive global entry. "
                 "Regional LoRA hooks retain their negative-branch ownership and "
                 "independent schedules."
@@ -327,9 +333,11 @@ def regional_conditioning_inputs(comfy_io: Any) -> list[Any]:
         comfy_io.MultiType.Input(
             "negative",
             [comfy_io.Conditioning, conditioning_batch],
+            optional=True,
             tooltip=(
-                "Negative conditioning whose first batch entry is global and "
-                "later entries pair with masks in order."
+                "Optional negative conditioning whose first batch entry is global "
+                "and later entries pair with masks in order; leave disconnected "
+                "for positive-only sampling."
             ),
         ),
         comfy_io.Mask.Input(

@@ -90,8 +90,8 @@ class KSamplerContextualDiffusionV3(_ComfyNodeBase):
         sampler_name: str,
         scheduler: str,
         positive: Any,
-        negative: Any,
-        latent_image: dict[str, Any],
+        negative: Any | None = None,
+        latent_image: dict[str, Any] | None = None,
         denoise: float = 1.0,
         diffusion_mode: str = "multidiffusion",
         latent_context_size: int = 96,
@@ -107,6 +107,8 @@ class KSamplerContextualDiffusionV3(_ComfyNodeBase):
     ) -> tuple[dict[str, Any], object]:
         """Delegate Contextual Diffusion sampling to its application service."""
 
+        if latent_image is None:
+            raise TypeError("KSampler Contextual Diffusion requires latent_image.")
         result = cls.service_class().sample(
             model=model,
             seed=seed,

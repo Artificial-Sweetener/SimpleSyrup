@@ -31,6 +31,7 @@ from .differential_diffusion import (
     differential_diffusion_mutation,
     has_denoise_mask_function,
 )
+from .guided_sampling import sample_with_optional_negative
 from .model_patcher_mutations import ModelUnetWrapperMutation
 from .patcher_lifecycle import PATCHER_LIFECYCLE, ModelMutation
 from .sampling_model_types import (
@@ -139,15 +140,16 @@ def sample_multidiffusion(
     noise = comfy_sample.prepare_noise(latent_samples, seed, batch_inds)
     noise_mask = latent_image.get("noise_mask", None)
     callback = _sampling_callback(sampling_model, steps, preview_context)
-    samples = comfy_sample.sample_custom(
-        sampling_model,
-        noise,
-        cfg,
-        sampler,
-        sigmas,
-        positive,
-        negative,
-        latent_samples,
+    samples = sample_with_optional_negative(
+        comfy_sample=comfy_sample,
+        model=sampling_model,
+        noise=noise,
+        cfg=cfg,
+        sampler=sampler,
+        sigmas=sigmas,
+        positive=positive,
+        negative=negative,
+        latent_image=latent_samples,
         noise_mask=noise_mask,
         callback=callback,
         disable_pbar=not comfy_utils.PROGRESS_BAR_ENABLED,
