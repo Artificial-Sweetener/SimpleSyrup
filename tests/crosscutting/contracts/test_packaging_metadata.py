@@ -26,6 +26,8 @@ EXPECTED_RUNTIME_REQUIREMENTS = (
     "yapf",
     "huggingface-hub",
     "keyring",
+    "mpmath",
+    "pywavelets",
 )
 EXPECTED_RELEASE_IDENTITY = (
     "GIT_AUTHOR_NAME: Daisy",

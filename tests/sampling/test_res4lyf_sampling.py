@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Prove pinned RES4LYF method registration and solver binding parity."""
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ from simple_syrup.third_party.res4lyf_runtime.beta.rk_coefficients_beta import (
 
 SOURCE_REVISION = "3d1d69da69ee47f7647d59e1bd0967e472fccc41"
 SOLVER_SOURCE_SHA256 = (
-    "96c237a234da7486b597c12cf23f15229403698b6a6cb00d5d47ebdf249a5c51"
+    "7e1cd8c1be32b4ec0f8efe827954ab96b529143fef00915f1faa7034908f8f88"
 )
 SOLVER_SOURCE_FILES = (
     "helper.py",
@@ -55,7 +59,7 @@ def test_pinned_solver_source_matches_upstream_with_one_recorded_fix() -> None:
     digest = hashlib.sha256()
     for relative_path in SOLVER_SOURCE_FILES:
         digest.update(relative_path.encode())
-        source = (root / relative_path).read_bytes()
+        source = (root / relative_path).read_bytes().replace(b"\r\n", b"\n")
         if relative_path == "beta/rk_coefficients_beta.py":
             branch = source.index(b'case "res_8s_alt"')
             corrected = b"            ci = [c1, c2, c3, c4, c5, c6, c7, c8]"
