@@ -1,3 +1,15 @@
+# [1.12.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.11.1...v1.12.0) (2026-09-29)
+
+
+### Bug Fixes
+
+* **release:** satisfy RES4LYF publication contracts ([04dc35a](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/04dc35af00163689509cace1541a8e7d33b5053e))
+
+
+### Features
+
+* **sampling:** add RES4LYF sampler methods and schedules ([7b1efef](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/7b1efef47e20b9bf6f032dd57971899d99881822))
+
 ## [1.11.1](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.11.0...v1.11.1) (2026-09-25)
 
 
