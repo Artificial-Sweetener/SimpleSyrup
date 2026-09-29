@@ -36,6 +36,7 @@ line-length = 88
 target-version = "py311"
 extend-exclude = [
     "simple_syrup/third_party/groundingdino_runtime",
+    "simple_syrup/third_party/res4lyf_runtime",
     "simple_syrup/third_party/sam_hq_runtime",
 ]
 
@@ -59,12 +60,17 @@ explicit_package_bases = true
 mypy_path = ["tests"]
 exclude = [
     "simple_syrup/third_party/groundingdino_runtime",
+    "simple_syrup/third_party/res4lyf_runtime",
     "simple_syrup/third_party/sam_hq_runtime",
 ]
 
 [[tool.mypy.overrides]]
 module = ["comfy.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["simple_syrup.third_party.res4lyf_runtime.*"]
+follow_imports = "skip"
 
 [tool.pytest.ini_options]
 pythonpath = [".", "../.."]

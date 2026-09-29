@@ -102,7 +102,7 @@ def test_tiled_attention_service_prepares_once_and_delegates_all_tiling(
         seed=9,
         steps=12,
         cfg=1.0,
-        sampler_name="er_sde",
+        sampler_name="exponential/ddim",
         scheduler="simple",
         positive=positive,
         negative=negative,
@@ -140,6 +140,7 @@ def test_tiled_attention_service_prepares_once_and_delegates_all_tiling(
     assert request.features == frozenset({RegionalFeature.ATTENTION_COUPLING})
     assert call["latent_tile_batch_size"] == 4
     assert call["diffusion_mode"] == diffusion_mode
+    assert call["sampler_name"] == "exponential/ddim"
 
 
 def test_ordinary_request_bypasses_preparation_and_preserves_tiled_img2img(

@@ -18,7 +18,7 @@ The pack now covers model loading, regional prompting and segmentation, high-res
 - ADetailer-style `[SEP]` prompt batches, masked conditioning, and regional samplers, with optional Prompt Control scheduling and LoRA hooks.
 - WD14 and external vision LLM tagging that stays aligned with the right regions.
 - Ordered image and mask loading, GPU Lanczos resizing, tiled VAE options, and provenance-aware latent tools.
-- WebUI-inspired sampling extras including seed variation, A1111 Euler ancestral behavior, AYS, GITS, `automatic_a1111`, and beta57.
+- WebUI-inspired sampling extras including seed variation, A1111 Euler ancestral behavior, AYS, GITS, `automatic_a1111`, and RES4LYF sampler methods and schedules.
 
 ## Contents
 
@@ -152,7 +152,7 @@ The external LLM nodes use a configured OpenAI-compatible provider. **Tag SEGS w
 
 **Simple VAE Encode** can reuse the source latent when the graph proves that its image came directly from an unmodified `VAEDecode`. **Upscale Latent From Image** uses the same provenance to find and resize the original latent. Loading, editing, cropping, detailing, or resizing the image breaks that provenance. These nodes follow the graph instead of trying to identify a latent from the finished tensor.
 
-**KSampler (Extras)** adds the A1111/k-diffusion-style `euler_a_a1111` sampler, AYS SD1 and SDXL schedules, GITS, the `automatic_a1111` scheduler, and a local implementation of the RES4LYF beta57 preset. It keeps Comfy's regular seed handling, partial denoise behavior, progress callbacks, and conditioning inputs.
+**KSampler (Extras)** adds the A1111/k-diffusion-style `euler_a_a1111` sampler, AYS SD1 and SDXL schedules, GITS, `automatic_a1111`, and the RES4LYF beta57 and `bong_tangent` schedules. Its sampler dropdown includes 118 RES4LYF methods, including `exponential/ddim`. These methods are also available in the contextual, tiled, and Attention Coupling KSamplers. RES4LYF methods use their upstream default initial noise; Comfy samplers keep Comfy's normal noise path.
 
 **Seed Variation** patches a MODEL so Comfy-native samplers mix their normal initial noise toward a second deterministic seed. Strength `0` keeps the sampler seed unchanged, while strength `1` uses variation-seed initial noise. Ancestral and SDE samplers continue to use the sampler seed for additional noise introduced after initialization.
 
@@ -182,6 +182,8 @@ SimpleSyrup currently interoperates with:
 
 AGPL-3.0-or-later is a strong copyleft license. If you convey SimpleSyrup or a modified version, you must provide the corresponding source. If users interact with a modified version over a network, you must offer those users the corresponding source for that version.
 
+The vendored RES4LYF license copy includes its upstream commercial-service paragraph before the GNU AGPL v3 text. Read the [RES4LYF license copy](third_party/licenses/res4lyf.LICENSE.txt) and [third-party notices](third_party/NOTICE.md) for the terms and provenance recorded with that code.
+
 SimpleSyrup owes a lot to other projects:
 
 - [ComfyUI](https://github.com/Comfy-Org/ComfyUI) provides the engine and graph ecosystem this pack runs on.
@@ -190,7 +192,7 @@ SimpleSyrup owes a lot to other projects:
 - [ComfyUI Prompt Control](https://github.com/asagi4/comfyui-prompt-control) provides the scheduled prompt and LoRA-hook behavior used by the optional integration.
 - [ComfyUI Layer Style Advance](https://github.com/chflame163/ComfyUI_LayerStyle_Advance) provides the SAM model bundle SimpleSyrup can adapt.
 - [Tiled Diffusion & VAE for AUTOMATIC1111](https://github.com/pkuliyi2015/multidiffusion-upscaler-for-automatic1111) informed the practical tiled diffusion and Mixture of Diffusers behavior reimplemented here.
-- [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF) is the source of the beta57 scheduler preset reimplemented here.
+- [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF) by ClownsharkBatwing and contributors provides the Runge-Kutta and exponential sampler methods included here, along with the `bong_tangent` schedule and the beta57 preset.
 - [ComfyUI-ppm](https://github.com/pamparamm/ComfyUI-ppm) by pamparamm provides the ModelPatcher-based NegPiP behavior adapted here and builds on the [ComfyUI port](https://github.com/laksjdjf/cd-tuner_negpip-ComfyUI) by laksjdjf and the [original WebUI implementation](https://github.com/hako-mikan/sd-webui-negpip) by hako-mikan.
 
 SimpleSyrup also vendors or reimplements selected third-party behavior for SAM-HQ, MobileSAM, GroundingDINO, AUTOMATIC1111 sampler behavior, k-diffusion, and tiled diffusion. See [third_party/NOTICE.md](third_party/NOTICE.md) for the complete notices.

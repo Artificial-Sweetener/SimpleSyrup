@@ -11,7 +11,7 @@ from typing import Any, TypeAlias, cast
 
 import torch
 
-from . import sampling_samplers, sampling_schedulers
+from . import sampling_noise, sampling_samplers, sampling_schedulers
 from .detail_previews import DetailPreviewContext, prepare_detail_preview_callback
 from .differential_diffusion import clone_with_differential_diffusion
 from .guided_sampling import sample_with_optional_negative
@@ -81,7 +81,14 @@ class DetailSampler:
         batch_inds = (
             latent_image["batch_index"] if "batch_index" in latent_image else None
         )
-        noise = comfy_sample.prepare_noise(latent_samples, seed, batch_inds)
+        noise = sampling_noise.prepare_sampling_noise(
+            comfy_sample=comfy_sample,
+            sampler_name=sampler_name,
+            samples=latent_samples,
+            seed=seed,
+            batch_indices=batch_inds,
+            model=model,
+        )
         noise_mask = latent_image.get("noise_mask", None)
         if preview_context is None:
             callback = _latent_preview().prepare_callback(model, steps)

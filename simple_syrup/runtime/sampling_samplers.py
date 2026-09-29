@@ -16,6 +16,7 @@ from typing import Protocol, cast
 
 from ..shared.logging import get_logger
 from .a1111_sampling import sample_euler_ancestral_a1111
+from .res4lyf_sampler_names import RES4LYF_SAMPLER_NAMES
 
 LOGGER = get_logger(__name__)
 EXTRA_SAMPLERS = ("euler_a_a1111",)
@@ -33,7 +34,7 @@ def available_samplers() -> tuple[str, ...]:
 
     comfy_samplers = _comfy_samplers()
     core_samplers = tuple(str(name) for name in comfy_samplers.KSampler.SAMPLERS)
-    return _unique_sampler_names(core_samplers + EXTRA_SAMPLERS)
+    return _unique_sampler_names(core_samplers + EXTRA_SAMPLERS + RES4LYF_SAMPLER_NAMES)
 
 
 def resolve_sampler(sampler_name: str) -> SamplerObject:
@@ -56,6 +57,11 @@ def resolve_sampler(sampler_name: str) -> SamplerObject:
 
     if sampler_name in EXTRA_SAMPLERS:
         return _resolve_extra_sampler(sampler_name)
+
+    if sampler_name in RES4LYF_SAMPLER_NAMES:
+        from .res4lyf_sampling import resolve_res4lyf_sampler
+
+        return resolve_res4lyf_sampler(sampler_name)
 
     return cast(SamplerObject, _comfy_samplers().sampler_object(sampler_name))
 

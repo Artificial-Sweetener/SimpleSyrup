@@ -41,7 +41,7 @@ def test_available_samplers_includes_core_and_extras() -> None:
     assert samplers[: len(comfy.samplers.KSampler.SAMPLERS)] == tuple(
         comfy.samplers.KSampler.SAMPLERS
     )
-    assert samplers[-1] == "euler_a_a1111"
+    assert samplers[len(comfy.samplers.KSampler.SAMPLERS)] == "euler_a_a1111"
 
 
 def test_available_samplers_deduplicates_local_extra_when_globally_patched(

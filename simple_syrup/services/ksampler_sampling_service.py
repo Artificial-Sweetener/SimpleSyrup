@@ -12,7 +12,7 @@ from typing import Any, TypeAlias
 import torch
 
 from ..domain.conditioning_batch import ConditioningBatch, select_conditioning
-from ..runtime import sampling_samplers, sampling_schedulers
+from ..runtime import sampling_noise, sampling_samplers, sampling_schedulers
 from ..runtime.comfy_latent_normalization import COMFY_LATENT_NORMALIZER
 from ..runtime.guided_sampling import sample_with_optional_negative
 from ..shared.logging import get_logger
@@ -67,10 +67,13 @@ class KSamplerSamplingService:
             denoise=denoise,
             view=sampling_schedulers.SchedulerView.from_tensor(latent_samples),
         ).to(model.load_device)
-        noise = comfy_sample.prepare_noise(
-            latent_samples,
-            seed,
-            latent_image.get("batch_index"),
+        noise = sampling_noise.prepare_sampling_noise(
+            comfy_sample=comfy_sample,
+            sampler_name=sampler_name,
+            samples=latent_samples,
+            seed=seed,
+            batch_indices=latent_image.get("batch_index"),
+            model=model,
         )
         noise_mask = latent_image.get("noise_mask")
         callback = import_module("latent_preview").prepare_callback(model, steps)

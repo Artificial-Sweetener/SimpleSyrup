@@ -82,7 +82,7 @@ def test_full_context_service_delegates_prepared_model_to_ordinary_sampler() -> 
             seed=5,
             steps=12,
             cfg=1.0,
-            sampler_name="euler",
+            sampler_name="exponential/ddim",
             scheduler="simple",
             positive=positive,
             negative=negative,
@@ -108,6 +108,7 @@ def test_full_context_service_delegates_prepared_model_to_ordinary_sampler() -> 
     assert sampler_call["positive"] == "base+"
     assert sampler_call["negative"] == "base-"
     assert sampler_call["latent_image"] is latent
+    assert sampler_call["sampler_name"] == "exponential/ddim"
 
 
 def test_ordinary_request_bypasses_preparation_and_preserves_img2img_inputs(

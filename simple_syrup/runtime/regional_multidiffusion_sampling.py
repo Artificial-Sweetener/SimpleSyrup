@@ -18,7 +18,7 @@ from typing import Any, cast
 from ..domain.regional_detailing import LatentRegion
 from ..domain.regional_features import EMPTY_REGIONAL_CAPABILITY_ADMISSION
 from ..shared.logging import get_logger
-from . import sampling_samplers, sampling_schedulers
+from . import sampling_noise, sampling_samplers, sampling_schedulers
 from .detail_previews import DetailPreviewContext, prepare_detail_preview_callback
 from .differential_diffusion import (
     differential_diffusion_mutation,
@@ -135,7 +135,14 @@ def sample_regional_multidiffusion(
     )
 
     batch_inds = latent_image["batch_index"] if "batch_index" in latent_image else None
-    noise = comfy_sample.prepare_noise(latent_samples, seed, batch_inds)
+    noise = sampling_noise.prepare_sampling_noise(
+        comfy_sample=comfy_sample,
+        sampler_name=sampler_name,
+        samples=latent_samples,
+        seed=seed,
+        batch_indices=batch_inds,
+        model=sampling_model,
+    )
     noise_mask = latent_image.get("noise_mask", None)
     callback = _sampling_callback(sampling_model, steps, preview_context)
     samples = sample_with_optional_negative(

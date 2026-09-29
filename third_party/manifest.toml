@@ -76,6 +76,43 @@ vendored_files = [
 ]
 
 [[component]]
+name = "RES4LYF sampler methods"
+license = "AGPL-3.0"
+license_file = "third_party/licenses/res4lyf.LICENSE.txt"
+source = "https://github.com/ClownsharkBatwing/RES4LYF"
+revision = "3d1d69da69ee47f7647d59e1bd0967e472fccc41"
+source_paths = [
+  "beta/constants.py",
+  "beta/deis_coefficients.py",
+  "beta/phi_functions.py",
+  "beta/rk_coefficients_beta.py",
+  "beta/rk_method_beta.py",
+  "beta/noise_classes.py",
+  "beta/rk_noise_sampler_beta.py",
+  "beta/rk_guide_func_beta.py",
+  "beta/rk_sampler_beta.py",
+  "helper.py",
+  "latents.py",
+  "style_transfer.py",
+  "sigmas.py",
+]
+vendored_files = [
+  "simple_syrup/third_party/res4lyf_runtime/beta/constants.py",
+  "simple_syrup/third_party/res4lyf_runtime/beta/deis_coefficients.py",
+  "simple_syrup/third_party/res4lyf_runtime/beta/phi_functions.py",
+  "simple_syrup/third_party/res4lyf_runtime/beta/rk_coefficients_beta.py",
+  "simple_syrup/third_party/res4lyf_runtime/beta/rk_method_beta.py",
+  "simple_syrup/third_party/res4lyf_runtime/beta/noise_classes.py",
+  "simple_syrup/third_party/res4lyf_runtime/beta/rk_noise_sampler_beta.py",
+  "simple_syrup/third_party/res4lyf_runtime/beta/rk_guide_func_beta.py",
+  "simple_syrup/third_party/res4lyf_runtime/beta/rk_sampler_beta.py",
+  "simple_syrup/third_party/res4lyf_runtime/helper.py",
+  "simple_syrup/third_party/res4lyf_runtime/latents.py",
+  "simple_syrup/third_party/res4lyf_runtime/style_transfer.py",
+  "simple_syrup/third_party/res4lyf_runtime/sigmas.py",
+]
+
+[[component]]
 name = "AUTOMATIC1111 sampling integration"
 license = "AGPL-3.0"
 license_file = "third_party/licenses/automatic1111.LICENSE.txt"

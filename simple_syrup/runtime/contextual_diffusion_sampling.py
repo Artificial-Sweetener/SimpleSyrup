@@ -21,7 +21,7 @@ from ..domain.regional_features import (
     RegionalCapabilityAdmission,
 )
 from ..shared.logging import get_logger
-from . import sampling_samplers, sampling_schedulers
+from . import sampling_noise, sampling_samplers, sampling_schedulers
 from .contextual_model_wrapper import ContextualDiffusionModelWrapper
 from .guided_sampling import sample_with_optional_negative
 from .model_patcher_mutations import ModelUnetWrapperMutation
@@ -116,7 +116,14 @@ def sample_contextual_diffusion(
         diffusion_mode=diffusion_mode,
     )
     batch_inds = latent_image.get("batch_index")
-    noise = comfy_sample.prepare_noise(latent_samples, seed, batch_inds)
+    noise = sampling_noise.prepare_sampling_noise(
+        comfy_sample=comfy_sample,
+        sampler_name=sampler_name,
+        samples=latent_samples,
+        seed=seed,
+        batch_indices=batch_inds,
+        model=sampling_model,
+    )
     callback = _latent_preview().prepare_callback(sampling_model, steps)
     samples = sample_with_optional_negative(
         comfy_sample=comfy_sample,

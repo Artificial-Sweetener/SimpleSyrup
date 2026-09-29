@@ -15,7 +15,7 @@ import comfy.samplers
 import pytest
 import torch
 
-from simple_syrup.runtime import sampling_schedulers
+from simple_syrup.runtime import sampling_reference_schedules, sampling_schedulers
 from simple_syrup.runtime.sampling_schedulers import (
     SchedulerView,
     available_schedulers,
@@ -157,7 +157,7 @@ def reference_full_extra_schedule(scheduler_name: str, steps: int) -> torch.Tens
 def reference_ays_schedule(model_type: str, steps: int) -> torch.Tensor:
     """Calculate full AYS schedule with Comfy Extras formula semantics."""
 
-    sigmas = list(sampling_schedulers.AYS_NOISE_LEVELS[model_type])
+    sigmas = list(sampling_reference_schedules.AYS_NOISE_LEVELS[model_type])
     if (steps + 1) != len(sigmas):
         sigmas = reference_loglinear_interpolate(sigmas, steps + 1)
     sigmas[-1] = 0.0
@@ -168,10 +168,10 @@ def reference_gits_schedule(steps: int) -> torch.Tensor:
     """Calculate full GITS schedule for the default coefficient."""
 
     if steps <= 20:
-        sigmas = list(sampling_schedulers.GITS_DEFAULT_NOISE_LEVELS[steps - 2])
+        sigmas = list(sampling_reference_schedules.GITS_DEFAULT_NOISE_LEVELS[steps - 2])
     else:
         sigmas = reference_loglinear_interpolate(
-            sampling_schedulers.GITS_DEFAULT_NOISE_LEVELS[-1],
+            sampling_reference_schedules.GITS_DEFAULT_NOISE_LEVELS[-1],
             steps + 1,
         )
     sigmas[-1] = 0.0
@@ -227,11 +227,12 @@ def test_available_schedulers_includes_core_and_extras() -> None:
 
     for scheduler in comfy.samplers.KSampler.SCHEDULERS:
         assert scheduler in schedulers
-    assert schedulers[-6:] == (
+    assert schedulers[-7:] == (
         "AYS SD1",
         "AYS SDXL",
         "GITS",
         "beta57",
+        "bong_tangent",
         "automatic_a1111",
         "Flux2",
     )

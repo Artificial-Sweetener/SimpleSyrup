@@ -102,6 +102,8 @@ def test_sampler_options_include_lcm() -> None:
 
     assert "lcm" in sampler_options
     assert "euler_a_a1111" in sampler_options
+    assert "exponential/ddim" in sampler_options
+    assert "fully_implicit/radau_iia_3s" in sampler_options
 
 
 def test_scheduler_options_include_extras_and_exclude_svd() -> None:
@@ -113,6 +115,7 @@ def test_scheduler_options_include_extras_and_exclude_svd() -> None:
     assert "AYS SDXL" in scheduler_options
     assert "GITS" in scheduler_options
     assert "beta57" in scheduler_options
+    assert "bong_tangent" in scheduler_options
     assert "automatic_a1111" in scheduler_options
     assert "Flux2" in scheduler_options
     assert "AYS SVD" not in scheduler_options

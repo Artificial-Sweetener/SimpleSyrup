@@ -92,7 +92,7 @@ def test_contextual_attention_service_prepares_once_and_delegates_local_views(
         seed=9,
         steps=12,
         cfg=1.0,
-        sampler_name="er_sde",
+        sampler_name="exponential/ddim",
         scheduler="simple",
         positive="regional-positive",
         negative="regional-negative",
@@ -136,5 +136,6 @@ def test_contextual_attention_service_prepares_once_and_delegates_local_views(
     assert call["latent_image"] is latent
     assert call["segs"] == "segs"
     assert call["diffusion_mode"] == diffusion_mode
+    assert call["sampler_name"] == "exponential/ddim"
     request = cast(RegionalFeatureRequest, call["feature_request"])
     assert request.features == frozenset({RegionalFeature.ATTENTION_COUPLING})
