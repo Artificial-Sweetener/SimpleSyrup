@@ -11,6 +11,7 @@ from typing import Any, TypeAlias
 import torch
 
 from ..domain.conditioning_batch import ConditioningBatch, select_conditioning
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_features import RegionalCapabilityAdmission
 from ..domain.segs import coerce_segs_group
 from ..domain.segs_tiled_diffusion import build_segs_guided_tiled_diffusion_plan
@@ -47,6 +48,7 @@ class SEGSGuidedTiledDiffusionSamplingService:
         preview_context: DetailPreviewContext | None,
         differential_diffusion: bool,
         capability_admission: RegionalCapabilityAdmission,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> Latent:
         """Sample every latent batch item using its connected SEGS guide."""
 
@@ -108,6 +110,8 @@ class SEGSGuidedTiledDiffusionSamplingService:
                 differential_diffusion=differential_diffusion,
                 capability_admission=capability_admission,
                 tiled_plan=plan,
+                noise_inversion=noise_inversion,
+                inversion_segs=segs_for_item,
             )
             output_samples = output["samples"]
             if not isinstance(output_samples, torch.Tensor):

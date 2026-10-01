@@ -12,6 +12,7 @@ from simple_syrup.domain.attention_coupling_request import (
     AttentionCouplingRequestMode,
     classify_attention_coupling_request,
 )
+from simple_syrup.domain.noise_inversion import NoiseInversionOptions
 from simple_syrup.domain.regional_attention_execution import (
     RegionalAttentionExecutionMode,
 )
@@ -55,6 +56,7 @@ class ProfiledAttentionCouplingSamplingService(AttentionCouplingSamplingService)
         region_mask_feather: int,
         latent_image: dict[str, Any],
         denoise: float,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> dict[str, Any]:
         """Time only the production owners selected by request routing."""
 
@@ -77,6 +79,7 @@ class ProfiledAttentionCouplingSamplingService(AttentionCouplingSamplingService)
                     negative=negative,
                     latent_image=latent_image,
                     denoise=denoise,
+                    noise_inversion=noise_inversion,
                 )
         with measure_synchronized_phase("model_preparation_total", device=device):
             prepared = self.model_preparation_service_class().prepare(
@@ -101,4 +104,5 @@ class ProfiledAttentionCouplingSamplingService(AttentionCouplingSamplingService)
                 negative=prepared.negative,
                 latent_image=latent_image,
                 denoise=denoise,
+                noise_inversion=noise_inversion,
             )

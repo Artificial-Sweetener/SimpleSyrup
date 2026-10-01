@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..runtime import sampling_samplers, sampling_schedulers
 from ..services.ksampler_sampling_service import KSamplerSamplingService
 from . import tooltips
@@ -110,6 +111,7 @@ class KSamplerExtras:
         negative: Any | None = None,
         latent_image: Latent | None = None,
         denoise: float = 1.0,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> tuple[Latent]:
         """Sample a latent with ComfyUI samplers and extra scheduler sigmas."""
 
@@ -126,5 +128,6 @@ class KSamplerExtras:
             negative=negative,
             latent_image=latent_image,
             denoise=denoise,
+            noise_inversion=noise_inversion,
         )
         return (output,)

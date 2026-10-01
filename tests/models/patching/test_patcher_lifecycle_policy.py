@@ -32,6 +32,9 @@ FORBIDDEN_PATCHER_CALLS = frozenset(
 FORBIDDEN_PATCHER_WRITES = frozenset({"forced_hooks", "use_clip_schedule"})
 APPROVED_VALUE_CLONES = Counter(
     {
+        ("simple_syrup/domain/inversion_solver.py", "source"): 1,
+        ("simple_syrup/runtime/noise_inversion.py", "zero"): 1,
+        ("simple_syrup/runtime/noise_inversion.py", "noise"): 1,
         ("simple_syrup/domain/semantic_tiled_diffusion.py", "mask"): 2,
         ("simple_syrup/image/crop_composite.py", "image"): 1,
         (

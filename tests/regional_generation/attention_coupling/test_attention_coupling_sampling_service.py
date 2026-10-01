@@ -158,6 +158,7 @@ def test_ordinary_request_bypasses_preparation_and_preserves_img2img_inputs(
             "negative": "negative",
             "latent_image": latent,
             "denoise": 0.42,
+            "noise_inversion": None,
         }
     ]
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from simple_syrup.nodes_v3.legacy_node_wrappers import LegacyNodeV3Adapter
+from simple_syrup.nodes_v3.legacy_node_adapter import LegacyNodeV3Adapter
 
 
 class _FakeHidden:

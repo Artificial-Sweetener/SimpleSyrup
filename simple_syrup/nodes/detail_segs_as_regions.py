@@ -10,6 +10,7 @@ from typing import Any, ClassVar
 
 import torch
 
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.segs import coerce_segs_group
 from ..nodes import tooltips
 from ..nodes.detailer_input_adapters import (
@@ -215,6 +216,7 @@ class DetailSEGSAsRegions:
         noise_mask_feather: object = 20,
         tiled_encode: object = False,
         tiled_decode: object = False,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> tuple[object]:
         """Run regional detailing and return the detailed image."""
 
@@ -237,6 +239,7 @@ class DetailSEGSAsRegions:
             strict=True,
         ):
             result = service.detail(
+                noise_inversion=noise_inversion,
                 image=single_image,
                 segs=single_segs,
                 model=single_input(model, "model", list_mode, OPERATION),

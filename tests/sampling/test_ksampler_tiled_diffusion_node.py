@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 import torch
 
+from simple_syrup.domain.noise_inversion import NoiseInversionOptions
 from simple_syrup.nodes_v3.ksampler_tiled_diffusion import (
     KSamplerTiledDiffusionV3,
 )
@@ -191,6 +192,7 @@ class _FakeTiledDiffusionSamplingService:
         region_masks: object | None = None,
         regional_prompt_weight: float = 0.5,
         region_mask_feather: int = 0,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> dict[str, Any]:
         """Record sampling arguments and return a fixed latent."""
 
@@ -216,6 +218,7 @@ class _FakeTiledDiffusionSamplingService:
                 "region_masks": region_masks,
                 "regional_prompt_weight": regional_prompt_weight,
                 "region_mask_feather": region_mask_feather,
+                "noise_inversion": noise_inversion,
             }
         )
         return self.output

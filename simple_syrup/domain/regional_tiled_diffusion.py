@@ -26,6 +26,7 @@ def build_region_constrained_tiled_diffusion_plan(
     tile_height: int,
     overlap: int,
     tile_batch_size: int,
+    segs_canvas: tuple[int, int] | None = None,
 ) -> TiledDiffusionPlan:
     """Build tiles split wherever regional composition or optional SEGS change."""
 
@@ -37,7 +38,8 @@ def build_region_constrained_tiled_diffusion_plan(
     ownership_masks = region_ownership
     if segs is not None:
         native_segs = coerce_segs(segs)
-        validate_segs_aspect_ratio(native_segs, latent_height, latent_width)
+        canvas_height, canvas_width = segs_canvas or (latent_height, latent_width)
+        validate_segs_aspect_ratio(native_segs, canvas_height, canvas_width)
         semantic_ownership = segs_ownership_masks(
             native_segs,
             latent_height=latent_height,

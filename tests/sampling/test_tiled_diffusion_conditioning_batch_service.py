@@ -86,7 +86,7 @@ def test_batch_service_forwards_sampling_arguments_unchanged() -> None:
     assert len(calls) == 1
     assert {
         key: value for key, value in calls[0].items() if key != "latent_image"
-    } == expected_values | {"positive": "positive"}
+    } == expected_values | {"positive": "positive", "noise_inversion": None}
     assert torch.equal(
         calls[0]["latent_image"]["samples"],
         kwargs["latent_image"]["samples"],

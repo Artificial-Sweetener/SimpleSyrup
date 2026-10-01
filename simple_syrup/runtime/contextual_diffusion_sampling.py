@@ -16,16 +16,24 @@ from ..domain.contextual_diffusion import (
     ContextualDiffusionControls,
     ContextualDiffusionPlan,
 )
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_features import (
     EMPTY_REGIONAL_CAPABILITY_ADMISSION,
     RegionalCapabilityAdmission,
 )
+from ..domain.sampler_options import TilingOptions
+from ..domain.segs import NativeSegs
 from ..shared.logging import get_logger
 from . import sampling_noise, sampling_samplers, sampling_schedulers
 from .contextual_model_wrapper import ContextualDiffusionModelWrapper
+from .differential_diffusion import (
+    differential_diffusion_mutation,
+    has_denoise_mask_function,
+)
 from .guided_sampling import sample_with_optional_negative
+from .inversion_model_factory import InversionModelFactory
 from .model_patcher_mutations import ModelUnetWrapperMutation
-from .patcher_lifecycle import PATCHER_LIFECYCLE
+from .patcher_lifecycle import PATCHER_LIFECYCLE, ModelMutation
 from .sampling_model_types import ModelFunctionWrapper
 from .tiled_sampling_validation import (
     Latent,
@@ -58,14 +66,18 @@ def sample_contextual_diffusion(
     capability_admission: RegionalCapabilityAdmission = (
         EMPTY_REGIONAL_CAPABILITY_ADMISSION
     ),
+    noise_inversion: NoiseInversionOptions | None = None,
+    inversion_segs: NativeSegs | None = None,
+    inversion_region_masks: torch.Tensor | None = None,
+    differential_diffusion: bool = False,
 ) -> Latent:
     """Sample one latent through global context and one tiled prediction plan."""
 
     validate_sampling_controls(
         steps=steps,
         denoise=denoise,
-        latent_tile_width=controls.latent_context_size,
-        latent_tile_height=controls.latent_context_size,
+        latent_tile_width=controls.tile_width,
+        latent_tile_height=controls.tile_height,
         latent_tile_batch_size=controls.latent_context_batch_size,
     )
     controls.validate()
@@ -90,8 +102,8 @@ def sample_contextual_diffusion(
         steps=steps,
         denoise=denoise,
         view=sampling_schedulers.SchedulerView(
-            latent_width=controls.latent_context_size,
-            latent_height=controls.latent_context_size,
+            latent_width=controls.tile_width,
+            latent_height=controls.tile_height,
         ),
     ).to(model.load_device)
     latent_samples = validate_latent_samples(latent_image, sampler_label=SAMPLER_LABEL)
@@ -114,8 +126,30 @@ def sample_contextual_diffusion(
         controls=controls,
         sigmas=sigmas,
         diffusion_mode=diffusion_mode,
+        differential_diffusion=differential_diffusion,
     )
     batch_inds = latent_image.get("batch_index")
+    inversion_factory = (
+        InversionModelFactory(
+            model=model,
+            canvas_width=plan.latent_width,
+            canvas_height=plan.latent_height,
+            tiling=TilingOptions(
+                diffusion_mode=diffusion_mode,
+                width=controls.tile_width,
+                height=controls.tile_height,
+                overlap=controls.latent_context_overlap,
+                batch_size=controls.latent_context_batch_size,
+                differential_diffusion=differential_diffusion,
+            ),
+            context=controls,
+            forward_sigmas=sigmas,
+            segs=inversion_segs,
+            region_masks=inversion_region_masks,
+        )
+        if noise_inversion is not None
+        else None
+    )
     noise = sampling_noise.prepare_sampling_noise(
         comfy_sample=comfy_sample,
         sampler_name=sampler_name,
@@ -139,6 +173,8 @@ def sample_contextual_diffusion(
         callback=callback,
         disable_pbar=not comfy_utils.PROGRESS_BAR_ENABLED,
         seed=seed,
+        noise_inversion=noise_inversion,
+        inversion_model_factory=inversion_factory,
     )
 
     LOGGER.info(
@@ -178,10 +214,12 @@ def clone_model_with_contextual_diffusion(
     controls: ContextualDiffusionControls,
     sigmas: torch.Tensor,
     diffusion_mode: str,
+    differential_diffusion: bool = False,
+    existing_wrapper: ModelFunctionWrapper | None = None,
 ) -> Any:
     """Derive a model with one pre-CFG contextual prediction wrapper."""
 
-    old_wrapper = model.model_options.get("model_function_wrapper")
+    old_wrapper = existing_wrapper or model.model_options.get("model_function_wrapper")
     if old_wrapper is not None and not callable(old_wrapper):
         raise ValueError("Existing model_function_wrapper is not callable.")
     wrapper = ContextualDiffusionModelWrapper(
@@ -191,9 +229,13 @@ def clone_model_with_contextual_diffusion(
         diffusion_mode=diffusion_mode,
         existing_wrapper=cast(ModelFunctionWrapper | None, old_wrapper),
     )
+    mutations: list[ModelMutation] = []
+    if differential_diffusion and not has_denoise_mask_function(model):
+        mutations.append(differential_diffusion_mutation())
+    mutations.append(ModelUnetWrapperMutation(wrapper))
     return PATCHER_LIFECYCLE.derive_model(
         model,
-        (ModelUnetWrapperMutation(wrapper),),
+        mutations,
         operation="SimpleSyrup contextual diffusion",
     )
 

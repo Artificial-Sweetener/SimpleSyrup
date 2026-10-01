@@ -12,6 +12,7 @@ from ..domain.attention_coupling_request import (
     AttentionCouplingRequestMode,
     classify_attention_coupling_request,
 )
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_attention_execution import RegionalAttentionExecutionMode
 from ..domain.regional_features import (
     EMPTY_REGIONAL_FEATURE_REQUEST,
@@ -62,6 +63,8 @@ class TiledAttentionCouplingSamplingService:
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
         differential_diffusion: bool = False,
+        segs: object | None = None,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> dict[str, Any]:
         """Bypass ordinary requests or prepare one complete regional request."""
 
@@ -90,6 +93,8 @@ class TiledAttentionCouplingSamplingService:
                 preview_context=preview_context,
                 differential_diffusion=differential_diffusion,
                 feature_request=EMPTY_REGIONAL_FEATURE_REQUEST,
+                segs=segs,
+                noise_inversion=noise_inversion,
             )
 
         prepared = self.model_preparation_service_class().prepare(
@@ -121,6 +126,8 @@ class TiledAttentionCouplingSamplingService:
             preview_context=preview_context,
             differential_diffusion=differential_diffusion,
             feature_request=_TILED_ATTENTION_REQUEST,
+            segs=segs,
+            noise_inversion=noise_inversion,
         )
 
     def _sample_tiled(
@@ -144,6 +151,8 @@ class TiledAttentionCouplingSamplingService:
         preview_context: DetailPreviewContext | None,
         differential_diffusion: bool,
         feature_request: RegionalFeatureRequest,
+        segs: object | None,
+        noise_inversion: NoiseInversionOptions | None,
     ) -> dict[str, Any]:
         """Delegate one ordinary or Attention Coupling tiled request."""
 
@@ -166,10 +175,11 @@ class TiledAttentionCouplingSamplingService:
             preview_context=preview_context,
             differential_diffusion=differential_diffusion,
             feature_request=feature_request,
-            segs=None,
+            segs=segs,
             region_masks=None,
             regional_prompt_weight=0.5,
             region_mask_feather=0,
+            noise_inversion=noise_inversion,
         )
 
 

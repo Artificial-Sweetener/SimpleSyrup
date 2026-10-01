@@ -1,11 +1,10 @@
 schema_version = 1
 review_by = 2027-03-31
-fingerprint = "sha256:15ead72c26b1b5911aac191d07f36e5d8fd22d583447c2fcb62353be4ad1cd47"
+fingerprint = "sha256:a71fe87163eb7585fafbca08b585954be79abd884e3a1df38bc041c2bc934764"
 
 cohesive_paths = [
   "simple_syrup/masking/prompt_segs_with_sam_service.py",
   "simple_syrup/nodes/prompt_segs_with_sam.py",
-  "simple_syrup/nodes_v3/legacy_node_wrappers.py",
   "simple_syrup/runtime/attention_region_affinity.py",
   "simple_syrup/runtime/attention_region_capture.py",
   "simple_syrup/runtime/attention_sampler_lineage.py",

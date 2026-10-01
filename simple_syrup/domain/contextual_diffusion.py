@@ -27,16 +27,37 @@ class ContextualDiffusionControls:
     global_weight: float
     global_steps: int
     global_decay: float
+    latent_tile_width: int | None = None
+    latent_tile_height: int | None = None
+
+    @property
+    def tile_width(self) -> int:
+        """Use explicit local geometry or the convenience node's context size."""
+        return self.latent_tile_width or self.latent_context_size
+
+    @property
+    def tile_height(self) -> int:
+        """Keep the global context independent of a rectangular local tile."""
+        return self.latent_tile_height or self.latent_context_size
 
     def validate(self) -> None:
         """Reject controls that cannot produce a stable bounded context plan."""
 
         if self.latent_context_size < 16:
             raise ValueError("latent_context_size must be at least 16 latent pixels.")
-        if not 0 <= self.latent_context_overlap < self.latent_context_size:
+        for value in (self.latent_tile_width, self.latent_tile_height):
+            if value is not None and (type(value) is not int or value < 16):
+                raise ValueError(
+                    "Local tile dimensions must be at least 16 latent pixels."
+                )
+        if (
+            not 0
+            <= self.latent_context_overlap
+            < min(self.tile_width, self.tile_height)
+        ):
             raise ValueError(
                 "latent_context_overlap must be non-negative and smaller than "
-                "latent_context_size."
+                "both local tile dimensions."
             )
         if self.latent_context_batch_size < 1:
             raise ValueError("latent_context_batch_size must be at least 1.")
@@ -65,6 +86,7 @@ def build_contextual_diffusion_plan(
     controls: ContextualDiffusionControls,
     segs: NativeSegs | None,
     region_masks: torch.Tensor | None = None,
+    segs_canvas: tuple[int, int] | None = None,
 ) -> ContextualDiffusionPlan:
     """Return a global context plus the regular or SEGS-guided context plan."""
 
@@ -89,27 +111,29 @@ def build_contextual_diffusion_plan(
             segs=segs,
             latent_width=latent_width,
             latent_height=latent_height,
-            tile_width=controls.latent_context_size,
-            tile_height=controls.latent_context_size,
+            tile_width=controls.tile_width,
+            tile_height=controls.tile_height,
             overlap=controls.latent_context_overlap,
             tile_batch_size=controls.latent_context_batch_size,
+            segs_canvas=segs_canvas,
         )
     elif segs is not None:
         tile_plan = build_segs_guided_tiled_diffusion_plan(
             segs=segs,
             latent_width=latent_width,
             latent_height=latent_height,
-            tile_width=controls.latent_context_size,
-            tile_height=controls.latent_context_size,
+            tile_width=controls.tile_width,
+            tile_height=controls.tile_height,
             overlap=controls.latent_context_overlap,
             tile_batch_size=controls.latent_context_batch_size,
+            segs_canvas=segs_canvas,
         )
     else:
         tile_plan = build_tiled_diffusion_plan(
             latent_width=latent_width,
             latent_height=latent_height,
-            tile_width=controls.latent_context_size,
-            tile_height=controls.latent_context_size,
+            tile_width=controls.tile_width,
+            tile_height=controls.tile_height,
             overlap=controls.latent_context_overlap,
             tile_batch_size=controls.latent_context_batch_size,
         )

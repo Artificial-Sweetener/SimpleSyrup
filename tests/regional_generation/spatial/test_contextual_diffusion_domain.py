@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 import torch
 
@@ -86,6 +88,27 @@ def test_invalid_overlap_fails_before_planning() -> None:
             controls=_controls(latent_context_overlap=32),
             segs=None,
         )
+
+
+def test_rectangular_tiles_do_not_resize_global_context() -> None:
+    """Let Tiling configure the sole local plan independently of global context."""
+    controls = replace(_controls(), latent_tile_width=48, latent_tile_height=16)
+    plan = build_contextual_diffusion_plan(
+        latent_width=96, latent_height=64, controls=controls, segs=None
+    )
+    assert (plan.tile_plan.tile_width, plan.tile_plan.tile_height) == (48, 16)
+    assert (plan.global_view.model_width, plan.global_view.model_height) == (32, 22)
+
+
+def test_overlap_is_bounded_by_both_explicit_tile_dimensions() -> None:
+    """Reject an overlap that prevents advancing the shorter local dimension."""
+    controls = replace(
+        _controls(latent_context_overlap=16),
+        latent_tile_width=48,
+        latent_tile_height=16,
+    )
+    with pytest.raises(ValueError, match="both local tile dimensions"):
+        controls.validate()
 
 
 def _controls(

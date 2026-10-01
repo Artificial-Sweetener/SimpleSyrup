@@ -16,6 +16,7 @@ from typing import Any, Protocol
 import torch
 
 from ..domain.conditioning_batch import ConditioningBatch
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_detailing import (
     LatentRegion,
     pair_segments_with_conditioning,
@@ -65,6 +66,7 @@ class RegionalDetailSamplingBoundary(Protocol):
         global_prompt_weight: float,
         preview_context: DetailPreviewContext | None = None,
         differential_diffusion: bool = False,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> Latent:
         """Sample one full latent with paired regional conditioning."""
 
@@ -133,6 +135,7 @@ class DetailSEGSAsRegionsService:
         tiled_encode: bool,
         tiled_decode: bool,
         global_prompt_weight: float,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> DetailSEGSAsRegionsResult:
         """Run regional MultiDiffusion detailing for provided SEGS."""
 
@@ -234,6 +237,7 @@ class DetailSEGSAsRegionsService:
                 sampled_region=CropRegion(0, 0, image_width, image_height),
             ),
             differential_diffusion=differential_diffusion,
+            noise_inversion=noise_inversion,
         )
         decoded = self._sampler.decode(vae, sampled, tiled_decode)
         if decoded.shape[1:3] != image_tensor.shape[1:3]:

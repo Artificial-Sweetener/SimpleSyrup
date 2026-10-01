@@ -18,6 +18,11 @@ from support.repository import REPOSITORY_ROOT
 
 BASE_NODE_IDS = [
     "SimpleSyrup.AllPromptAttentionSEGS",
+    "SimpleSyrup.AttentionCouplingOptions",
+    "SimpleSyrup.ContextualDiffusionOptions",
+    "SimpleSyrup.NoiseInversionOptions",
+    "SimpleSyrup.TilingOptions",
+    "SimpleSyrup.KSampler",
     "SimpleSyrup.AttentionCaptureModel",
     "SimpleSyrup.AttentionMaskedConditioning",
     "SimpleSyrup.AttentionRegionMask",

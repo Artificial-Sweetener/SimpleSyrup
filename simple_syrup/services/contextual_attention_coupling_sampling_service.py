@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_attention_execution import RegionalAttentionExecutionMode
 from ..domain.regional_features import RegionalFeature, RegionalFeatureRequest
+from ..domain.sampler_options import TilingOptions
 from .attention_coupling_model_preparation_service import (
     AttentionCouplingModelPreparationService,
 )
@@ -57,6 +59,8 @@ class ContextualAttentionCouplingSamplingService:
         global_steps: int,
         global_decay: float,
         segs: object | None = None,
+        noise_inversion: NoiseInversionOptions | None = None,
+        tiling: TilingOptions | None = None,
     ) -> ContextualDiffusionSamplingResult:
         """Prepare once and invoke established Contextual local-view execution."""
 
@@ -94,6 +98,8 @@ class ContextualAttentionCouplingSamplingService:
             region_mask_feather=0,
             feature_request=_CONTEXTUAL_ATTENTION_REQUEST,
             planning_region_masks=prepared.mask_bank.planning_masks,
+            noise_inversion=noise_inversion,
+            tiling=tiling,
         )
 
 

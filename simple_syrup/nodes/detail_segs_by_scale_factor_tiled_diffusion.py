@@ -10,6 +10,7 @@ from typing import Any, ClassVar
 
 import torch
 
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.segs import coerce_segs_group
 from ..domain.tiled_diffusion import TILED_DIFFUSION_MODES
 from ..nodes import tooltips
@@ -263,6 +264,7 @@ class DetailSEGSByScaleFactorTiledDiffusion:
         latent_tile_height: object = 128,
         latent_tile_overlap: object = 16,
         latent_tile_batch_size: object = 4,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> tuple[object]:
         """Run tiled diffusion scale-factor detailing and return the image."""
 
@@ -275,6 +277,7 @@ class DetailSEGSByScaleFactorTiledDiffusion:
         outputs: list[torch.Tensor] = []
         for single_image, single_segs in zip(images, segs_group, strict=True):
             result = service.detail(
+                noise_inversion=noise_inversion,
                 image=single_image,
                 segs=single_segs,
                 model=single_input(model, "model", list_mode, OPERATION),

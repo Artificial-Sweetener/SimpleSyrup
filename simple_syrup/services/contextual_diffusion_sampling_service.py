@@ -21,6 +21,7 @@ from ..domain.contextual_diffusion import (
     ContextualDiffusionControls,
     build_contextual_diffusion_plan,
 )
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_features import (
     CONTEXTUAL_DIFFUSION_REGIONAL_SAMPLER_CAPABILITIES,
     EMPTY_REGIONAL_FEATURE_REQUEST,
@@ -28,6 +29,7 @@ from ..domain.regional_features import (
     RegionalFeature,
     RegionalFeatureRequest,
 )
+from ..domain.sampler_options import TilingOptions
 from ..domain.segs import NativeSegs, coerce_segs_group
 from ..domain.tiled_diffusion import validate_tiled_diffusion_mode
 from ..runtime.contextual_diffusion_sampling import sample_contextual_diffusion
@@ -91,10 +93,16 @@ class ContextualDiffusionSamplingService:
         region_mask_feather: int = 0,
         feature_request: RegionalFeatureRequest = EMPTY_REGIONAL_FEATURE_REQUEST,
         planning_region_masks: torch.Tensor | None = None,
+        noise_inversion: NoiseInversionOptions | None = None,
+        tiling: TilingOptions | None = None,
     ) -> ContextualDiffusionSamplingResult:
-        """Sample a latent with global and bounded detail contexts."""
+        """Sample one local tile authority with global context and inversion."""
 
         validate_tiled_diffusion_mode(diffusion_mode)
+        if tiling is not None:
+            diffusion_mode = tiling.diffusion_mode
+            latent_context_overlap = tiling.overlap
+            latent_context_batch_size = tiling.batch_size
         controls = ContextualDiffusionControls(
             latent_context_size=latent_context_size,
             latent_context_overlap=latent_context_overlap,
@@ -102,6 +110,8 @@ class ContextualDiffusionSamplingService:
             global_weight=global_weight,
             global_steps=global_steps,
             global_decay=global_decay,
+            latent_tile_width=tiling.width if tiling is not None else None,
+            latent_tile_height=tiling.height if tiling is not None else None,
         )
         controls.validate()
         regional = self.regional_preparation_service_class().prepare(
@@ -172,6 +182,10 @@ class ContextualDiffusionSamplingService:
                 image_width=image_width,
                 region_masks=planning_masks,
                 capability_admission=capability_admission,
+                noise_inversion=noise_inversion,
+                differential_diffusion=tiling.differential_diffusion
+                if tiling is not None
+                else False,
             )
 
         outputs: list[torch.Tensor] = []
@@ -207,6 +221,10 @@ class ContextualDiffusionSamplingService:
                 image_width=image_width,
                 region_masks=planning_masks,
                 capability_admission=capability_admission,
+                noise_inversion=noise_inversion,
+                differential_diffusion=tiling.differential_diffusion
+                if tiling is not None
+                else False,
             )
             samples = item_result.latent.get("samples")
             if not isinstance(samples, torch.Tensor):
@@ -240,8 +258,10 @@ class ContextualDiffusionSamplingService:
         image_width: int,
         region_masks: torch.Tensor | None,
         capability_admission: RegionalCapabilityAdmission,
+        noise_inversion: NoiseInversionOptions | None,
+        differential_diffusion: bool,
     ) -> ContextualDiffusionSamplingResult:
-        """Build one canvas plan and execute it through the runtime adapter."""
+        """Build the forward plan and retain canonical ownership for inversion."""
 
         samples = latent_image.get("samples")
         if not isinstance(samples, torch.Tensor):
@@ -270,6 +290,10 @@ class ContextualDiffusionSamplingService:
             controls=controls,
             plan=plan,
             capability_admission=capability_admission,
+            noise_inversion=noise_inversion,
+            inversion_segs=segs,
+            inversion_region_masks=region_masks,
+            differential_diffusion=differential_diffusion,
         )
         return ContextualDiffusionSamplingResult(
             latent=latent,

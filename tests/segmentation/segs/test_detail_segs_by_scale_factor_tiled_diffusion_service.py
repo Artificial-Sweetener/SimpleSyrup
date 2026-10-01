@@ -287,6 +287,7 @@ class _FakeTiledSampler:
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
         differential_diffusion: bool = False,
+        noise_inversion: object = None,
     ) -> Latent:
         """Record tiled sample options and return the latent unchanged."""
 
@@ -309,6 +310,7 @@ class _FakeTiledSampler:
                 "latent_tile_batch_size": latent_tile_batch_size,
                 "preview_context": preview_context,
                 "differential_diffusion": differential_diffusion,
+                "noise_inversion": noise_inversion,
             }
         )
         return latent_image

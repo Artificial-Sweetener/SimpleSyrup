@@ -164,6 +164,7 @@ class _FakeTiledDetailerService:
         latent_tile_height: int,
         latent_tile_overlap: int,
         latent_tile_batch_size: int,
+        noise_inversion: object = None,
     ) -> TiledDetailerResult:
         """Return deterministic output and record tiled detailer inputs."""
 
@@ -194,6 +195,7 @@ class _FakeTiledDetailerService:
                 "latent_tile_height": latent_tile_height,
                 "latent_tile_overlap": latent_tile_overlap,
                 "latent_tile_batch_size": latent_tile_batch_size,
+                "noise_inversion": noise_inversion,
             }
         )
         return TiledDetailerResult(image=cast(torch.Tensor, image) + 1.0)

@@ -224,6 +224,7 @@ def test_routing_service_sends_ordinary_request_to_item_sampler(
         }
     }
     expected["capability_admission"] = EMPTY_REGIONAL_CAPABILITY_ADMISSION
+    expected["noise_inversion"] = None
     assert calls[0] == expected
 
 

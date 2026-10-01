@@ -22,16 +22,20 @@ def build_segs_guided_tiled_diffusion_plan(
     tile_height: int,
     overlap: int,
     tile_batch_size: int,
+    segs_canvas: tuple[int, int] | None = None,
 ) -> TiledDiffusionPlan:
     """Build bounded sampling windows whose irregular cores follow supplied SEGS.
 
     Every latent pixel receives exactly one ownership core.  Each core is sampled
     through a rectangular window, while its local blend mask retains the irregular
     boundary and shares a feathered overlap with neighboring cores.
+    A reduced inversion stage validates proportions against its original canvas
+    because rounding the reduced dimensions can change their aspect ratio.
     """
 
     native_segs = coerce_segs(segs)
-    validate_segs_aspect_ratio(native_segs, latent_height, latent_width)
+    canvas_height, canvas_width = segs_canvas or (latent_height, latent_width)
+    validate_segs_aspect_ratio(native_segs, canvas_height, canvas_width)
     ownership_masks = segs_ownership_masks(
         native_segs,
         latent_height=latent_height,

@@ -15,6 +15,7 @@ from importlib import import_module
 from types import ModuleType
 from typing import Any, cast
 
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_detailing import LatentRegion
 from ..domain.regional_features import EMPTY_REGIONAL_CAPABILITY_ADMISSION
 from ..shared.logging import get_logger
@@ -27,6 +28,7 @@ from .differential_diffusion import (
 from .guided_sampling import sample_with_optional_negative
 from .model_patcher_mutations import ModelCalcCondBatchMutation
 from .patcher_lifecycle import PATCHER_LIFECYCLE, ModelMutation
+from .regional_inversion_model_factory import RegionalInversionModelFactory
 from .regional_multidiffusion_prediction import (
     CalcCondBatchFunction,
     RegionalMultiDiffusionCalcCondBatch,
@@ -72,6 +74,7 @@ def sample_regional_multidiffusion(
     global_prompt_weight: float,
     preview_context: DetailPreviewContext | None = None,
     differential_diffusion: bool = False,
+    noise_inversion: NoiseInversionOptions | None = None,
 ) -> Latent:
     """Sample a latent with regional MultiDiffusion prompt blending."""
 
@@ -159,6 +162,19 @@ def sample_regional_multidiffusion(
         callback=callback,
         disable_pbar=not comfy_utils.PROGRESS_BAR_ENABLED,
         seed=seed,
+        noise_inversion=noise_inversion,
+        inversion_model_factory=(
+            RegionalInversionModelFactory(
+                model=model,
+                canvas_width=latent_width,
+                canvas_height=latent_height,
+                regions=regions,
+                global_prompt_weight=global_prompt_weight,
+                differential_diffusion=differential_diffusion,
+            )
+            if noise_inversion is not None
+            else None
+        ),
     )
 
     LOGGER.info(

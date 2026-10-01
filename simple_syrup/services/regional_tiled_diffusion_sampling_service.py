@@ -10,6 +10,7 @@ from typing import Any, TypeAlias
 
 import torch
 
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_features import RegionalCapabilityAdmission
 from ..domain.regional_tiled_diffusion import (
     build_region_constrained_tiled_diffusion_plan,
@@ -49,6 +50,7 @@ class RegionalTiledDiffusionSamplingService:
         preview_context: DetailPreviewContext | None,
         differential_diffusion: bool,
         capability_admission: RegionalCapabilityAdmission,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> Latent:
         """Sample every latent item with one shared regional composition."""
 
@@ -106,6 +108,13 @@ class RegionalTiledDiffusionSamplingService:
                 differential_diffusion=differential_diffusion,
                 capability_admission=capability_admission,
                 tiled_plan=plan,
+                noise_inversion=noise_inversion,
+                inversion_segs=(
+                    segs_group[0 if len(segs_group) == 1 else index]
+                    if segs_group
+                    else None
+                ),
+                inversion_region_masks=region_masks,
             )
             output_samples = output.get("samples")
             if not isinstance(output_samples, torch.Tensor):

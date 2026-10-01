@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from typing import Any, Protocol, TypeAlias
 
+import torch
+
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_features import RegionalCapabilityAdmission
+from ..domain.segs import NativeSegs
 from ..domain.tiled_diffusion import TiledDiffusionPlan
 from ..runtime import mixture_of_diffusers_sampling, multidiffusion_sampling
 from ..runtime.detail_previews import DetailPreviewContext
@@ -41,6 +45,9 @@ class TiledDiffusionItemSampler(Protocol):
         differential_diffusion: bool,
         capability_admission: RegionalCapabilityAdmission,
         tiled_plan: TiledDiffusionPlan | None = None,
+        noise_inversion: NoiseInversionOptions | None = None,
+        inversion_segs: NativeSegs | None = None,
+        inversion_region_masks: torch.Tensor | None = None,
     ) -> Latent:
         """Return one sampled latent item."""
 
@@ -70,6 +77,9 @@ class TiledDiffusionItemSamplingService:
         differential_diffusion: bool,
         capability_admission: RegionalCapabilityAdmission,
         tiled_plan: TiledDiffusionPlan | None = None,
+        noise_inversion: NoiseInversionOptions | None = None,
+        inversion_segs: NativeSegs | None = None,
+        inversion_region_masks: torch.Tensor | None = None,
     ) -> Latent:
         """Invoke exactly one runtime with the unchanged sampling request."""
 
@@ -97,4 +107,7 @@ class TiledDiffusionItemSamplingService:
             differential_diffusion=differential_diffusion,
             capability_admission=capability_admission,
             tiled_plan=tiled_plan,
+            noise_inversion=noise_inversion,
+            inversion_segs=inversion_segs,
+            inversion_region_masks=inversion_region_masks,
         )

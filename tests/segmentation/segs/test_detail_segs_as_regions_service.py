@@ -481,6 +481,7 @@ class _FakeRegionalSampler:
         global_prompt_weight: float,
         preview_context: DetailPreviewContext | None = None,
         differential_diffusion: bool = False,
+        noise_inversion: object = None,
     ) -> Latent:
         """Record regional sample options and return the latent unchanged."""
 
@@ -500,6 +501,7 @@ class _FakeRegionalSampler:
                 "global_prompt_weight": global_prompt_weight,
                 "preview_context": preview_context,
                 "differential_diffusion": differential_diffusion,
+                "noise_inversion": noise_inversion,
             }
         )
         return latent_image

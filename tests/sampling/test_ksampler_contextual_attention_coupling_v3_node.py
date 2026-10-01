@@ -73,6 +73,13 @@ def test_schema_exposes_stable_contextual_attention_coupling_contract() -> None:
         "global_steps",
         "global_decay",
         "segs",
+        "noise_inversion_enabled",
+        "inversion_method",
+        "inversion_resolution_scale",
+        "inversion_steps",
+        "inversion_switch_fraction",
+        "inversion_finishing_steps",
+        "inversion_finishing_method",
     ]
     assert [output.id for output in schema.outputs] == ["latent", "contexts_segs"]
     assert inputs["segs"].optional
@@ -174,6 +181,7 @@ def test_node_delegates_every_contextual_attention_input_once(
             "global_steps": 4,
             "global_decay": 0.25,
             "segs": segs,
+            "noise_inversion": None,
         }
     ]
 

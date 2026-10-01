@@ -297,6 +297,7 @@ class _FakeRegionalDetailerService:
         noise_mask_feather: int,
         tiled_encode: bool,
         tiled_decode: bool,
+        noise_inversion: object = None,
     ) -> DetailSEGSAsRegionsResult:
         """Return deterministic detailer output and record the call."""
 
@@ -323,6 +324,7 @@ class _FakeRegionalDetailerService:
                 "noise_mask_feather": noise_mask_feather,
                 "tiled_encode": tiled_encode,
                 "tiled_decode": tiled_decode,
+                "noise_inversion": noise_inversion,
             }
         )
         return DetailSEGSAsRegionsResult(image=cast(torch.Tensor, image) + 1.0)

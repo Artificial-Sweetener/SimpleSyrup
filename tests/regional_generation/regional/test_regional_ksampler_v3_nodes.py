@@ -70,15 +70,23 @@ def test_schemas_expose_exact_names_and_shared_regional_contract() -> None:
         "region_mask_feather",
         "latent_image",
         "denoise",
+        "noise_inversion_enabled",
+        "inversion_method",
+        "inversion_resolution_scale",
+        "inversion_steps",
+        "inversion_switch_fraction",
+        "inversion_finishing_steps",
+        "inversion_finishing_method",
     ]
-    assert tiled_ids[: len(normal_ids)] == normal_ids
-    assert tiled_ids[len(normal_ids) :] == [
+    assert tiled_ids[:13] == normal_ids[:13]
+    assert tiled_ids[13:18] == [
         "diffusion_mode",
         "latent_tile_width",
         "latent_tile_height",
         "latent_tile_overlap",
         "latent_tile_batch_size",
     ]
+    assert tiled_ids[18:] == normal_ids[13:]
     regional_weight = normal.inputs[9]
     assert regional_weight.default == 0.5
     assert regional_weight.min == 0.0
@@ -95,6 +103,13 @@ def test_schemas_expose_exact_names_and_shared_regional_contract() -> None:
         "regional_prompt_weight": 0.5,
         "region_mask_feather": 0,
         "denoise": 1.0,
+        "noise_inversion_enabled": False,
+        "inversion_method": "euler",
+        "inversion_resolution_scale": 0.5,
+        "inversion_steps": 2,
+        "inversion_switch_fraction": 0.75,
+        "inversion_finishing_steps": 1,
+        "inversion_finishing_method": "euler",
     }
     tiled_defaults = {
         value.id: value.default for value in tiled.inputs if hasattr(value, "default")

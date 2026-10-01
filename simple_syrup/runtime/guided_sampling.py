@@ -11,7 +11,9 @@ from typing import Any, cast
 
 import torch
 
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..shared.logging import get_logger
+from .noise_inversion import InversionModelFactory, invert_sampling_noise
 
 LOGGER = get_logger(__name__)
 
@@ -31,8 +33,25 @@ def sample_with_optional_negative(
     callback: Any = None,
     disable_pbar: bool = False,
     seed: int | None = None,
+    noise_inversion: NoiseInversionOptions | None = None,
+    inversion_model_factory: InversionModelFactory | None = None,
 ) -> torch.Tensor:
-    """Sample with CFG when negative exists or Comfy's positive-only path otherwise."""
+    """Prepare optional source-derived noise and select the actual Comfy guider."""
+
+    if noise_inversion is not None:
+        inversion = invert_sampling_noise(
+            model=model,
+            latent=latent_image,
+            forward_sigmas=sigmas,
+            positive=positive,
+            negative=negative,
+            cfg=cfg,
+            seed=seed,
+            options=noise_inversion,
+            model_factory=inversion_model_factory,
+            noise_mask=noise_mask,
+        )
+        noise = inversion.noise.to(noise)
 
     if negative is not None:
         return cast(

@@ -153,6 +153,7 @@ def test_sample_delegates_every_control_to_service(
             "region_masks": None,
             "regional_prompt_weight": 0.5,
             "region_mask_feather": 0,
+            "noise_inversion": None,
         }
     ]
 

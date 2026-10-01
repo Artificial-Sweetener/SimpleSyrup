@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from ..domain.conditioning_batch import ConditioningBatch
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_features import (
     EMPTY_REGIONAL_FEATURE_REQUEST,
     TILED_DIFFUSION_REGIONAL_SAMPLER_CAPABILITIES,
@@ -84,6 +85,7 @@ class TiledDiffusionSamplingService:
         region_masks: object | None = None,
         regional_prompt_weight: float = 0.5,
         region_mask_feather: int = 0,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> Latent:
         """Sample a latent with the selected tiled diffusion method."""
 
@@ -129,6 +131,7 @@ class TiledDiffusionSamplingService:
                 preview_context=preview_context,
                 differential_diffusion=differential_diffusion,
                 capability_admission=capability_admission,
+                noise_inversion=noise_inversion,
             )
         if segs is not None:
             return self.segs_sampling_service_class().sample(
@@ -151,6 +154,7 @@ class TiledDiffusionSamplingService:
                 preview_context=preview_context,
                 differential_diffusion=differential_diffusion,
                 capability_admission=capability_admission,
+                noise_inversion=noise_inversion,
                 segs=segs,
             )
         if isinstance(positive, ConditioningBatch) or isinstance(
@@ -177,6 +181,7 @@ class TiledDiffusionSamplingService:
                 preview_context=preview_context,
                 differential_diffusion=differential_diffusion,
                 capability_admission=capability_admission,
+                noise_inversion=noise_inversion,
             )
         return self.item_sampling_service_class().sample(
             diffusion_mode=diffusion_mode,
@@ -197,4 +202,5 @@ class TiledDiffusionSamplingService:
             preview_context=preview_context,
             differential_diffusion=differential_diffusion,
             capability_admission=capability_admission,
+            noise_inversion=noise_inversion,
         )

@@ -10,6 +10,7 @@ from typing import Any
 
 import torch
 
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_detailing import LatentRegion
 from . import regional_multidiffusion_sampling
 from .detail_previews import DetailPreviewContext
@@ -51,6 +52,7 @@ class RegionalDetailSampler:
         global_prompt_weight: float,
         preview_context: DetailPreviewContext | None = None,
         differential_diffusion: bool = False,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> Latent:
         """Sample one full latent with regional MultiDiffusion."""
 
@@ -69,4 +71,5 @@ class RegionalDetailSampler:
             global_prompt_weight=global_prompt_weight,
             preview_context=preview_context,
             differential_diffusion=differential_diffusion,
+            noise_inversion=noise_inversion,
         )

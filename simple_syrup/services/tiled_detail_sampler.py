@@ -10,6 +10,7 @@ from typing import Any, Protocol
 
 import torch
 
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..runtime.detail_previews import DetailPreviewContext
 from ..runtime.detail_sampling import DetailSampler, Latent
 from .tiled_diffusion_sampling_service import TiledDiffusionSamplingService
@@ -38,6 +39,7 @@ class TiledDiffusionLatentSamplingBoundary(Protocol):
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
         differential_diffusion: bool = False,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> Latent:
         """Sample a latent using the selected tiled diffusion mode."""
 
@@ -87,6 +89,7 @@ class TiledDetailSampler:
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
         differential_diffusion: bool = False,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> Latent:
         """Sample one latent crop with the selected tiled diffusion runtime."""
 
@@ -108,4 +111,5 @@ class TiledDetailSampler:
             latent_tile_batch_size=latent_tile_batch_size,
             preview_context=preview_context,
             differential_diffusion=differential_diffusion,
+            noise_inversion=noise_inversion,
         )

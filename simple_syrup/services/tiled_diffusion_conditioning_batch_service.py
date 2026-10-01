@@ -11,6 +11,7 @@ from typing import Any, TypeAlias
 import torch
 
 from ..domain.conditioning_batch import select_conditioning
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_features import RegionalCapabilityAdmission
 from ..runtime.detail_previews import DetailPreviewContext
 from .sampling_batch import combine_latent_outputs, single_item_latent
@@ -44,6 +45,7 @@ class TiledDiffusionConditioningBatchService:
         preview_context: DetailPreviewContext | None,
         differential_diffusion: bool,
         capability_admission: RegionalCapabilityAdmission,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> Latent:
         """Sample each latent item with its selected conditioning values."""
 
@@ -72,6 +74,7 @@ class TiledDiffusionConditioningBatchService:
                 preview_context=preview_context,
                 differential_diffusion=differential_diffusion,
                 capability_admission=capability_admission,
+                noise_inversion=noise_inversion,
             )
             output_samples = output.get("samples")
             if not isinstance(output_samples, torch.Tensor):

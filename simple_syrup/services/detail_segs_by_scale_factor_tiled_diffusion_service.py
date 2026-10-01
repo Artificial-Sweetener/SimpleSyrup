@@ -13,6 +13,7 @@ import torch
 
 from ..domain.conditioning_batch import select_conditioning
 from ..domain.detail_geometry import DetailScalePlan, build_detail_scale_plan
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.segs import Segment, coerce_segs
 from ..domain.segs_mask_ops import (
     crop_image,
@@ -59,6 +60,7 @@ class TiledDetailSamplingBoundary(Protocol):
         latent_tile_batch_size: int,
         preview_context: DetailPreviewContext | None = None,
         differential_diffusion: bool = False,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> Latent:
         """Sample one latent crop with the requested tiled diffusion mode."""
 
@@ -131,6 +133,7 @@ class DetailSEGSByScaleFactorTiledDiffusionService:
         latent_tile_height: int,
         latent_tile_overlap: int,
         latent_tile_batch_size: int,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> TiledDetailerResult:
         """Run crop sampling and composite-back detailing with tiled diffusion."""
 
@@ -198,6 +201,7 @@ class DetailSEGSByScaleFactorTiledDiffusionService:
                 latent_tile_overlap=latent_tile_overlap,
                 latent_tile_batch_size=latent_tile_batch_size,
                 differential_diffusion=differential_diffusion,
+                noise_inversion=noise_inversion,
             )
 
         LOGGER.info(
@@ -246,6 +250,7 @@ class DetailSEGSByScaleFactorTiledDiffusionService:
         latent_tile_overlap: int,
         latent_tile_batch_size: int,
         differential_diffusion: bool,
+        noise_inversion: NoiseInversionOptions | None,
     ) -> torch.Tensor:
         """Detail one segment with tiled diffusion and return the updated image."""
 
@@ -281,6 +286,7 @@ class DetailSEGSByScaleFactorTiledDiffusionService:
             latent_tile_overlap=latent_tile_overlap,
             latent_tile_batch_size=latent_tile_batch_size,
             differential_diffusion=differential_diffusion,
+            noise_inversion=noise_inversion,
             preview_context=DetailPreviewContext(
                 image=working_image,
                 work_region=segment.crop_region,

@@ -95,6 +95,10 @@ def test_item_service_forwards_every_sampling_argument_unchanged(
     assert result is output
     assert calls == {
         key: value for key, value in kwargs.items() if key != "diffusion_mode"
+    } | {
+        "noise_inversion": None,
+        "inversion_segs": None,
+        "inversion_region_masks": None,
     }
 
 

@@ -16,10 +16,13 @@ from typing import Any, cast
 
 import torch
 
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_features import (
     EMPTY_REGIONAL_CAPABILITY_ADMISSION,
     RegionalCapabilityAdmission,
 )
+from ..domain.sampler_options import TilingOptions
+from ..domain.segs import NativeSegs
 from ..domain.tiled_diffusion import (
     TiledDiffusionPlan,
     build_tiled_diffusion_plan,
@@ -32,6 +35,7 @@ from .differential_diffusion import (
     has_denoise_mask_function,
 )
 from .guided_sampling import sample_with_optional_negative
+from .inversion_model_factory import InversionModelFactory
 from .model_patcher_mutations import ModelUnetWrapperMutation
 from .patcher_lifecycle import PATCHER_LIFECYCLE, ModelMutation
 from .sampling_model_types import (
@@ -73,6 +77,9 @@ def sample_mixture_of_diffusers(
         EMPTY_REGIONAL_CAPABILITY_ADMISSION
     ),
     tiled_plan: TiledDiffusionPlan | None = None,
+    noise_inversion: NoiseInversionOptions | None = None,
+    inversion_segs: NativeSegs | None = None,
+    inversion_region_masks: torch.Tensor | None = None,
 ) -> Latent:
     """Sample a latent with a cloned model patched for Mixture of Diffusers."""
 
@@ -159,6 +166,26 @@ def sample_mixture_of_diffusers(
         callback=callback,
         disable_pbar=not comfy_utils.PROGRESS_BAR_ENABLED,
         seed=seed,
+        noise_inversion=noise_inversion,
+        inversion_model_factory=(
+            InversionModelFactory(
+                model=model,
+                canvas_width=latent_width,
+                canvas_height=latent_height,
+                tiling=TilingOptions(
+                    diffusion_mode="mixture_of_diffusers",
+                    width=latent_tile_width,
+                    height=latent_tile_height,
+                    overlap=latent_tile_overlap,
+                    batch_size=latent_tile_batch_size,
+                    differential_diffusion=differential_diffusion,
+                ),
+                segs=inversion_segs,
+                region_masks=inversion_region_masks,
+            )
+            if noise_inversion is not None
+            else None
+        ),
     )
 
     LOGGER.info(
@@ -197,6 +224,7 @@ def clone_model_with_mixture_of_diffusers(
     tile_batch_size: int,
     differential_diffusion: bool = False,
     tiled_plan: TiledDiffusionPlan | None = None,
+    existing_wrapper: ModelFunctionWrapper | None = None,
 ) -> tuple[Any, TiledDiffusionPlan]:
     """Return a derived model patched with a pre-CFG Mixture wrapper."""
 
@@ -209,7 +237,7 @@ def clone_model_with_mixture_of_diffusers(
         tile_batch_size=tile_batch_size,
     )
     _validate_supplied_plan(plan, latent_width, latent_height)
-    old_wrapper = model.model_options.get("model_function_wrapper")
+    old_wrapper = existing_wrapper or model.model_options.get("model_function_wrapper")
     if old_wrapper is not None and not callable(old_wrapper):
         raise ValueError("Existing model_function_wrapper is not callable.")
 

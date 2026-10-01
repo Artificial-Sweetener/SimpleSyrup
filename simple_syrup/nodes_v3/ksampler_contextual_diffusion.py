@@ -18,6 +18,7 @@ from .ksampler_schema import (
     ksampler_inputs,
     optional_regional_sampling_inputs,
 )
+from .sampler_options_schema import inversion_from_controls, noise_inversion_inputs
 
 if TYPE_CHECKING:
 
@@ -67,6 +68,7 @@ class KSamplerContextualDiffusionV3(_ComfyNodeBase):
                     _comfy_io,
                     segs_tooltip=tooltips.CONTEXTUAL_DIFFUSION_SEGS,
                 ),
+                *noise_inversion_inputs(_comfy_io, convenience=True),
             ],
             outputs=[
                 _comfy_io.Latent.Output(
@@ -104,6 +106,13 @@ class KSamplerContextualDiffusionV3(_ComfyNodeBase):
         region_masks: object | None = None,
         regional_prompt_weight: float = 0.5,
         region_mask_feather: int = 0,
+        noise_inversion_enabled: bool = False,
+        inversion_method: str = "euler",
+        inversion_resolution_scale: float = 0.5,
+        inversion_steps: int = 2,
+        inversion_switch_fraction: float = 0.75,
+        inversion_finishing_steps: int = 1,
+        inversion_finishing_method: str = "euler",
     ) -> tuple[dict[str, Any], object]:
         """Delegate Contextual Diffusion sampling to its application service."""
 
@@ -131,5 +140,14 @@ class KSamplerContextualDiffusionV3(_ComfyNodeBase):
             region_masks=region_masks,
             regional_prompt_weight=regional_prompt_weight,
             region_mask_feather=region_mask_feather,
+            noise_inversion=inversion_from_controls(
+                noise_inversion_enabled=noise_inversion_enabled,
+                inversion_method=inversion_method,
+                inversion_resolution_scale=inversion_resolution_scale,
+                inversion_steps=inversion_steps,
+                inversion_switch_fraction=inversion_switch_fraction,
+                inversion_finishing_steps=inversion_finishing_steps,
+                inversion_finishing_method=inversion_finishing_method,
+            ),
         )
         return result.latent, result.contexts

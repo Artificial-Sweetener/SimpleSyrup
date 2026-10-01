@@ -14,13 +14,16 @@ def get_nodes() -> list[type[object]]:
 
     from .all_prompt_attention_segs import AllPromptAttentionSEGSV3
     from .attention_capture_model import AttentionCaptureModelV3
+    from .attention_coupling_options import AttentionCouplingOptionsV3
     from .attention_masked_conditioning import AttentionMaskedConditioningV3
     from .attention_region_mask import AttentionRegionMaskV3
     from .batch_region_conditioning import BatchRegionConditioningV3
     from .batch_segs import BatchSEGSV3
     from .compose_regional_conditioning import ComposeRegionalConditioningV3
     from .concept_attention_segs import ConceptAttentionSEGSV3
+    from .contextual_diffusion_options import ContextualDiffusionOptionsV3
     from .external_llm_prompt import ExternalLLMPromptV3
+    from .ksampler import KSamplerV3
     from .ksampler_attention_coupling import KSamplerAttentionCouplingV3
     from .ksampler_contextual_attention_coupling import (
         KSamplerContextualAttentionCouplingV3,
@@ -62,6 +65,7 @@ def get_nodes() -> list[type[object]]:
     from .load_image_list import LoadImageListV3
     from .load_mask_batch import LoadMaskBatchV3
     from .mask_to_segs import MaskToSEGSV3
+    from .noise_inversion_options import NoiseInversionOptionsV3
     from .scale_factor import ScaleFactorV3
     from .seed_variation import SeedVariationV3
     from .simple_load_checkpoint import SimpleLoadCheckpointV3
@@ -71,12 +75,18 @@ def get_nodes() -> list[type[object]]:
     from .tag_segs_with_external_llm import TagSEGSWithExternalLLMV3
     from .tag_segs_with_wd14 import TagSEGSWithWD14V3
     from .tile_and_tag_segs import TileAndTagSEGSV3
+    from .tiling_options import TilingOptionsV3
     from .vae_decode_options import VAEDecodeOptionsV3
     from .vae_encode_options import VAEEncodeOptionsV3
     from .wd14_tagger_loader import WD14TaggerLoaderV3
 
     nodes: list[type[object]] = [
         AllPromptAttentionSEGSV3,
+        AttentionCouplingOptionsV3,
+        ContextualDiffusionOptionsV3,
+        NoiseInversionOptionsV3,
+        TilingOptionsV3,
+        KSamplerV3,
         AttentionCaptureModelV3,
         AttentionMaskedConditioningV3,
         AttentionRegionMaskV3,

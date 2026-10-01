@@ -17,6 +17,7 @@ from .ksampler_schema import (
     attention_coupling_ksampler_inputs,
     contextual_diffusion_inputs,
 )
+from .sampler_options_schema import inversion_from_controls, noise_inversion_inputs
 
 if TYPE_CHECKING:
 
@@ -75,6 +76,7 @@ class KSamplerContextualAttentionCouplingV3(_ComfyNodeBase):
                     optional=True,
                     tooltip=tooltips.CONTEXTUAL_DIFFUSION_SEGS,
                 ),
+                *noise_inversion_inputs(_comfy_io, convenience=True),
             ],
             outputs=[
                 _comfy_io.Latent.Output(
@@ -112,6 +114,13 @@ class KSamplerContextualAttentionCouplingV3(_ComfyNodeBase):
         global_steps: int = 1,
         global_decay: float = 0.5,
         segs: object | None = None,
+        noise_inversion_enabled: bool = False,
+        inversion_method: str = "euler",
+        inversion_resolution_scale: float = 0.5,
+        inversion_steps: int = 2,
+        inversion_switch_fraction: float = 0.75,
+        inversion_finishing_steps: int = 1,
+        inversion_finishing_method: str = "euler",
     ) -> tuple[dict[str, Any], object]:
         """Delegate the complete request to the combined application service."""
 
@@ -145,5 +154,14 @@ class KSamplerContextualAttentionCouplingV3(_ComfyNodeBase):
             global_steps=global_steps,
             global_decay=global_decay,
             segs=segs,
+            noise_inversion=inversion_from_controls(
+                noise_inversion_enabled=noise_inversion_enabled,
+                inversion_method=inversion_method,
+                inversion_resolution_scale=inversion_resolution_scale,
+                inversion_steps=inversion_steps,
+                inversion_switch_fraction=inversion_switch_fraction,
+                inversion_finishing_steps=inversion_finishing_steps,
+                inversion_finishing_method=inversion_finishing_method,
+            ),
         )
         return result.latent, result.contexts

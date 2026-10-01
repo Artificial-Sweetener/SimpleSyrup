@@ -12,6 +12,7 @@ from ..domain.attention_coupling_request import (
     AttentionCouplingRequestMode,
     classify_attention_coupling_request,
 )
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..domain.regional_attention_execution import RegionalAttentionExecutionMode
 from .attention_coupling_model_preparation_service import (
     AttentionCouplingModelPreparationService,
@@ -45,6 +46,7 @@ class AttentionCouplingSamplingService:
         region_mask_feather: int,
         latent_image: dict[str, Any],
         denoise: float,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> dict[str, Any]:
         """Bypass ordinary requests or prepare one complete regional request."""
 
@@ -65,6 +67,7 @@ class AttentionCouplingSamplingService:
                 negative=negative,
                 latent_image=latent_image,
                 denoise=denoise,
+                noise_inversion=noise_inversion,
             )
 
         prepared = self.model_preparation_service_class().prepare(
@@ -88,6 +91,7 @@ class AttentionCouplingSamplingService:
             negative=prepared.negative,
             latent_image=latent_image,
             denoise=denoise,
+            noise_inversion=noise_inversion,
         )
 
 

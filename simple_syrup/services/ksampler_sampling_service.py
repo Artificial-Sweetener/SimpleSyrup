@@ -12,9 +12,11 @@ from typing import Any, TypeAlias
 import torch
 
 from ..domain.conditioning_batch import ConditioningBatch, select_conditioning
+from ..domain.noise_inversion import NoiseInversionOptions
 from ..runtime import sampling_noise, sampling_samplers, sampling_schedulers
 from ..runtime.comfy_latent_normalization import COMFY_LATENT_NORMALIZER
 from ..runtime.guided_sampling import sample_with_optional_negative
+from ..runtime.inversion_model_factory import InversionModelFactory
 from ..shared.logging import get_logger
 
 Latent: TypeAlias = dict[str, Any]
@@ -37,8 +39,9 @@ class KSamplerSamplingService:
         negative: Any,
         latent_image: Latent,
         denoise: float,
+        noise_inversion: NoiseInversionOptions | None = None,
     ) -> Latent:
-        """Sample a latent with configured SimpleSyrup sampler extensions."""
+        """Sample full latents with optional inversion and per-item conditioning."""
 
         sampler = sampling_samplers.resolve_sampler(sampler_name)
         latent_samples = latent_image["samples"]
@@ -93,6 +96,7 @@ class KSamplerSamplingService:
                 callback=callback,
                 disable_pbar=disable_pbar,
                 seed=seed,
+                noise_inversion=noise_inversion,
             )
         else:
             samples = sample_with_optional_negative(
@@ -109,6 +113,14 @@ class KSamplerSamplingService:
                 callback=callback,
                 disable_pbar=disable_pbar,
                 seed=seed,
+                noise_inversion=noise_inversion,
+                inversion_model_factory=InversionModelFactory(
+                    model=model,
+                    canvas_width=int(latent_samples.shape[-1]),
+                    canvas_height=int(latent_samples.shape[-2]),
+                )
+                if noise_inversion is not None
+                else None,
             )
         if not isinstance(samples, torch.Tensor):
             raise TypeError("KSampler output samples must be a torch.Tensor.")
@@ -147,6 +159,7 @@ class KSamplerSamplingService:
         callback: Any,
         disable_pbar: bool,
         seed: int,
+        noise_inversion: NoiseInversionOptions | None,
     ) -> torch.Tensor:
         """Sample latent items with existing per-item batch selection."""
 
@@ -171,6 +184,14 @@ class KSamplerSamplingService:
                     callback=callback,
                     disable_pbar=disable_pbar,
                     seed=seed,
+                    noise_inversion=noise_inversion,
+                    inversion_model_factory=InversionModelFactory(
+                        model=model,
+                        canvas_width=int(latent_samples.shape[-1]),
+                        canvas_height=int(latent_samples.shape[-2]),
+                    )
+                    if noise_inversion is not None
+                    else None,
                 )
             )
         return torch.cat(sampled, dim=0)
