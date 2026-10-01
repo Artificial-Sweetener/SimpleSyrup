@@ -48,6 +48,7 @@ from ..runtime.negpip.krea2 import (
 from ..runtime.negpip.krea2 import (
     WRAPPER_KEY as KREA_WRAPPER_KEY,
 )
+from ..runtime.negpip.krea2_host import krea2_host_mutations
 from ..runtime.negpip.standard import (
     encode_token_weights_negpip,
     standard_attn2_negpip,
@@ -190,6 +191,7 @@ class NegpipModelService:
         prepared_model = PATCHER_LIFECYCLE.derive_model(
             model,
             (
+                *krea2_host_mutations(model),
                 ModelCallableObjectPatchMutation(
                     "extra_conds",
                     krea2_extra_conds_negpip_wrapper(previous),

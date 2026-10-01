@@ -11,6 +11,7 @@ from typing import Any, cast
 
 import pytest
 import torch
+from comfy.ldm.krea2.model import SingleStreamDiT
 from comfy.model_base import SDXL, Anima, BaseModel, Krea2, SDXLRefiner
 from comfy.model_patcher import ModelPatcher
 from comfy.patcher_extension import WrappersMP
@@ -161,6 +162,10 @@ def _model_patcher(model_class: type[BaseModel]) -> ModelPatcher:
 
     model = object.__new__(model_class)
     torch.nn.Module.__init__(model)
+    if model_class is Krea2:
+        diffusion = object.__new__(SingleStreamDiT)
+        torch.nn.Module.__init__(diffusion)
+        model.diffusion_model = diffusion
     device = torch.device("cpu")
     return ModelPatcher(model, load_device=device, offload_device=device)
 

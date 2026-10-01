@@ -185,9 +185,16 @@ def krea2_diffusion_negpip_wrapper(
     *args: object,
     **kwargs: object,
 ) -> object:
-    """Move a processed Krea sign mask into call-local transformer options."""
+    """Inject call-local signs at either supported Comfy Krea argument boundary."""
 
-    positional_options = args[5] if len(args) > 5 else None
+    options_index = (
+        5
+        if len(args) > 5
+        else 4
+        if len(args) == 5 and isinstance(args[4], dict)
+        else None
+    )
+    positional_options = args[options_index] if options_index is not None else None
     transformer_options = (
         positional_options
         if positional_options is not None
@@ -201,9 +208,9 @@ def krea2_diffusion_negpip_wrapper(
         if not isinstance(multiplier, torch.Tensor):
             raise TypeError("Krea NegPiP processed mask must be a tensor.")
         prepared[TRANSFORMER_MASK_KEY] = multiplier
-    if len(args) > 5:
+    if options_index is not None:
         prepared_args = list(args)
-        prepared_args[5] = prepared
+        prepared_args[options_index] = prepared
         return executor(*prepared_args, **kwargs)
     kwargs["transformer_options"] = prepared
     return executor(*args, **kwargs)
