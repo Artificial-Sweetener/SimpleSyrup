@@ -1,5 +1,5 @@
 # SimpleSyrup - workflow-focused ComfyUI extensions for image generation
-# Copyright (C) 2026 Artificial Sweetener and contributors
+# Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 """Project reduced inversion views into the original regional-attention canvas."""
