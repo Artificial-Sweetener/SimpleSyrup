@@ -1,3 +1,16 @@
+# [1.13.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.12.0...v1.13.0) (2026-10-02)
+
+
+### Bug Fixes
+
+* **negpip:** support Krea attention on ComfyUI 0.28 ([e4eabfe](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/e4eabfefd540f3a6066c29761cefb8f8b3c80f68))
+
+
+### Features
+
+* **sampling:** add noise inversion and composable sampler options ([be4bd9b](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/be4bd9bb162f6ed4252e0c4d4ef0f3efebe8c674))
+* **sampling:** refine sampler options and inversion controls ([ab7cebc](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/ab7cebcebc4d5dfa95aa8d834456af1778fe56a6))
+
 # [1.12.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.11.1...v1.12.0) (2026-09-29)
 
 
