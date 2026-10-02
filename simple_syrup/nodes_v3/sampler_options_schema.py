@@ -51,31 +51,15 @@ def options_output(comfy_io: Any) -> Any:
 
 
 def noise_inversion_inputs(comfy_io: Any, *, convenience: bool = False) -> list[Any]:
-    """Use the accepted two coarse plus one finishing-step recipe in both APIs."""
-    enabled = (
-        [
-            comfy_io.Boolean.Input(
-                "noise_inversion_enabled",
-                default=False,
-                optional=True,
-                tooltip=(
-                    "Derives starting noise from the input image; "
-                    "adds inversion work before denoising."
-                ),
-            )
-        ]
-        if convenience
-        else []
-    )
+    """Default to the accepted recipe and use zero steps to disable inversion."""
     return [
-        *enabled,
         comfy_io.Combo.Input(
             "inversion_method",
             options=list(INVERSION_METHODS),
             default="euler",
             optional=convenience,
             tooltip=(
-                "Euler uses one model evaluation per inversion step; "
+                "Applies to both inversion stages; Euler uses one evaluation per step, "
                 "Heun uses two for greater accuracy."
             ),
         ),
@@ -94,12 +78,12 @@ def noise_inversion_inputs(comfy_io: Any, *, convenience: bool = False) -> list[
         comfy_io.Int.Input(
             "inversion_steps",
             default=2,
-            min=1,
+            min=0,
             max=64,
             optional=convenience,
             tooltip=(
-                "Steps at the selected inversion resolution; "
-                "more steps cost more model evaluations."
+                "Steps at the selected inversion resolution; 0 disables all inversion, "
+                "including finishing. More steps cost more model evaluations."
             ),
         ),
         comfy_io.Float.Input(
@@ -125,33 +109,21 @@ def noise_inversion_inputs(comfy_io: Any, *, convenience: bool = False) -> list[
                 "0 finishes entirely at reduced size."
             ),
         ),
-        comfy_io.Combo.Input(
-            "inversion_finishing_method",
-            options=list(INVERSION_METHODS),
-            default="euler",
-            optional=convenience,
-            tooltip=(
-                "Method for full-resolution finishing; "
-                "Euler costs one evaluation per step, Heun two."
-            ),
-        ),
     ]
 
 
 def inversion_from_controls(
     *,
-    noise_inversion_enabled: bool,
     inversion_method: str = "euler",
     inversion_resolution_scale: float = 0.5,
     inversion_steps: int = 2,
     inversion_switch_fraction: float = 0.75,
     inversion_finishing_steps: int = 1,
-    inversion_finishing_method: str = "euler",
 ) -> NoiseInversionOptions | None:
-    """Use domain validation when inversion is selected."""
-    if type(noise_inversion_enabled) is not bool:
-        raise TypeError("noise_inversion_enabled must be a boolean.")
-    if not noise_inversion_enabled:
+    """Disable all stages at zero steps or construct a shared-method recipe."""
+    if type(inversion_steps) is not int or not 0 <= inversion_steps <= 64:
+        raise ValueError("Inversion steps must be an integer between 0 and 64.")
+    if inversion_steps == 0:
         return None
     return NoiseInversionOptions(
         method=cast(InversionMethod, inversion_method),
@@ -159,5 +131,4 @@ def inversion_from_controls(
         steps=inversion_steps,
         switch_fraction=inversion_switch_fraction,
         finishing_steps=inversion_finishing_steps,
-        finishing_method=cast(InversionMethod, inversion_finishing_method),
     )

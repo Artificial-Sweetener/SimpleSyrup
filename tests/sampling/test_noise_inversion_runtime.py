@@ -179,6 +179,27 @@ def test_coarse_only_inversion_reaches_forward_target(
 
 
 @pytest.mark.parametrize(
+    ("method", "evaluations"), [("euler", [2, 1]), ("heun", [4, 2])]
+)
+def test_selected_method_applies_to_both_resolution_stages(
+    guider_calls: list[dict[str, Any]], method: Any, evaluations: list[int]
+) -> None:
+    """Use the shared integrator for coarse inversion and full-resolution finishing."""
+    result = noise_inversion.invert_sampling_noise(
+        model=_model(_flow()),
+        latent=torch.ones((1, 1, 8, 12)),
+        forward_sigmas=torch.tensor([0.5, 0]),
+        positive=[],
+        negative=None,
+        cfg=1,
+        seed=1,
+        options=NoiseInversionOptions(method=method),
+    )
+    assert len(guider_calls) == 2
+    assert [phase.evaluations for phase in result.stages] == evaluations
+
+
+@pytest.mark.parametrize(
     ("sampling", "target"),
     [(_flow(), 1), (_flow(), 0), (_epsilon(), 10), (_epsilon(), 11)],
 )

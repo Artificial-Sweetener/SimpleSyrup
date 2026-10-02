@@ -45,18 +45,14 @@ class NoiseInversionOptionsV3(OptionsNodeBase):
         inversion_steps: int = 2,
         inversion_switch_fraction: float = 0.75,
         inversion_finishing_steps: int = 1,
-        inversion_finishing_method: str = "euler",
         options: SamplerOptions | None = None,
     ) -> tuple[SamplerOptions]:
-        """Append validated inversion configuration without preparing any model."""
+        """Append inversion or pass through at zero steps without preparing a model."""
         inversion = inversion_from_controls(
-            noise_inversion_enabled=True,
             inversion_method=inversion_method,
             inversion_resolution_scale=inversion_resolution_scale,
             inversion_steps=inversion_steps,
             inversion_switch_fraction=inversion_switch_fraction,
             inversion_finishing_steps=inversion_finishing_steps,
-            inversion_finishing_method=inversion_finishing_method,
         )
-        assert inversion is not None
         return (append_sampler_capability(options, inversion),)

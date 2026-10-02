@@ -10,6 +10,7 @@ import { registerExternalLLMRefreshHook } from "./refresh";
 import { registerMaskBatchUpload } from "./maskBatchUpload";
 import { registerImageListUpload } from "./imageListUpload";
 import { registerSimplePreviewSEGS } from "./segPreviewNode";
+import { registerSamplerSocketOrder } from "./samplerSocketOrder";
 import type { ComfyApi, ComfyApp } from "./types";
 
 interface ComfyRuntimeWindow extends Window {
@@ -31,3 +32,4 @@ comfyApp.registerExtension({
 registerMaskBatchUpload(comfyApp, comfyApi);
 registerImageListUpload(comfyApp, comfyApi);
 registerSimplePreviewSEGS(comfyApp, comfyApi);
+registerSamplerSocketOrder(comfyApp);

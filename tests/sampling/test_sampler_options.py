@@ -28,7 +28,7 @@ def test_all_distinct_capability_orders_produce_identical_configuration() -> Non
         TilingOptions(),
         ContextualDiffusionOptions(),
         NoiseInversionOptions(),
-        AttentionCouplingOptions(region_masks=object()),
+        AttentionCouplingOptions(),
     )
     expected = SamplerOptions(
         tiling=capabilities[0],
@@ -50,7 +50,7 @@ def test_all_distinct_capability_orders_produce_identical_configuration() -> Non
         TilingOptions(),
         ContextualDiffusionOptions(),
         NoiseInversionOptions(),
-        AttentionCouplingOptions(region_masks=object()),
+        AttentionCouplingOptions(),
     ],
 )
 def test_every_feature_can_start_a_chain_and_rejects_duplicates(
@@ -84,10 +84,10 @@ def test_branched_options_do_not_mutate_the_shared_upstream_configuration() -> N
         (ContextualDiffusionOptions, {"global_weight": float("nan")}),
         (ContextualDiffusionOptions, {"global_decay": 2}),
         (ContextualDiffusionOptions, {"global_steps": -1}),
-        (AttentionCouplingOptions, {"region_masks": None}),
+        (AttentionCouplingOptions, {"region_mask_feather": -1}),
         (
             AttentionCouplingOptions,
-            {"region_masks": object(), "regional_prompt_weight": 1.1},
+            {"regional_prompt_weight": 1.1},
         ),
     ],
 )

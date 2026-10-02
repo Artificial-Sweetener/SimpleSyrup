@@ -23,7 +23,7 @@ from .sampler_options_schema import (
 
 
 class TilingOptionsV3(OptionsNodeBase):
-    """Add bounded local tiles, blend policy and optional semantic guidance."""
+    """Add bounded local tiles, blend policy and mask-dependent denoising."""
 
     @classmethod
     def define_schema(cls) -> Any:
@@ -33,8 +33,8 @@ class TilingOptionsV3(OptionsNodeBase):
             display_name="Tiling Options",
             category="SimpleSyrup/Sampling/Options",
             description=(
-                "Samples bounded local tiles; with Contextual Diffusion, "
-                "configures its sole local tile plan."
+                "Samples bounded local tiles; ignored when "
+                "Contextual Diffusion Options is connected."
             ),
             inputs=[
                 options_input(COMFY_IO),
@@ -45,14 +45,6 @@ class TilingOptionsV3(OptionsNodeBase):
                     tooltip=(
                         "Uses the noise mask to vary denoising strength spatially; "
                         "preserves existing model mask behavior."
-                    ),
-                ),
-                COMFY_IO.SEGS.Input(
-                    "segs",
-                    optional=True,
-                    tooltip=(
-                        "Optional image regions that guide local tile ownership "
-                        "and boundaries."
                     ),
                 ),
             ],
@@ -68,7 +60,6 @@ class TilingOptionsV3(OptionsNodeBase):
         latent_tile_overlap: int = 16,
         latent_tile_batch_size: int = 4,
         differential_diffusion: bool = False,
-        segs: object | None = None,
         options: SamplerOptions | None = None,
     ) -> tuple[SamplerOptions]:
         """Append validated tiling without changing the incoming chain."""
@@ -82,7 +73,6 @@ class TilingOptionsV3(OptionsNodeBase):
                     overlap=latent_tile_overlap,
                     batch_size=latent_tile_batch_size,
                     differential_diffusion=differential_diffusion,
-                    segs=segs,
                 ),
             ),
         )

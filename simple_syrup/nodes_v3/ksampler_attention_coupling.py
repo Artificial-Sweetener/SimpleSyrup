@@ -102,13 +102,11 @@ class KSamplerAttentionCouplingV3(_ComfyNodeBase):
             ATTENTION_COUPLING_REGIONAL_PROMPT_WEIGHT_DEFAULT
         ),
         region_mask_feather: int = 0,
-        noise_inversion_enabled: bool = False,
         inversion_method: str = "euler",
         inversion_resolution_scale: float = 0.5,
         inversion_steps: int = 2,
         inversion_switch_fraction: float = 0.75,
         inversion_finishing_steps: int = 1,
-        inversion_finishing_method: str = "euler",
     ) -> tuple[dict[str, Any]]:
         """Delegate ordinary or regional sampling to the routing service."""
 
@@ -116,13 +114,11 @@ class KSamplerAttentionCouplingV3(_ComfyNodeBase):
             raise TypeError("KSampler Attention Coupling requires latent_image.")
         output = cls.sampling_service_class().sample(
             noise_inversion=inversion_from_controls(
-                noise_inversion_enabled=noise_inversion_enabled,
                 inversion_method=inversion_method,
                 inversion_resolution_scale=inversion_resolution_scale,
                 inversion_steps=inversion_steps,
                 inversion_switch_fraction=inversion_switch_fraction,
                 inversion_finishing_steps=inversion_finishing_steps,
-                inversion_finishing_method=inversion_finishing_method,
             ),
             model=model,
             seed=seed,

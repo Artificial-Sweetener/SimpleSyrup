@@ -24,7 +24,7 @@ class KSamplerV3(OptionsNodeBase):
 
     @classmethod
     def define_schema(cls) -> Any:
-        """Declare sampling controls and an optional capabilities connection."""
+        """Declare sampling controls, capabilities and optional spatial regions."""
         return COMFY_IO.Schema(
             node_id="SimpleSyrup.KSampler",
             display_name="KSampler (SimpleSyrup)",
@@ -36,6 +36,23 @@ class KSamplerV3(OptionsNodeBase):
             inputs=[
                 *ksampler_inputs(COMFY_IO, steps_default=20, cfg_default=8.0),
                 options_input(COMFY_IO),
+                COMFY_IO.SEGS.Input(
+                    "segs",
+                    optional=True,
+                    tooltip=(
+                        "Guides local sampling regions when Tiling or Contextual "
+                        "Diffusion options are connected; ignored otherwise."
+                    ),
+                ),
+                COMFY_IO.Mask.Input(
+                    "region_masks",
+                    optional=True,
+                    tooltip=(
+                        "Ordered masks paired with global-first conditioning batches "
+                        "when Attention Coupling options are connected; "
+                        "ignored otherwise."
+                    ),
+                ),
             ],
             outputs=[
                 COMFY_IO.Latent.Output(
@@ -58,6 +75,8 @@ class KSamplerV3(OptionsNodeBase):
         latent_image: dict[str, Any] | None = None,
         denoise: float = 1.0,
         options: SamplerOptions | None = None,
+        segs: object | None = None,
+        region_masks: object | None = None,
     ) -> tuple[dict[str, Any]]:
         """Delegate sampling without mutating capability configuration."""
         if latent_image is None:
@@ -75,5 +94,7 @@ class KSamplerV3(OptionsNodeBase):
                 latent_image=latent_image,
                 denoise=denoise,
                 options=options,
+                segs=segs,
+                region_masks=region_masks,
             ),
         )

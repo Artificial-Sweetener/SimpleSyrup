@@ -78,7 +78,7 @@ class GroundingDINOModelLoaderV3(LegacyNodeV3Adapter):
     DISPLAY_NAME = "GroundingDINO Model Loader"
 
 
-class KSamplerExtrasV3(LegacyInversionNodeV3Adapter):
+class KSamplerExtrasV3(LegacyNodeV3Adapter):
     """Expose KSampler Extras through Comfy v3 only."""
 
     LEGACY_NODE_CLASS = KSamplerExtras

@@ -17,7 +17,6 @@ from simple_syrup.nodes_v3.legacy_inversion_node_adapter import (
 from simple_syrup.nodes_v3.legacy_node_wrappers import (
     DetailSEGSAsRegionsV3,
     DetailSEGSByScaleFactorTiledDiffusionV3,
-    KSamplerExtrasV3,
 )
 
 
@@ -52,26 +51,26 @@ class RecordingAdapter(LegacyInversionNodeV3Adapter):
 
 
 @pytest.mark.parametrize("list_mode", [False, True])
-def test_inversion_controls_normalize_and_default_off(
+def test_inversion_controls_normalize_and_default_on(
     monkeypatch: pytest.MonkeyPatch,
     list_mode: bool,
 ) -> None:
-    """Preserve existing execution while constructing the accepted recipe on request."""
+    """Default to the accepted recipe and normalize zero-step disable in list mode."""
     monkeypatch.setattr(RecordingImplementation, "INPUT_IS_LIST", list_mode)
     text = ["prompt"] if list_mode else "prompt"
-    output, disabled = RecordingAdapter.execute(text=text)
-    assert output == text and disabled is None
-    _, enabled = RecordingAdapter.execute(
+    output, enabled = RecordingAdapter.execute(text=text)
+    assert output == text and enabled == NoiseInversionOptions()
+    _, disabled = RecordingAdapter.execute(
         text=text,
-        noise_inversion_enabled=[True] if list_mode else True,
+        inversion_steps=[0] if list_mode else 0,
     )
-    assert enabled == NoiseInversionOptions()
+    assert disabled is None
 
 
 @pytest.mark.parametrize(
     "controls",
     [
-        {"inversion_steps": 0},
+        {"inversion_steps": -1},
         {"inversion_resolution_scale": 0},
         {"inversion_method": "fireflow"},
         {"inversion_switch_fraction": 1},
@@ -80,20 +79,20 @@ def test_inversion_controls_normalize_and_default_off(
 def test_invalid_selected_inversion_controls_fail(controls: dict[str, Any]) -> None:
     """Apply domain validation instead of handing malformed controls to a sampler."""
     with pytest.raises(ValueError):
-        RecordingAdapter.execute(
-            text="prompt", noise_inversion_enabled=True, **controls
-        )
+        RecordingAdapter.execute(text="prompt", **controls)
 
 
 @pytest.mark.parametrize(
     "node",
-    [KSamplerExtrasV3, DetailSEGSAsRegionsV3, DetailSEGSByScaleFactorTiledDiffusionV3],
+    [DetailSEGSAsRegionsV3, DetailSEGSByScaleFactorTiledDiffusionV3],
 )
 def test_existing_nodes_append_optional_inversion_without_reordering(node: Any) -> None:
-    """Preserve every serialized socket position before seven optional new controls."""
+    """Preserve sampler socket ordering before five optional inversion controls."""
     schema = node.define_schema()
     order = node.WORKFLOW_INPUT_ORDER
     assert [item.id for item in schema.inputs[: len(order)]] == list(order)
     new = schema.inputs[len(order) :]
-    assert len(new) == 7 and all(item.optional and item.tooltip for item in new)
-    assert new[0].id == "noise_inversion_enabled" and new[0].default is False
+    assert len(new) == 5 and all(item.optional and item.tooltip for item in new)
+    assert new[0].id == "inversion_method" and new[0].default == "euler"
+    steps = next(item for item in new if item.id == "inversion_steps")
+    assert steps.default == 2 and steps.min == 0

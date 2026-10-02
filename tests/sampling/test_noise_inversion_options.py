@@ -2,7 +2,7 @@
 # Copyright (C) 2026  Artificial Sweetener and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Safeguard the accepted inversion recipe and independently editable controls."""
+"""Safeguard the accepted inversion recipe and shared integration method."""
 
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ def test_defaults_match_accepted_half_euler_recipe() -> None:
     assert options.steps == 2
     assert options.switch_fraction == 0.75
     assert options.finishing_steps == 1
-    assert options.finishing_method == "euler"
     assert options.coarse_target_fraction == 0.75
 
 
@@ -30,7 +29,6 @@ def test_defaults_match_accepted_half_euler_recipe() -> None:
     ("changes", "message"),
     [
         ({"method": "fireflow"}, "method"),
-        ({"finishing_method": "invalid"}, "finishing method"),
         ({"resolution_scale": 0}, "resolution"),
         ({"resolution_scale": 1.1}, "resolution"),
         ({"resolution_scale": float("nan")}, "resolution"),

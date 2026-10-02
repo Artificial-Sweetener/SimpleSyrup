@@ -10,6 +10,7 @@ from typing import Any, ClassVar
 
 import torch
 
+from simple_syrup.domain.noise_inversion import NoiseInversionOptions
 from simple_syrup.nodes_v3.ksampler_attention_coupling import (
     KSamplerAttentionCouplingV3,
 )
@@ -49,13 +50,11 @@ def test_schema_exposes_stable_full_context_contract_and_guidance() -> None:
         "region_mask_feather",
         "latent_image",
         "denoise",
-        "noise_inversion_enabled",
         "inversion_method",
         "inversion_resolution_scale",
         "inversion_steps",
         "inversion_switch_fraction",
         "inversion_finishing_steps",
-        "inversion_finishing_method",
     ]
     inputs = {item.id: item for item in schema.inputs}
     assert inputs["negative"].optional is True
@@ -111,7 +110,7 @@ def test_node_delegates_the_complete_request_once() -> None:
     assert output is _RecordingAttentionService.output
     assert _RecordingAttentionService.calls == [
         {
-            "noise_inversion": None,
+            "noise_inversion": NoiseInversionOptions(),
             "model": "model",
             "seed": 9,
             "steps": 30,

@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import Any
 
 from ..nodes.detailer_input_adapters import (
-    bool_input,
     float_input,
     int_input,
     str_input,
@@ -27,7 +26,7 @@ class LegacyInversionNodeV3Adapter(LegacyNodeV3Adapter):
 
     @classmethod
     def define_schema(cls) -> Any:
-        """Append optional controls without moving any persisted workflow input."""
+        """Append the shared five inversion controls after the sampler inputs."""
         schema = super().define_schema()
         schema.inputs.extend(noise_inversion_inputs(COMFY_IO, convenience=True))
         return schema
@@ -39,12 +38,6 @@ class LegacyInversionNodeV3Adapter(LegacyNodeV3Adapter):
         list_mode = bool(getattr(cls.LEGACY_NODE_CLASS, "INPUT_IS_LIST", False))
         operation = cls.DISPLAY_NAME
         inversion = inversion_from_controls(
-            noise_inversion_enabled=bool_input(
-                values.pop("noise_inversion_enabled", False),
-                "noise_inversion_enabled",
-                list_mode,
-                operation,
-            ),
             inversion_method=str_input(
                 values.pop("inversion_method", "euler"),
                 "inversion_method",
@@ -72,12 +65,6 @@ class LegacyInversionNodeV3Adapter(LegacyNodeV3Adapter):
             inversion_finishing_steps=int_input(
                 values.pop("inversion_finishing_steps", 1),
                 "inversion_finishing_steps",
-                list_mode,
-                operation,
-            ),
-            inversion_finishing_method=str_input(
-                values.pop("inversion_finishing_method", "euler"),
-                "inversion_finishing_method",
                 list_mode,
                 operation,
             ),

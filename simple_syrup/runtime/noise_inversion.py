@@ -266,7 +266,7 @@ def invert_sampling_noise(
                 options.finishing_steps,
                 endpoint,
                 "full_finish",
-                options.finishing_method,
+                options.method,
             )
 
     sigma = torch.tensor(target)

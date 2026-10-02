@@ -10,10 +10,15 @@ from typing import Any, TypedDict
 
 import torch
 
+from ..domain.attention_coupling_request import (
+    AttentionCouplingRequestMode,
+    classify_attention_coupling_request,
+)
 from ..domain.sampler_options import SamplerOptions, TilingOptions
 from ..runtime import sampling_schedulers
 from ..runtime.noise_inversion import validate_inversion_target
 from ..runtime.tiled_sampling_validation import validate_sampling_controls
+from ..shared.logging import get_logger
 from .attention_coupling_sampling_service import AttentionCouplingSamplingService
 from .contextual_attention_coupling_sampling_service import (
     ContextualAttentionCouplingSamplingService,
@@ -24,6 +29,8 @@ from .tiled_attention_coupling_sampling_service import (
     TiledAttentionCouplingSamplingService,
 )
 from .tiled_diffusion_sampling_service import TiledDiffusionSamplingService
+
+LOGGER = get_logger(__name__)
 
 
 class SamplingArguments(TypedDict):
@@ -81,8 +88,10 @@ class SamplerOptionsSamplingService:
         latent_image: dict[str, Any],
         denoise: float,
         options: SamplerOptions | None = None,
+        segs: object | None = None,
+        region_masks: object | None = None,
     ) -> dict[str, Any]:
-        """Apply regional attention once, then one spatial authority and inversion."""
+        """Admit connected region data only through its enabled sampling capability."""
         if options is not None and not isinstance(options, SamplerOptions):
             raise TypeError(
                 "KSampler options must come from SimpleSyrup options nodes."
@@ -90,12 +99,13 @@ class SamplerOptionsSamplingService:
         configured = options if options is not None else SamplerOptions()
         context = configured.contextual_diffusion
         tiling = configured.tiling
-        if context is not None and tiling is None:
-            tiling = TilingOptions(
-                width=context.context_size,
-                height=context.context_size,
-                overlap=min(32, context.context_size - 1),
-            )
+        if context is not None:
+            if tiling is not None:
+                LOGGER.warning(
+                    "Contextual Diffusion takes precedence; Tiling Options ignored.",
+                    extra={"node_id": "SimpleSyrup.KSampler"},
+                )
+            tiling = context.local_tiling()
         arguments: SamplingArguments = {
             "model": model,
             "seed": seed,
@@ -110,6 +120,14 @@ class SamplerOptionsSamplingService:
         }
         self._preflight(arguments, configured, tiling)
         attention = configured.attention_coupling
+        if (
+            attention is not None
+            and classify_attention_coupling_request(
+                positive=positive, negative=negative, region_masks=region_masks
+            )
+            is AttentionCouplingRequestMode.BYPASS
+        ):
+            attention = None
         inversion = configured.noise_inversion
         if context is not None:
             assert tiling is not None
@@ -126,10 +144,10 @@ class SamplerOptionsSamplingService:
                 result = ContextualAttentionCouplingSamplingService().sample(
                     **arguments,
                     **contextual_arguments,
-                    region_masks=attention.region_masks,
+                    region_masks=region_masks,
                     regional_prompt_weight=attention.regional_prompt_weight,
                     region_mask_feather=attention.region_mask_feather,
-                    segs=tiling.segs,
+                    segs=segs,
                     tiling=tiling,
                     noise_inversion=inversion,
                 )
@@ -137,7 +155,7 @@ class SamplerOptionsSamplingService:
                 result = ContextualDiffusionSamplingService().sample(
                     **arguments,
                     **contextual_arguments,
-                    segs=tiling.segs,
+                    segs=segs,
                     tiling=tiling,
                     noise_inversion=inversion,
                 )
@@ -155,22 +173,22 @@ class SamplerOptionsSamplingService:
                 return TiledAttentionCouplingSamplingService().sample(
                     **arguments,
                     **tiled_arguments,
-                    region_masks=attention.region_masks,
+                    region_masks=region_masks,
                     regional_prompt_weight=attention.regional_prompt_weight,
                     region_mask_feather=attention.region_mask_feather,
-                    segs=tiling.segs,
+                    segs=segs,
                     noise_inversion=inversion,
                 )
             return TiledDiffusionSamplingService().sample(
                 **arguments,
                 **tiled_arguments,
-                segs=tiling.segs,
+                segs=segs,
                 noise_inversion=inversion,
             )
         if attention is not None:
             return AttentionCouplingSamplingService().sample(
                 **arguments,
-                region_masks=attention.region_masks,
+                region_masks=region_masks,
                 regional_prompt_weight=attention.regional_prompt_weight,
                 region_mask_feather=attention.region_mask_feather,
                 noise_inversion=inversion,

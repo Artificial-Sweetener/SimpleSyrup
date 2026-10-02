@@ -11,6 +11,7 @@ from typing import Any, ClassVar
 import pytest
 import torch
 
+from simple_syrup.domain.noise_inversion import NoiseInversionOptions
 from simple_syrup.nodes_v3.ksampler_tiled_attention_coupling import (
     KSamplerTiledAttentionCouplingV3,
 )
@@ -61,13 +62,11 @@ def test_schema_exposes_stable_tiled_attention_coupling_contract() -> None:
         "latent_tile_height",
         "latent_tile_overlap",
         "latent_tile_batch_size",
-        "noise_inversion_enabled",
         "inversion_method",
         "inversion_resolution_scale",
         "inversion_steps",
         "inversion_switch_fraction",
         "inversion_finishing_steps",
-        "inversion_finishing_method",
     ]
     assert inputs["region_masks"].optional is True
     assert inputs["regional_prompt_weight"].default == 1.0
@@ -141,7 +140,7 @@ def test_node_delegates_every_tiled_attention_input_once(
     assert output is _RecordingTiledAttentionService.output
     assert _RecordingTiledAttentionService.calls == [
         {
-            "noise_inversion": None,
+            "noise_inversion": NoiseInversionOptions(),
             "diffusion_mode": "mixture_of_diffusers",
             "model": "model",
             "seed": 17,

@@ -25,7 +25,6 @@ class TilingOptions:
     overlap: int = 32
     batch_size: int = 4
     differential_diffusion: bool = False
-    segs: object | None = None
 
     def __post_init__(self) -> None:
         """Reject tile settings that cannot form a bounded prediction plan."""
@@ -49,19 +48,19 @@ class TilingOptions:
 
 @dataclass(frozen=True, slots=True)
 class ContextualDiffusionOptions:
-    """Add global scene context to the authoritative local tile predictions.
-
-    With no Tiling options, the context size also supplies the square local
-    tile size, using 32 latent pixels of overlap and a batch size of four.
-    """
+    """Own global context and square local sampling geometry independently of tiling."""
 
     context_size: int = 96
     global_weight: float = 1.0
     global_steps: int = 1
     global_decay: float = 0.5
+    diffusion_mode: str = "multidiffusion"
+    overlap: int = 32
+    batch_size: int = 4
+    differential_diffusion: bool = False
 
     def __post_init__(self) -> None:
-        """Reject unsupported global-context geometry and schedule values."""
+        """Reject invalid global schedules and square local sampling settings."""
         if type(self.context_size) is not int or not 16 <= self.context_size <= 512:
             raise ValueError("Context size must be between 16 and 512 latent pixels.")
         if not math.isfinite(self.global_weight) or not 0 <= self.global_weight <= 2:
@@ -70,20 +69,29 @@ class ContextualDiffusionOptions:
             raise ValueError("Global context steps must be a nonnegative integer.")
         if not math.isfinite(self.global_decay) or not 0 <= self.global_decay <= 1:
             raise ValueError("Global context decay must be between 0 and 1.")
+        self.local_tiling()
+
+    def local_tiling(self) -> TilingOptions:
+        """Use context size for both dimensions of the sole local sampling plan."""
+        return TilingOptions(
+            diffusion_mode=self.diffusion_mode,
+            width=self.context_size,
+            height=self.context_size,
+            overlap=self.overlap,
+            batch_size=self.batch_size,
+            differential_diffusion=self.differential_diffusion,
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class AttentionCouplingOptions:
-    """Carry regional attention inputs without preparing or mutating a model."""
+    """Configure regional attention strength without binding masks or a model."""
 
-    region_masks: object
     regional_prompt_weight: float = 1.0
     region_mask_feather: int = 0
 
     def __post_init__(self) -> None:
-        """Require a mask source and valid regional attention strengths."""
-        if self.region_masks is None:
-            raise ValueError("Attention Coupling requires region masks.")
+        """Require valid regional attention strengths and feathering controls."""
         validate_regional_prompt_weight(self.regional_prompt_weight)
         if type(self.region_mask_feather) is not int or self.region_mask_feather < 0:
             raise ValueError("Region mask feather must be a nonnegative integer.")
@@ -143,13 +151,12 @@ class SamplerOptions:
 
 
 def append_sampler_capability(
-    options: SamplerOptions | None, capability: SamplerCapability
+    options: SamplerOptions | None, capability: SamplerCapability | None
 ) -> SamplerOptions:
-    """Start an options chain or append to a validated incoming connection."""
+    """Append a capability or pass through a disabled contribution after validation."""
     if options is not None and not isinstance(options, SamplerOptions):
         raise TypeError(
             "Options input must be a SimpleSyrup sampler options connection."
         )
-    return (options if options is not None else SamplerOptions()).with_capability(
-        capability
-    )
+    current = options if options is not None else SamplerOptions()
+    return current if capability is None else current.with_capability(capability)

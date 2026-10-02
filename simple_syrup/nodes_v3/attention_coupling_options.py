@@ -23,11 +23,11 @@ from .sampler_options_schema import (
 
 
 class AttentionCouplingOptionsV3(OptionsNodeBase):
-    """Pair global-first conditioning on the sampler with ordered region masks."""
+    """Configure the sampler's regional attention strength and mask feathering."""
 
     @classmethod
     def define_schema(cls) -> Any:
-        """Expose regional masks with established strength and feathering controls."""
+        """Expose strength and feathering without binding region payloads."""
         controls = attention_coupling_ksampler_inputs(COMFY_IO)
         return COMFY_IO.Schema(
             node_id="SimpleSyrup.AttentionCouplingOptions",
@@ -42,8 +42,7 @@ class AttentionCouplingOptionsV3(OptionsNodeBase):
                 *[
                     control
                     for control in controls
-                    if control.id
-                    in {"region_masks", "regional_prompt_weight", "region_mask_feather"}
+                    if control.id in {"regional_prompt_weight", "region_mask_feather"}
                 ],
             ],
             outputs=[options_output(COMFY_IO)],
@@ -52,7 +51,6 @@ class AttentionCouplingOptionsV3(OptionsNodeBase):
     @classmethod
     def execute(
         cls,
-        region_masks: object,
         regional_prompt_weight: float = 1.0,
         region_mask_feather: int = 0,
         options: SamplerOptions | None = None,
@@ -62,7 +60,6 @@ class AttentionCouplingOptionsV3(OptionsNodeBase):
             append_sampler_capability(
                 options,
                 AttentionCouplingOptions(
-                    region_masks=region_masks,
                     regional_prompt_weight=regional_prompt_weight,
                     region_mask_feather=region_mask_feather,
                 ),

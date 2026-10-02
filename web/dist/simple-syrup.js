@@ -3072,6 +3072,49 @@ function isPreviewNode(value) {
   return node.constructor?.comfyClass === SIMPLE_PREVIEW_SEGS_NODE_ID && typeof node.addDOMWidget === "function";
 }
 
+// web/src/samplerSocketOrder.ts
+var SOCKET_ORDER = [
+  "model",
+  "positive",
+  "negative",
+  "latent_image",
+  "options",
+  "segs",
+  "region_masks"
+];
+function registerSamplerSocketOrder(app2) {
+  app2.registerExtension({
+    name: "SimpleSyrup.SamplerSocketOrder",
+    nodeCreated(candidate) {
+      if (!isSampler(candidate)) return;
+      orderSockets(candidate);
+      const configured = candidate.onGraphConfigured;
+      candidate.onGraphConfigured = function(...args) {
+        const result = configured?.apply(this, args);
+        orderSockets(this);
+        return result;
+      };
+    }
+  });
+}
+function orderSockets(node) {
+  const ranks = new Map(SOCKET_ORDER.map((name, index) => [name, index]));
+  node.inputs.sort(
+    (left, right) => (ranks.get(left.name) ?? SOCKET_ORDER.length) - (ranks.get(right.name) ?? SOCKET_ORDER.length)
+  );
+  for (const [index, input] of node.inputs.entries()) {
+    if (input.link == null) continue;
+    const link = node.graph?.links[input.link];
+    if (link) link.target_slot = index;
+  }
+  node.graph?.setDirtyCanvas?.(true, true);
+}
+function isSampler(value) {
+  if (typeof value !== "object" || value === null) return false;
+  const node = value;
+  return node.constructor?.comfyClass === "SimpleSyrup.KSampler" && Array.isArray(node.inputs) && node.inputs.every((input) => typeof input.name === "string");
+}
+
 // web/src/main.ts
 var comfyApp = app;
 var comfyApi = window.comfyAPI.api.api;
@@ -3085,3 +3128,4 @@ comfyApp.registerExtension({
 registerMaskBatchUpload(comfyApp, comfyApi);
 registerImageListUpload(comfyApp, comfyApi);
 registerSimplePreviewSEGS(comfyApp, comfyApi);
+registerSamplerSocketOrder(comfyApp);

@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 import torch
 
+from simple_syrup.domain.noise_inversion import NoiseInversionOptions
 from simple_syrup.domain.segs import NativeSegs
 from simple_syrup.nodes_v3.ksampler_contextual_diffusion import (
     KSamplerContextualDiffusionV3,
@@ -153,7 +154,7 @@ def test_sample_delegates_every_control_to_service(
             "region_masks": None,
             "regional_prompt_weight": 0.5,
             "region_mask_feather": 0,
-            "noise_inversion": None,
+            "noise_inversion": NoiseInversionOptions(),
         }
     ]
 

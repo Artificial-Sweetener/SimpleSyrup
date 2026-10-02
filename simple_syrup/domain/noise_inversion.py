@@ -27,14 +27,11 @@ class NoiseInversionOptions:
     steps: int = 2
     switch_fraction: float = 0.75
     finishing_steps: int = 1
-    finishing_method: InversionMethod = "euler"
 
     def __post_init__(self) -> None:
         """Reject invalid or internally incomplete inversion recipes."""
         if self.method not in INVERSION_METHODS:
             raise ValueError("Inversion method must be euler or heun.")
-        if self.finishing_method not in INVERSION_METHODS:
-            raise ValueError("Inversion finishing method must be euler or heun.")
         if (
             not math.isfinite(self.resolution_scale)
             or not 0 < self.resolution_scale <= 1
