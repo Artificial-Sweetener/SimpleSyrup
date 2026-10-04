@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from typing import TypeAlias
 
 from .noise_inversion import NoiseInversionOptions
+from .noise_reuse import NoiseReuseOptions
 from .regional_prompting import validate_regional_prompt_weight
 from .tiled_diffusion import validate_tiled_diffusion_mode
 
@@ -102,6 +103,7 @@ SamplerCapability: TypeAlias = (
     | ContextualDiffusionOptions
     | NoiseInversionOptions
     | AttentionCouplingOptions
+    | NoiseReuseOptions
 )
 
 
@@ -113,6 +115,7 @@ class SamplerOptions:
     contextual_diffusion: ContextualDiffusionOptions | None = None
     noise_inversion: NoiseInversionOptions | None = None
     attention_coupling: AttentionCouplingOptions | None = None
+    noise_reuse: NoiseReuseOptions | None = None
 
     def __post_init__(self) -> None:
         """Reject malformed connection payloads at the typed configuration boundary."""
@@ -121,10 +124,16 @@ class SamplerOptions:
             ("contextual_diffusion", ContextualDiffusionOptions),
             ("noise_inversion", NoiseInversionOptions),
             ("attention_coupling", AttentionCouplingOptions),
+            ("noise_reuse", NoiseReuseOptions),
         ):
             value = getattr(self, name)
             if value is not None and not isinstance(value, expected):
                 raise TypeError(f"Sampler option {name} must be {expected.__name__}.")
+        if self.noise_reuse is not None and self.noise_inversion is not None:
+            raise ValueError(
+                "Noise Reuse Options cannot be combined with Noise "
+                "Inversion Options; use the reuse finishing controls."
+            )
 
     def with_capability(self, capability: SamplerCapability) -> SamplerOptions:
         """Return a fresh configuration or reject an ambiguous duplicate feature."""
@@ -133,6 +142,7 @@ class SamplerOptions:
             ContextualDiffusionOptions: "contextual_diffusion",
             NoiseInversionOptions: "noise_inversion",
             AttentionCouplingOptions: "attention_coupling",
+            NoiseReuseOptions: "noise_reuse",
         }
         name = names.get(type(capability))
         if name is None:
@@ -147,6 +157,8 @@ class SamplerOptions:
             return replace(self, contextual_diffusion=capability)
         if isinstance(capability, NoiseInversionOptions):
             return replace(self, noise_inversion=capability)
+        if isinstance(capability, NoiseReuseOptions):
+            return replace(self, noise_reuse=capability)
         return replace(self, attention_coupling=capability)
 
 

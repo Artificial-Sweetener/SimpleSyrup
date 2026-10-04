@@ -27,6 +27,7 @@ from .differential_diffusion import (
 )
 from .guided_sampling import sample_with_optional_negative
 from .model_patcher_mutations import ModelCalcCondBatchMutation
+from .noise_reuse_scope import needs_finishing_model
 from .patcher_lifecycle import PATCHER_LIFECYCLE, ModelMutation
 from .regional_inversion_model_factory import RegionalInversionModelFactory
 from .regional_multidiffusion_prediction import (
@@ -172,7 +173,7 @@ def sample_regional_multidiffusion(
                 global_prompt_weight=global_prompt_weight,
                 differential_diffusion=differential_diffusion,
             )
-            if noise_inversion is not None
+            if noise_inversion is not None or needs_finishing_model()
             else None
         ),
     )

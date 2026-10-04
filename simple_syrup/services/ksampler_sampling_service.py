@@ -17,6 +17,7 @@ from ..runtime import sampling_noise, sampling_samplers, sampling_schedulers
 from ..runtime.comfy_latent_normalization import COMFY_LATENT_NORMALIZER
 from ..runtime.guided_sampling import sample_with_optional_negative
 from ..runtime.inversion_model_factory import InversionModelFactory
+from ..runtime.noise_reuse_scope import needs_finishing_model
 from ..shared.logging import get_logger
 
 Latent: TypeAlias = dict[str, Any]
@@ -119,7 +120,7 @@ class KSamplerSamplingService:
                     canvas_width=int(latent_samples.shape[-1]),
                     canvas_height=int(latent_samples.shape[-2]),
                 )
-                if noise_inversion is not None
+                if noise_inversion is not None or needs_finishing_model()
                 else None,
             )
         if not isinstance(samples, torch.Tensor):
@@ -190,7 +191,7 @@ class KSamplerSamplingService:
                         canvas_width=int(latent_samples.shape[-1]),
                         canvas_height=int(latent_samples.shape[-2]),
                     )
-                    if noise_inversion is not None
+                    if noise_inversion is not None or needs_finishing_model()
                     else None,
                 )
             )

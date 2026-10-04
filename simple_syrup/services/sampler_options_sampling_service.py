@@ -14,9 +14,11 @@ from ..domain.attention_coupling_request import (
     AttentionCouplingRequestMode,
     classify_attention_coupling_request,
 )
+from ..domain.noise_reuse import PROVENANCE_KEY, SamplingProvenance
 from ..domain.sampler_options import SamplerOptions, TilingOptions
 from ..runtime import sampling_schedulers
 from ..runtime.noise_inversion import validate_inversion_target
+from ..runtime.noise_reuse_scope import NoiseReuseExecution, noise_reuse_scope
 from ..runtime.tiled_sampling_validation import validate_sampling_controls
 from ..shared.logging import get_logger
 from .attention_coupling_sampling_service import AttentionCouplingSamplingService
@@ -75,6 +77,57 @@ class SamplerOptionsSamplingService:
     """Route configuration independently of connection order or node placement."""
 
     def sample(
+        self,
+        *,
+        model: Any,
+        seed: int,
+        steps: int,
+        cfg: float,
+        sampler_name: str,
+        scheduler: str,
+        positive: object,
+        negative: object,
+        latent_image: dict[str, Any],
+        denoise: float,
+        options: SamplerOptions | None = None,
+        segs: object | None = None,
+        region_masks: object | None = None,
+    ) -> dict[str, Any]:
+        """Own the receiving request lifecycle across every capability route."""
+        reuse = options.noise_reuse if isinstance(options, SamplerOptions) else None
+        execution = None
+        if reuse is not None:
+            provenance = latent_image.get(PROVENANCE_KEY)
+            if not isinstance(provenance, SamplingProvenance):
+                raise ValueError(
+                    "Noise Reuse Options requires captured sampling provenance. "
+                    "Connect a supported sampler's latent directly or through "
+                    "Latent From Image."
+                )
+            execution = NoiseReuseExecution(reuse, provenance)
+        with noise_reuse_scope(execution):
+            result = self._sample_configured(
+                model=model,
+                seed=seed,
+                steps=steps,
+                cfg=cfg,
+                sampler_name=sampler_name,
+                scheduler=scheduler,
+                positive=positive,
+                negative=negative,
+                latent_image=latent_image,
+                denoise=denoise,
+                options=options,
+                segs=segs,
+                region_masks=region_masks,
+            )
+        if execution is not None and not execution.consumed:
+            raise RuntimeError(
+                "Receiving sampler did not consume the captured noise request."
+            )
+        return result
+
+    def _sample_configured(
         self,
         *,
         model: Any,

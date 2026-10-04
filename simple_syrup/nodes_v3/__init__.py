@@ -35,6 +35,7 @@ def get_nodes() -> list[type[object]]:
         KSamplerTiledAttentionCouplingV3,
     )
     from .ksampler_tiled_diffusion import KSamplerTiledDiffusionV3
+    from .latent_from_image import LatentFromImageV3
     from .legacy_node_wrappers import (
         ConditioningBatchAppendV3,
         ConditioningBatchStartV3,
@@ -66,16 +67,24 @@ def get_nodes() -> list[type[object]]:
     from .load_mask_batch import LoadMaskBatchV3
     from .mask_to_segs import MaskToSEGSV3
     from .noise_inversion_options import NoiseInversionOptionsV3
+    from .noise_reuse_options import NoiseReuseOptionsV3
     from .scale_factor import ScaleFactorV3
     from .seed_variation import SeedVariationV3
     from .simple_load_checkpoint import SimpleLoadCheckpointV3
     from .simple_load_flux import SimpleLoadFluxV3
     from .simple_load_flux2 import SimpleLoadFlux2V3
     from .simple_load_krea2 import SimpleLoadKrea2V3
+    from .simple_upscale_latent import SimpleUpscaleLatentV3
     from .tag_segs_with_external_llm import TagSEGSWithExternalLLMV3
     from .tag_segs_with_wd14 import TagSEGSWithWD14V3
     from .tile_and_tag_segs import TileAndTagSEGSV3
     from .tiling_options import TilingOptionsV3
+    from .trajectory_capture import (
+        AttachSamplingProvenanceV3,
+        NoiseCaptureRequestV3,
+        NoiseReuseErrorV3,
+        TrajectoryCaptureModelV3,
+    )
     from .vae_decode_options import VAEDecodeOptionsV3
     from .vae_encode_options import VAEEncodeOptionsV3
     from .wd14_tagger_loader import WD14TaggerLoaderV3
@@ -87,6 +96,13 @@ def get_nodes() -> list[type[object]]:
         NoiseInversionOptionsV3,
         TilingOptionsV3,
         KSamplerV3,
+        LatentFromImageV3,
+        SimpleUpscaleLatentV3,
+        NoiseReuseOptionsV3,
+        NoiseCaptureRequestV3,
+        TrajectoryCaptureModelV3,
+        AttachSamplingProvenanceV3,
+        NoiseReuseErrorV3,
         AttentionCaptureModelV3,
         AttentionMaskedConditioningV3,
         AttentionRegionMaskV3,

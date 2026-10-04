@@ -192,3 +192,16 @@ vendored_files = [
   "simple_syrup/runtime/negpip/krea2.py",
   "simple_syrup/services/negpip_model_service.py",
 ]
+
+[[component]]
+name = "SesquiLSR latent upscale runtime"
+license = "MIT"
+license_file = "third_party/licenses/sesqui_lsr.LICENSE.txt"
+source = "https://github.com/LoganBooker/SesquiLSR"
+revision = "befae004248c403f38b76b9f65fd43b901ea3eaa"
+source_paths = ["sesqui_lsr/__init__.py", "sesqui_lsr/upscaler.py", "sesqui_lsr/inference_adaptors.py"]
+vendored_files = [
+  "simple_syrup/third_party/sesqui_lsr/__init__.py",
+  "simple_syrup/third_party/sesqui_lsr/upscaler.py",
+  "simple_syrup/third_party/sesqui_lsr/inference_adaptors.py",
+]

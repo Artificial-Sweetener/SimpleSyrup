@@ -14,6 +14,8 @@ import torch
 from ..domain.noise_inversion import NoiseInversionOptions
 from ..shared.logging import get_logger
 from .noise_inversion import InversionModelFactory, invert_sampling_noise
+from .noise_reuse_sampling import prepare_reused_noise
+from .noise_reuse_scope import current_noise_reuse
 
 LOGGER = get_logger(__name__)
 
@@ -37,6 +39,50 @@ def sample_with_optional_negative(
     inversion_model_factory: InversionModelFactory | None = None,
 ) -> torch.Tensor:
     """Prepare optional source-derived noise and select the actual Comfy guider."""
+
+    reuse = current_noise_reuse()
+    if reuse is not None:
+        if noise_inversion is not None:
+            raise ValueError(
+                "Noise reuse and full noise inversion cannot own the same "
+                "sampling pass."
+            )
+        noise, expected = prepare_reused_noise(
+            execution=reuse,
+            model=model,
+            fresh=noise,
+            latent=latent_image,
+            sigmas=sigmas,
+            positive=positive,
+            negative=negative,
+            cfg=cfg,
+            seed=seed,
+            noise_mask=noise_mask,
+            model_factory=inversion_model_factory,
+        )
+        original_callback = callback
+
+        def observe_start(
+            step: int, denoised: torch.Tensor, state: torch.Tensor, total: int
+        ) -> None:
+            """Check the actual first state to catch double-noising or schedule
+            mismatch.
+            """
+            if step == 0 and noise_mask is None:
+                error = float((state.detach().float().cpu() - expected).abs().max())
+                if error > 2e-5:
+                    raise ValueError(
+                        f"Noise reuse starting state differs from native "
+                        f"reconstruction: {error:.6g}."
+                    )
+                LOGGER.info(
+                    "Noise reuse starting state verified",
+                    extra={"operation": "noise_reuse_start", "max_error": error},
+                )
+            if original_callback is not None:
+                original_callback(step, denoised, state, total)
+
+        callback = observe_start
 
     if noise_inversion is not None:
         inversion = invert_sampling_noise(

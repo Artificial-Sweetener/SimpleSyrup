@@ -33,6 +33,7 @@ from .differential_diffusion import (
 from .guided_sampling import sample_with_optional_negative
 from .inversion_model_factory import InversionModelFactory
 from .model_patcher_mutations import ModelUnetWrapperMutation
+from .noise_reuse_scope import needs_finishing_model
 from .patcher_lifecycle import PATCHER_LIFECYCLE, ModelMutation
 from .sampling_model_types import ModelFunctionWrapper
 from .tiled_sampling_validation import (
@@ -147,7 +148,7 @@ def sample_contextual_diffusion(
             segs=inversion_segs,
             region_masks=inversion_region_masks,
         )
-        if noise_inversion is not None
+        if noise_inversion is not None or needs_finishing_model()
         else None
     )
     noise = sampling_noise.prepare_sampling_noise(

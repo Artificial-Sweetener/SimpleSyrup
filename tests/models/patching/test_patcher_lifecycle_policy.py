@@ -32,6 +32,19 @@ FORBIDDEN_PATCHER_CALLS = frozenset(
 FORBIDDEN_PATCHER_WRITES = frozenset({"forced_hooks", "use_clip_schedule"})
 APPROVED_VALUE_CLONES = Counter(
     {
+        ("simple_syrup/domain/spectral_noise.py", "spatial_dct(fresh)"): 1,
+        (
+            "simple_syrup/runtime/trajectory_capture.py",
+            "record['x'].detach().float().cpu()",
+        ): 1,
+        (
+            "simple_syrup/runtime/trajectory_capture.py",
+            "result.detach().float().cpu()",
+        ): 1,
+        (
+            "simple_syrup/runtime/trajectory_capture.py",
+            "schedule.detach().float().cpu()",
+        ): 1,
         ("simple_syrup/domain/inversion_solver.py", "source"): 1,
         ("simple_syrup/runtime/noise_inversion.py", "zero"): 1,
         ("simple_syrup/runtime/noise_inversion.py", "noise"): 1,

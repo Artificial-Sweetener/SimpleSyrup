@@ -1,5 +1,9 @@
 # Third-Party Notices
 
+## SesquiLSR latent upscale runtime
+
+The latent upscaler and inference adaptors come from [LoganBooker/SesquiLSR](https://github.com/LoganBooker/SesquiLSR) at revision `befae004248c403f38b76b9f65fd43b901ea3eaa`, under the MIT license. The retained license is `third_party/licenses/sesqui_lsr.LICENSE.txt`.
+
 This repository vendors selected third-party behavior for runtime use. Each vendored component is recorded in `third_party/manifest.toml`, and the corresponding license text is stored in `third_party/licenses/`.
 
 ## SAM-HQ and MobileSAM runtime

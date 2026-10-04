@@ -38,6 +38,7 @@ extend-exclude = [
     "simple_syrup/third_party/groundingdino_runtime",
     "simple_syrup/third_party/res4lyf_runtime",
     "simple_syrup/third_party/sam_hq_runtime",
+    "simple_syrup/third_party/sesqui_lsr",
 ]
 
 [tool.ruff.lint]
@@ -62,6 +63,7 @@ exclude = [
     "simple_syrup/third_party/groundingdino_runtime",
     "simple_syrup/third_party/res4lyf_runtime",
     "simple_syrup/third_party/sam_hq_runtime",
+    "simple_syrup/third_party/sesqui_lsr",
 ]
 
 [[tool.mypy.overrides]]

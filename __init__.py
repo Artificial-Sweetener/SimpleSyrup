@@ -30,6 +30,9 @@ from .simple_syrup.runtime.attention_region_prompt_handler import (  # noqa: E40
 from .simple_syrup.runtime.comfy_safetensors_dtypes import (  # noqa: E402
     register_comfy_safetensors_dtypes,
 )
+from .simple_syrup.runtime.noise_reuse_prompt_handler import (  # noqa: E402
+    register_noise_reuse_prompt_handler,
+)
 
 WEB_DIRECTORY = "./web/dist"
 
@@ -58,6 +61,7 @@ register_quant_cache_routes()
 register_external_llm_routes()
 register_mask_batch_preview_routes()
 register_attention_region_prompt_handler()
+register_noise_reuse_prompt_handler()
 
 __all__ = [
     "WEB_DIRECTORY",
