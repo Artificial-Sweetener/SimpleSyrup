@@ -54,7 +54,6 @@ from .tiled_sampling_validation import (
 
 LOGGER = get_logger(__name__)
 SAMPLER_LABEL = "MultiDiffusion"
-UNIPC_SAMPLERS = frozenset({"uni_pc", "uni_pc_bh2"})
 
 
 def sample_multidiffusion(
@@ -92,7 +91,6 @@ def sample_multidiffusion(
         latent_tile_height=latent_tile_height,
         latent_tile_batch_size=latent_tile_batch_size,
     )
-    _reject_unipc_sampler(sampler_name)
     reject_unsupported_conditioning(
         positive,
         sampler_label=SAMPLER_LABEL,
@@ -161,6 +159,7 @@ def sample_multidiffusion(
         noise=noise,
         cfg=cfg,
         sampler=sampler,
+        sampler_name=sampler_name,
         sigmas=sigmas,
         positive=positive,
         negative=negative,
@@ -325,13 +324,6 @@ class MultiDiffusionModelWrapper:
         if not isinstance(conditioning, dict):
             raise ValueError("MultiDiffusion conditioning must be a dict.")
         return apply_model(args["input"], args["timestep"], **conditioning)
-
-
-def _reject_unipc_sampler(sampler_name: str) -> None:
-    """Reject UniPC samplers because MultiDiffusion is incompatible with them."""
-
-    if sampler_name in UNIPC_SAMPLERS:
-        raise ValueError("MultiDiffusion is not compatible with UniPC samplers.")
 
 
 def _validate_supplied_plan(

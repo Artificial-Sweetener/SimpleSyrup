@@ -27,7 +27,7 @@ from simple_syrup.nodes_v3.contextual_diffusion_options import (
     ContextualDiffusionOptionsV3,
 )
 from simple_syrup.nodes_v3.tiling_options import TilingOptionsV3
-from simple_syrup.runtime import sampling_schedulers
+from simple_syrup.runtime import sampling_samplers, sampling_schedulers
 from simple_syrup.services import sampler_options_sampling_service as routing
 
 
@@ -213,16 +213,18 @@ def test_invalid_inversion_target_fails_before_attention_preparation(
         SamplerOptions(contextual_diffusion=ContextualDiffusionOptions()),
     ],
 )
-def test_unipc_conflicts_fail_before_sampling(
+@pytest.mark.parametrize("sampler_name", sampling_samplers.available_samplers())
+def test_every_sampler_keeps_the_selected_context_or_tiling_route(
     routed_calls: list[tuple[str, dict[str, Any]]],
     options: SamplerOptions,
+    sampler_name: str,
 ) -> None:
-    """Do not silently bypass tiling for an incompatible sampling method."""
+    """Discover additions and require their complete contextual and tiled routing."""
     values = arguments()
-    values["sampler_name"] = "uni_pc"
-    with pytest.raises(ValueError, match="UniPC"):
-        routing.SamplerOptionsSamplingService().sample(**values, options=options)
-    assert not routed_calls
+    values["sampler_name"] = sampler_name
+    routing.SamplerOptionsSamplingService().sample(**values, options=options)
+    assert len(routed_calls) == 1
+    assert routed_calls[0][1]["sampler_name"] == sampler_name
 
 
 @pytest.mark.parametrize("cd_first", [False, True])

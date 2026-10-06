@@ -44,7 +44,6 @@ from .tiled_sampling_validation import (
 
 LOGGER = get_logger(__name__)
 SAMPLER_LABEL = "Regional MultiDiffusion"
-UNIPC_SAMPLERS = frozenset({"uni_pc", "uni_pc_bh2"})
 
 
 @dataclass(frozen=True)
@@ -84,7 +83,6 @@ def sample_regional_multidiffusion(
         denoise=denoise,
         global_prompt_weight=global_prompt_weight,
     )
-    _reject_unipc_sampler(sampler_name)
     if not regions:
         raise ValueError("Regional MultiDiffusion requires at least one region.")
     reject_unsupported_conditioning(
@@ -155,6 +153,7 @@ def sample_regional_multidiffusion(
         noise=noise,
         cfg=cfg,
         sampler=sampler,
+        sampler_name=sampler_name,
         sigmas=sigmas,
         positive=positive,
         negative=negative,
@@ -281,15 +280,6 @@ def _validate_global_prompt_weight(global_prompt_weight: float) -> None:
 
     if not 0.0 <= global_prompt_weight <= 1.0:
         raise ValueError("global_prompt_weight must be between 0.0 and 1.0.")
-
-
-def _reject_unipc_sampler(sampler_name: str) -> None:
-    """Reject UniPC samplers because MultiDiffusion is incompatible with them."""
-
-    if sampler_name in UNIPC_SAMPLERS:
-        raise ValueError(
-            "Regional MultiDiffusion is not compatible with UniPC samplers."
-        )
 
 
 def _sampling_callback(

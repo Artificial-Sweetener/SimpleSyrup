@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Prepare captured residuals for the shared native sampler starting-noise input."""
 
 from __future__ import annotations
@@ -9,7 +13,8 @@ import torch
 from ..domain.spectral_noise import lift_residual
 from ..shared.logging import get_logger
 from .native_noise_scaling import noise_coefficients, recover_residual
-from .noise_inversion import InversionModelFactory, validate_inversion_target
+from .native_sampling_target import validate_partial_sampling_target
+from .noise_inversion import InversionModelFactory
 from .noise_reuse_finishing import finish_reused_state
 from .noise_reuse_scope import NoiseReuseExecution
 
@@ -40,7 +45,7 @@ def prepare_reused_noise(
             "batches."
         )
     execution.consumed = True
-    target = validate_inversion_target(model, sigmas)
+    target = validate_partial_sampling_target(model, sigmas, operation="Noise reuse")
     coordinate = execution.options.capture_coordinate(target)
     provenance = execution.provenance
     if type(model.model.latent_format).__name__ != provenance.latent_format:
@@ -48,7 +53,8 @@ def prepare_reused_noise(
             "Noise reuse source and receiving model use different latent formats."
         )
     scaling = model.get_model_object("model_sampling")
-    residual = provenance.residual_at(coordinate)
+    capture = provenance.capture_at(coordinate)
+    residual = capture.residual
     lifted = lift_residual(residual, fresh.detach().float().cpu())
     clean = model.model.process_latent_in(latent).detach().float().cpu()
     if execution.options.finishing_steps:
@@ -75,6 +81,7 @@ def prepare_reused_noise(
         extra={
             "operation": "noise_reuse",
             "capture_sigma": coordinate,
+            "actual_capture_sigma": capture.actual_coordinate,
             "target_sigma": target,
             "source_shape": tuple(residual.shape),
             "target_shape": tuple(lifted.shape),

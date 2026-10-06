@@ -159,6 +159,7 @@ def sample_mixture_of_diffusers(
         noise=noise,
         cfg=cfg,
         sampler=sampler,
+        sampler_name=sampler_name,
         sigmas=sigmas,
         positive=positive,
         negative=negative,

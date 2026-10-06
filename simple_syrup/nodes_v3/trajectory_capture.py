@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Expose internal cache-keyed capture planning and handoff nodes."""
 
 from __future__ import annotations
@@ -114,6 +118,17 @@ class TrajectoryCaptureModelV3(OptionsNodeBase):
                 COMFY_IO.String.Input(
                     "sampler_name", tooltip="Source solver identifier."
                 ),
+                COMFY_IO.Sampler.Input(
+                    "sampler",
+                    optional=True,
+                    tooltip="Connected source algorithm used by a custom sampler.",
+                ),
+                COMFY_IO.String.Input(
+                    "graph_context",
+                    optional=True,
+                    default="",
+                    tooltip="Source and receiving node names for error messages.",
+                ),
                 COMFY_IO.Custom(REQUEST_TYPE).Input(
                     "requests",
                     optional=True,
@@ -135,10 +150,20 @@ class TrajectoryCaptureModelV3(OptionsNodeBase):
 
     @classmethod
     def execute(
-        cls, model: Any, sampler_name: str, requests: tuple[float, ...] = ()
+        cls,
+        model: Any,
+        sampler_name: str,
+        requests: tuple[float, ...] = (),
+        sampler: Any = None,
+        graph_context: str = "",
     ) -> tuple[Any, TrajectoryCapture]:
         """Keep observer state scoped to this source and cache identity."""
-        capture = TrajectoryCapture(model, sampler_name, requests)
+        if not sampler_name and sampler is not None:
+            function = getattr(sampler, "sampler_function", None)
+            sampler_name = getattr(function, "__name__", type(sampler).__name__)
+        capture = TrajectoryCapture(
+            model, sampler_name, requests, graph_context=graph_context
+        )
         return capture.prepare_model(), capture
 
 

@@ -46,7 +46,6 @@ from .tiled_sampling_validation import (
 
 LOGGER = get_logger(__name__)
 SAMPLER_LABEL = "Contextual Diffusion"
-UNIPC_SAMPLERS = frozenset({"uni_pc", "uni_pc_bh2"})
 
 
 def sample_contextual_diffusion(
@@ -82,8 +81,6 @@ def sample_contextual_diffusion(
         latent_tile_batch_size=controls.latent_context_batch_size,
     )
     controls.validate()
-    if sampler_name in UNIPC_SAMPLERS:
-        raise ValueError("Contextual Diffusion is not compatible with UniPC samplers.")
     reject_unsupported_conditioning(
         positive,
         sampler_label=SAMPLER_LABEL,
@@ -166,6 +163,7 @@ def sample_contextual_diffusion(
         noise=noise,
         cfg=cfg,
         sampler=sampler,
+        sampler_name=sampler_name,
         sigmas=sigmas,
         positive=positive,
         negative=negative,

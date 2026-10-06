@@ -1,10 +1,18 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Verify captured coefficient identity, coordinate selection and option isolation."""
 
 import pytest
 import torch
 
 from simple_syrup.domain.noise_inversion import NoiseInversionOptions
-from simple_syrup.domain.noise_reuse import NoiseReuseOptions, SamplingProvenance
+from simple_syrup.domain.noise_reuse import (
+    CapturedSamplingState,
+    NoiseReuseOptions,
+    SamplingProvenance,
+)
 from simple_syrup.domain.sampler_options import (
     SamplerOptions,
     append_sampler_capability,
@@ -64,9 +72,26 @@ def test_options_branch_without_mutating_prefix_and_reject_full_inversion() -> N
 
 
 def test_missing_capture_does_not_fall_back_to_fresh_noise() -> None:
-    """Require the requested actual coordinate instead of the closest checkpoint."""
+    """Require a saved request while retaining its independently observed coordinate."""
     state = torch.zeros(1, 4, 2, 2)
-    provenance = SamplingProvenance("SDXL", state, ((0.5, state),))
+    provenance = SamplingProvenance(
+        "SDXL", state, (CapturedSamplingState(0.5, 0.5, state, state),)
+    )
     assert provenance.state_at(0.5) is state
-    with pytest.raises(ValueError, match="did not capture"):
+    with pytest.raises(ValueError, match="did not save"):
         provenance.state_at(0.4)
+
+
+def test_noise_amplitude_survives_large_clean_reference() -> None:
+    """Avoid subtracting near-identical large values to measure noise amplitude."""
+    from types import SimpleNamespace
+
+    from simple_syrup.runtime.native_noise_scaling import noise_coefficients
+
+    clean = torch.full((1, 4, 2, 2), 1e10)
+    scaling = SimpleNamespace(
+        noise_scaling=lambda sigma, noise, reference, maximum: reference + sigma * noise
+    )
+    base, amplitude = noise_coefficients(scaling, clean, 0.5)
+    assert torch.equal(base, clean)
+    assert torch.equal(amplitude, torch.full_like(clean, 0.5))

@@ -79,6 +79,7 @@ def _arguments(negative: object | None) -> dict[str, Any]:
         "noise": torch.zeros((1, 4, 2, 2)),
         "cfg": 7.5,
         "sampler": object(),
+        "sampler_name": "euler",
         "sigmas": torch.tensor([1.0, 0.0]),
         "positive": [[torch.ones((1, 1, 1)), {}]],
         "negative": negative,

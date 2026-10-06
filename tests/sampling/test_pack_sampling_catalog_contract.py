@@ -112,3 +112,44 @@ def test_catalog_additions_propagate_without_node_edits(
         for current, prior in zip(schema.inputs, previous.inputs, strict=True):
             assert current.optional == prior.optional
             assert getattr(current, "default", None) == getattr(prior, "default", None)
+
+
+@pytest.mark.parametrize("prompt_control_available", [False, True])
+def test_every_exported_latent_sampler_admits_source_capture(
+    monkeypatch: pytest.MonkeyPatch,
+    prompt_control_available: bool,
+) -> None:
+    """Enforce graph-capture support when registration adds a new sampling node."""
+    from simple_syrup.runtime.noise_reuse_graph import rewrite_noise_reuse_graph
+    from simple_syrup.runtime.noise_reuse_source import resolve_source_sampling_graph
+
+    monkeypatch.setattr(
+        nodes_v3, "prompt_control_is_available", lambda: prompt_control_available
+    )
+    discovered: list[str] = []
+    for node in sampling_nodes():
+        schema = node.define_schema()
+        if schema.outputs[0].io_type != "LATENT":
+            continue
+        inputs: dict[str, object] = {item.id: 0 for item in schema.inputs}
+        assert {"model", "latent_image", "sampler_name"} <= inputs.keys(), (
+            schema.node_id
+        )
+        inputs.update(
+            model=["loader", 0], latent_image=["empty", 0], sampler_name="er_sde"
+        )
+        prompt = {
+            "source": {"class_type": schema.node_id, "inputs": inputs},
+            "upscale": {
+                "class_type": "SimpleSyrup.SimpleUpscaleLatent",
+                "inputs": {"latent": ["source", 0], "method": "Auto"},
+            },
+        }
+        assert resolve_source_sampling_graph(prompt, "source") is not None, (
+            schema.node_id
+        )
+        rewrite_noise_reuse_graph(prompt, {})
+        assert inputs["model"] == ["source.trajectory_capture", 0], schema.node_id
+        assert inputs["sampler_name"] == "er_sde", schema.node_id
+        discovered.append(schema.node_id)
+    assert len(discovered) >= 9

@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Separate clean references and residuals with the model's actual parameterization."""
 
 from __future__ import annotations
@@ -13,9 +17,9 @@ def noise_coefficients(
     """Validate affine noise mixing instead of assuming DDPM alpha/sigma units."""
     sigma = clean.new_tensor(coordinate)
     base = scaling.noise_scaling(sigma, torch.zeros_like(clean), clean, False)
-    amplitude = (
-        scaling.noise_scaling(sigma, torch.ones_like(clean), clean, False) - base
-    )
+    zero = torch.zeros_like(clean)
+    amplitude = scaling.noise_scaling(sigma, torch.ones_like(clean), zero, False)
+    amplitude = amplitude - scaling.noise_scaling(sigma, zero, zero, False)
     if not isinstance(base, torch.Tensor) or not isinstance(amplitude, torch.Tensor):
         raise TypeError("Native noise scaling must produce tensor coefficients.")
     if base.shape != clean.shape or amplitude.shape != clean.shape:

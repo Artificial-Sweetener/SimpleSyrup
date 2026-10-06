@@ -16,6 +16,7 @@ from ..shared.logging import get_logger
 from .noise_inversion import InversionModelFactory, invert_sampling_noise
 from .noise_reuse_sampling import prepare_reused_noise
 from .noise_reuse_scope import current_noise_reuse
+from .noise_reuse_start import NoiseReuseStartVerification
 
 LOGGER = get_logger(__name__)
 
@@ -27,6 +28,7 @@ def sample_with_optional_negative(
     noise: torch.Tensor,
     cfg: float,
     sampler: Any,
+    sampler_name: str,
     sigmas: torch.Tensor,
     positive: Any,
     negative: Any | None,
@@ -41,6 +43,7 @@ def sample_with_optional_negative(
     """Prepare optional source-derived noise and select the actual Comfy guider."""
 
     reuse = current_noise_reuse()
+    start_verification: NoiseReuseStartVerification | None = None
     if reuse is not None:
         if noise_inversion is not None:
             raise ValueError(
@@ -60,29 +63,13 @@ def sample_with_optional_negative(
             noise_mask=noise_mask,
             model_factory=inversion_model_factory,
         )
-        original_callback = callback
-
-        def observe_start(
-            step: int, denoised: torch.Tensor, state: torch.Tensor, total: int
-        ) -> None:
-            """Check the actual first state to catch double-noising or schedule
-            mismatch.
-            """
-            if step == 0 and noise_mask is None:
-                error = float((state.detach().float().cpu() - expected).abs().max())
-                if error > 2e-5:
-                    raise ValueError(
-                        f"Noise reuse starting state differs from native "
-                        f"reconstruction: {error:.6g}."
-                    )
-                LOGGER.info(
-                    "Noise reuse starting state verified",
-                    extra={"operation": "noise_reuse_start", "max_error": error},
-                )
-            if original_callback is not None:
-                original_callback(step, denoised, state, total)
-
-        callback = observe_start
+        start_verification = NoiseReuseStartVerification(
+            model.get_model_object("model_sampling.noise_scaling"),
+            expected,
+            graph_context=reuse.provenance.graph_context,
+            sampler_name=sampler_name,
+        )
+        model = start_verification.derive_model(model)
 
     if noise_inversion is not None:
         inversion = invert_sampling_noise(
@@ -100,7 +87,7 @@ def sample_with_optional_negative(
         noise = inversion.noise.to(noise)
 
     if negative is not None:
-        return cast(
+        samples = cast(
             torch.Tensor,
             comfy_sample.sample_custom(
                 model,
@@ -117,6 +104,9 @@ def sample_with_optional_negative(
                 seed=seed,
             ),
         )
+        if start_verification is not None:
+            start_verification.require_verified()
+        return samples
 
     comfy_samplers = import_module("comfy.samplers")
     model_management = import_module("comfy.model_management")
@@ -132,6 +122,8 @@ def sample_with_optional_negative(
         disable_pbar=disable_pbar,
         seed=seed,
     )
+    if start_verification is not None:
+        start_verification.require_verified()
     LOGGER.debug(
         "Positive-only ComfyUI guider selected",
         extra={

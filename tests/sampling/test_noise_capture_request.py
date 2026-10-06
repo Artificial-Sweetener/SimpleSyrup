@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Verify receiving prediction views and model-aware schedule geometry."""
 
 from typing import Any, TypedDict
@@ -40,7 +44,9 @@ def test_cd_coordinate_ignores_unresolved_scale_and_coalesces_finish_requests(
 
     monkeypatch.setattr(requests, "calculate_sigmas", schedule)
     monkeypatch.setattr(
-        requests, "validate_inversion_target", lambda model, sigmas: float(sigmas[0])
+        requests,
+        "validate_partial_sampling_target",
+        lambda model, sigmas, **kwargs: float(sigmas[0]),
     )
     arguments: CaptureArguments = {
         "model": object(),
@@ -94,7 +100,9 @@ def test_flux2_planning_normalizes_empty_layout_before_scale(
     monkeypatch.setattr(COMFY_LATENT_NORMALIZER, "normalize", normalize)
     monkeypatch.setattr(requests, "calculate_sigmas", schedule)
     monkeypatch.setattr(
-        requests, "validate_inversion_target", lambda model, sigmas: float(sigmas[0])
+        requests,
+        "validate_partial_sampling_target",
+        lambda model, sigmas, **kwargs: float(sigmas[0]),
     )
     result = requests.NoiseCaptureRequestService().coordinates(
         model=object(),

@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Advance an already reconstructed state through full-resolution inversion
 finishing.
 """
@@ -82,6 +86,7 @@ def finish_reused_state(
             noise=torch.zeros_like(latent),
             cfg=cfg,
             sampler=import_module("comfy.samplers").KSAMPLER(integrate),
+            sampler_name=options.finishing_method,
             sigmas=schedule,
             positive=positive,
             negative=negative,

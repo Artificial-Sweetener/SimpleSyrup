@@ -100,6 +100,7 @@ class DetailSampler:
             noise=noise,
             cfg=cfg,
             sampler=sampler,
+            sampler_name=sampler_name,
             sigmas=sigmas,
             positive=positive,
             negative=negative,

@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Resolve strict latent lineage and inject cache-keyed upstream capture
 dependencies.
 """
@@ -15,16 +19,10 @@ from .comfy_graph_provenance import (
     parse_graph_link,
     trace_vae_decode_provenance,
 )
-
-SOURCE_SAMPLERS = frozenset(
-    {
-        "KSampler",
-        "KSamplerAdvanced",
-        "SimpleSyrup.KSampler",
-        "SimpleSyrup.KSamplerExtras",
-        "SimpleSyrup.KSamplerContextualDiffusion",
-        "SimpleSyrup.KSamplerTiledDiffusion",
-    }
+from .noise_reuse_source import (
+    capture_graph_context,
+    describe_graph_node,
+    resolve_source_sampling_graph,
 )
 
 
@@ -56,7 +54,7 @@ def source_lineage(
         kind, inputs = node.get("class_type"), node.get("inputs")
         if not isinstance(inputs, Mapping):
             raise ValueError("Noise reuse source node has missing inputs.")
-        if kind in SOURCE_SAMPLERS:
+        if resolve_source_sampling_graph(prompt, current[0]) is not None:
             return current[0], json.dumps(list(reversed(geometry)))
         if kind == "SimpleSyrup.LatentFromImage":
             decoded = trace_vae_decode_provenance(prompt, inputs.get("image"), registry)
@@ -93,7 +91,8 @@ def source_lineage(
             continue
         raise ValueError(
             f"Noise reuse cannot resolve latent provenance through "
-            f"{kind}. Use a direct sampler latent, Simple Upscale "
+            f"{describe_graph_node(prompt, current[0])}. "
+            "Use a direct sampler latent, Simple Upscale "
             f"Latent, or Latent From Image."
         )
     raise ValueError("Noise reuse requires a graph-connected source sampler latent.")
@@ -155,7 +154,11 @@ def rewrite_noise_reuse_graph(prompt: dict[str, Any], registry: NodeRegistry) ->
             )
         except ValueError as error:
             if receiver:
-                failures[node_id] = str(error)
+                failures[node_id] = (
+                    f"Noise Reuse Options on receiving sampler "
+                    f"{describe_graph_node(prompt, node_id)} cannot reach a usable "
+                    f"source sampler. {error}"
+                )
     for source in sorted({consumer.source for consumer in consumers}):
         _inject_source(
             prompt,
@@ -183,6 +186,11 @@ def _inject_source(
     its result.
     """
     source_inputs = prompt[source]["inputs"]
+    source_graph = resolve_source_sampling_graph(prompt, source)
+    if source_graph is None:
+        raise ValueError(
+            f"Source {describe_graph_node(prompt, source)} is not a sampler."
+        )
     request: list[object] | None = None
     for consumer in consumers:
         if consumer.receiver is None:
@@ -196,7 +204,7 @@ def _inject_source(
         values.update(
             options=receiver["options"],
             denoise=receiver.get("denoise", 1.0),
-            source_latent=source_inputs["latent_image"],
+            source_latent=source_graph.latent_input,
             geometry_json=consumer.geometry_json,
         )
         if request is not None:
@@ -207,17 +215,39 @@ def _inject_source(
         }
         request = [request_id, 0]
     capture_id = _unique_id(prompt, f"{source}.trajectory_capture")
+    model_inputs = prompt[source_graph.model_owner]["inputs"]
+    if source_graph.model_owner != source:
+        guider_id = _unique_id(prompt, f"{source}.trajectory_guider")
+        guider_node = prompt[source_graph.model_owner].copy()
+        model_inputs = model_inputs.copy()
+        guider_node["inputs"] = model_inputs
+        prompt[guider_id] = guider_node
+        guider_link = parse_graph_link(source_inputs["guider"])
+        if guider_link is None:
+            raise ValueError("Source sampler has an invalid guider connection.")
+        source_inputs["guider"] = [guider_id, guider_link[1]]
     values = {
-        "model": source_inputs["model"],
-        "sampler_name": source_inputs["sampler_name"],
+        "model": model_inputs["model"],
+        "sampler_name": source_graph.sampler_name,
+        "graph_context": capture_graph_context(
+            prompt,
+            source,
+            [
+                consumer.receiver
+                for consumer in consumers
+                if consumer.receiver is not None
+            ],
+        ),
     }
+    if source_graph.sampler is not None:
+        values["sampler"] = source_graph.sampler
     if request is not None:
         values["requests"] = request
     prompt[capture_id] = {
         "class_type": "SimpleSyrup.TrajectoryCaptureModel",
         "inputs": values,
     }
-    source_inputs["model"] = [capture_id, 0]
+    model_inputs["model"] = [capture_id, 0]
     attach_id = _unique_id(prompt, f"{source}.sampling_provenance")
     for node in prompt.values():
         inputs = node.get("inputs", {})

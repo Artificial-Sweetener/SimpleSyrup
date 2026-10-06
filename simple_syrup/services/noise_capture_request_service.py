@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Resolve upstream capture requests from the receiving sampler's live settings."""
 
 from __future__ import annotations
@@ -9,7 +13,7 @@ import torch
 
 from ..domain.sampler_options import SamplerOptions
 from ..runtime.comfy_latent_normalization import COMFY_LATENT_NORMALIZER
-from ..runtime.noise_inversion import validate_inversion_target
+from ..runtime.native_sampling_target import validate_partial_sampling_target
 from ..runtime.sampling_schedulers import SchedulerView, calculate_sigmas
 
 
@@ -54,7 +58,9 @@ class NoiseCaptureRequestService:
         sigmas = calculate_sigmas(
             model, scheduler, sampler_name, steps, denoise, view=view
         )
-        target = validate_inversion_target(model, sigmas)
+        target = validate_partial_sampling_target(
+            model, sigmas, operation="Noise reuse"
+        )
         coordinate = options.noise_reuse.capture_coordinate(target)
         return tuple(sorted({*previous, coordinate}, reverse=True))
 

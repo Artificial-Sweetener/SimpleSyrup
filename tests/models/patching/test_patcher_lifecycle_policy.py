@@ -35,7 +35,7 @@ APPROVED_VALUE_CLONES = Counter(
         ("simple_syrup/domain/spectral_noise.py", "spatial_dct(fresh)"): 1,
         (
             "simple_syrup/runtime/trajectory_capture.py",
-            "record['x'].detach().float().cpu()",
+            "state.detach().float().cpu()",
         ): 1,
         (
             "simple_syrup/runtime/trajectory_capture.py",

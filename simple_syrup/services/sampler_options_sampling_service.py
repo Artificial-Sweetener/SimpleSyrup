@@ -17,7 +17,7 @@ from ..domain.attention_coupling_request import (
 from ..domain.noise_reuse import PROVENANCE_KEY, SamplingProvenance
 from ..domain.sampler_options import SamplerOptions, TilingOptions
 from ..runtime import sampling_schedulers
-from ..runtime.noise_inversion import validate_inversion_target
+from ..runtime.native_sampling_target import validate_partial_sampling_target
 from ..runtime.noise_reuse_scope import NoiseReuseExecution, noise_reuse_scope
 from ..runtime.tiled_sampling_validation import validate_sampling_controls
 from ..shared.logging import get_logger
@@ -265,13 +265,6 @@ class SamplerOptionsSamplingService:
             latent_tile_height=tiling.height if tiling is not None else 16,
             latent_tile_batch_size=tiling.batch_size if tiling is not None else 1,
         )
-        incompatible_unipc = options.contextual_diffusion is not None or (
-            tiling is not None and tiling.diffusion_mode == "multidiffusion"
-        )
-        if incompatible_unipc and arguments["sampler_name"] in {"uni_pc", "uni_pc_bh2"}:
-            raise ValueError(
-                "Tiling and Contextual Diffusion do not support UniPC samplers."
-            )
         if options.noise_inversion is not None:
             view = (
                 sampling_schedulers.SchedulerView(tiling.width, tiling.height)
@@ -286,4 +279,6 @@ class SamplerOptionsSamplingService:
                 denoise=arguments["denoise"],
                 view=view,
             )
-            validate_inversion_target(arguments["model"], sigmas)
+            validate_partial_sampling_target(
+                arguments["model"], sigmas, operation="Noise inversion"
+            )

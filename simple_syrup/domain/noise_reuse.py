@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Describe native trajectory captures and independent finishing controls."""
 
 from __future__ import annotations
@@ -48,29 +52,56 @@ class NoiseReuseOptions:
 
 
 @dataclass(frozen=True, slots=True)
+class CapturedSamplingState:
+    """Associate a requested level with a real observed state and recovered noise."""
+
+    requested_coordinate: float
+    actual_coordinate: float
+    state: torch.Tensor
+    residual: torch.Tensor
+
+    def __post_init__(self) -> None:
+        """Require finite positive coordinates and matching real tensor layouts."""
+        if not all(
+            math.isfinite(value) and value > 0
+            for value in (self.requested_coordinate, self.actual_coordinate)
+        ):
+            raise ValueError("Saved noise levels must be finite and greater than zero.")
+        if self.state.shape != self.residual.shape:
+            raise ValueError(
+                "Saved noisy state and recovered noise must have one shape."
+            )
+        if not bool(torch.isfinite(self.state).all()) or not bool(
+            torch.isfinite(self.residual).all()
+        ):
+            raise ValueError("The original sampler saved invalid noise values.")
+
+
+@dataclass(frozen=True, slots=True)
 class SamplingProvenance:
     """Carry the source identity and real model-space states beside external latents."""
 
     latent_format: str
     clean: torch.Tensor
-    states: tuple[tuple[float, torch.Tensor], ...] = ()
+    captures: tuple[CapturedSamplingState, ...] = ()
     schedule: torch.Tensor | None = None
-    residuals: tuple[tuple[float, torch.Tensor], ...] = ()
+    graph_context: str = ""
+
+    def capture_at(self, coordinate: float) -> CapturedSamplingState:
+        """Require an observation explicitly associated with this receiving request."""
+        for capture in self.captures:
+            if capture.requested_coordinate == coordinate:
+                return capture
+        raise ValueError(
+            f"The original sampling run did not save noise for the requested level "
+            f"{coordinate:.9g}. Queue the connected workflow again with Noise Reuse "
+            "Options enabled."
+        )
 
     def state_at(self, coordinate: float) -> torch.Tensor:
-        """Require an exact requested schedule coordinate instead of approximating."""
-        for sigma, state in self.states:
-            if sigma == coordinate:
-                return state
-        raise ValueError(
-            f"Source sampling did not capture sigma {coordinate:.9g}. "
-            "Queue the connected workflow again with Noise Reuse Options enabled."
-        )
+        """Return the real noisy state associated with the requested level."""
+        return self.capture_at(coordinate).state
 
     def residual_at(self, coordinate: float) -> torch.Tensor:
         """Return noise separated with the originating model's own parameterization."""
-        self.state_at(coordinate)
-        for sigma, residual in self.residuals:
-            if sigma == coordinate:
-                return residual
-        raise ValueError("Source capture is missing its native recovered residual.")
+        return self.capture_at(coordinate).residual

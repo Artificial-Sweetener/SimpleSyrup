@@ -1,68 +1,56 @@
-"""Observe one upstream sampler through Comfy's per-model sampler wrapper."""
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+"""Observe native source sampling through solver-independent Comfy boundaries."""
 
 from __future__ import annotations
 
-from copy import copy
+import math
 from dataclasses import dataclass, field
 from importlib import import_module
 from typing import Any
 
 import torch
 
-from ..domain.noise_reuse import PROVENANCE_KEY, SamplingProvenance
+from ..domain.noise_reuse import (
+    PROVENANCE_KEY,
+    CapturedSamplingState,
+    SamplingProvenance,
+)
 from ..shared.logging import get_logger
 from .model_patcher_mutations import ModelKeyedWrapperMutation
 from .native_noise_scaling import recover_residual
 from .patcher_lifecycle import PATCHER_LIFECYCLE
 
 LOGGER = get_logger(__name__)
-SUPPORTED_CAPTURE_SAMPLERS = frozenset({"euler", "euler_ancestral"})
 
 
-def insert_capture_coordinates(
-    sigmas: torch.Tensor, coordinates: tuple[float, ...]
-) -> torch.Tensor:
-    """Insert exact float32 boundaries without replacing native scheduler points."""
-    if sigmas.ndim != 1 or len(sigmas) < 2 or not bool(torch.isfinite(sigmas).all()):
-        raise ValueError(
-            "Source capture requires a finite descending sampling schedule."
-        )
-    if not bool((sigmas[:-1] > sigmas[1:]).all()):
-        raise ValueError(
-            "Source capture requires strictly descending sigma boundaries."
-        )
-    if float(sigmas[-1]) != 0:
-        raise ValueError(
-            "Source capture requires a schedule ending at zero noise; "
-            "disable leftover noise on the originating sampler."
-        )
-    result = sigmas
-    for value in sorted(set(coordinates), reverse=True):
-        coordinate = sigmas.new_tensor(value)
-        if not 0 < float(coordinate) < float(sigmas[0]):
-            raise ValueError(
-                f"Requested source sigma {value:.9g} lies outside the "
-                f"source sampling schedule."
-            )
-        if not bool((result == coordinate).any()):
-            index = int((result > coordinate).sum())
-            result = torch.cat((result[:index], coordinate.reshape(1), result[index:]))
-    return result
+@dataclass(frozen=True, slots=True)
+class ObservedSamplingState:
+    """Retain one real model-space observation without manufacturing a timestep."""
+
+    coordinate: float
+    state: torch.Tensor
 
 
 @dataclass(slots=True)
 class TrajectoryCapture:
-    """Keep capture storage local to an injected, cache-keyed MODEL derivation."""
+    """Own bounded source observations without changing its solver or schedule."""
 
     model: Any
     sampler_name: str
     coordinates: tuple[float, ...]
-    states: dict[float, torch.Tensor] = field(default_factory=dict)
+    graph_context: str = ""
+    states: dict[float, ObservedSamplingState] = field(default_factory=dict)
     clean: torch.Tensor | None = None
     schedule: torch.Tensor | None = None
+    _active: bool = False
 
     def __post_init__(self) -> None:
-        """Store the exact float32 coordinates used by native sampler schedules."""
+        """Normalize requests to the receiving native float32 coordinate precision."""
+        if any(not math.isfinite(value) or value <= 0 for value in self.coordinates):
+            raise ValueError("Requested noise levels must be finite and above zero.")
         self.coordinates = tuple(
             sorted(
                 {float(torch.tensor(value)) for value in self.coordinates}, reverse=True
@@ -70,12 +58,14 @@ class TrajectoryCapture:
         )
 
     def prepare_model(self) -> Any:
-        """Clone only this source MODEL and leave unrelated samplers untouched."""
-        if self.coordinates and self.sampler_name not in SUPPORTED_CAPTURE_SAMPLERS:
-            raise ValueError(
-                "Noise reuse source capture supports Euler and Euler "
-                "ancestral; select a supported source sampler."
-            )
+        """Install one observer for every solver using Comfy's sampling contract."""
+        try:
+            return self._prepare_model()
+        except (TypeError, ValueError) as error:
+            raise type(error)(self._failure_message(error)) from error
+
+    def _prepare_model(self) -> Any:
+        """Derive the capture model through the authoritative patcher lifecycle."""
         if not self.coordinates:
             return self.model
         wrappers = import_module("comfy.patcher_extension").WrappersMP
@@ -87,6 +77,11 @@ class TrajectoryCapture:
                     "simple_syrup.trajectory_capture",
                     self.observe,
                 ),
+                ModelKeyedWrapperMutation(
+                    wrappers.PREDICT_NOISE,
+                    "simple_syrup.trajectory_state",
+                    self.observe_prediction,
+                ),
             ),
             operation="SimpleSyrup trajectory capture",
         )
@@ -94,54 +89,117 @@ class TrajectoryCapture:
     def observe(
         self, executor: Any, *arguments: Any, **keyword_arguments: Any
     ) -> torch.Tensor:
-        """Wrap the individual native solver instance and record its pre-update x."""
-        local = copy(executor.class_obj)
-        solver = local.sampler_function
+        """Scope observations to one unchanged native sampler execution and endpoint."""
+        try:
+            return self._observe(executor, *arguments, **keyword_arguments)
+        except (TypeError, ValueError) as error:
+            raise type(error)(self._failure_message(error)) from error
+
+    def _observe(
+        self, executor: Any, *arguments: Any, **keyword_arguments: Any
+    ) -> torch.Tensor:
+        """Retain actual states and release observation scope on every exit."""
+        schedule = (
+            arguments[1] if len(arguments) > 1 else keyword_arguments.get("sigmas")
+        )
+        if not isinstance(schedule, torch.Tensor) or schedule.ndim != 1:
+            raise ValueError("The original sampler did not provide its noise schedule.")
+        if not bool(torch.isfinite(schedule).all()) or bool((schedule < 0).any()):
+            raise ValueError("The original sampler provided an invalid noise schedule.")
         self.states.clear()
         self.clean = None
-
-        def recorded(
-            model: Any, state: torch.Tensor, sigmas: torch.Tensor, **kwargs: Any
-        ) -> torch.Tensor:
-            """Use native solver randomness and preserve its original callback."""
-            schedule = insert_capture_coordinates(sigmas, self.coordinates)
-            self.schedule = schedule.detach().float().cpu().clone()
-            original_callback = kwargs.get("callback")
-
-            def observe_state(record: dict[str, Any]) -> None:
-                """Capture actual noisy state, rejecting churned or ambiguous
-                coordinates.
-                """
-                coordinate = float(schedule[int(record["i"])])
-                if coordinate in self.coordinates:
-                    if float(record.get("sigma_hat", record["sigma"])) != coordinate:
-                        raise ValueError(
-                            "Noise reuse cannot capture churned source states."
-                        )
-                    self.states[coordinate] = record["x"].detach().float().cpu().clone()
-                if original_callback is not None:
-                    original_callback(record)
-
-            kwargs["callback"] = observe_state
-            result: torch.Tensor = solver(model, state, schedule, **kwargs)
+        self.schedule = schedule.detach().float().cpu().clone()
+        self._active = True
+        try:
+            result = executor(*arguments, **keyword_arguments)
+            if not isinstance(result, torch.Tensor):
+                raise TypeError("The original sampler did not return a latent tensor.")
             self.clean = result.detach().float().cpu().clone()
             return result
+        finally:
+            self._active = False
 
-        local.sampler_function = recorded
-        isolated = copy(executor)
-        isolated.original = local.sample
-        result: torch.Tensor = isolated(*arguments, **keyword_arguments)
+    def observe_prediction(
+        self, executor: Any, *arguments: Any, **keyword_arguments: Any
+    ) -> torch.Tensor:
+        """Save real input states at actual solver coordinates, including substeps."""
+        if self._active:
+            state = arguments[0] if arguments else keyword_arguments.get("x")
+            sigma = (
+                arguments[1]
+                if len(arguments) > 1
+                else keyword_arguments.get("timestep")
+            )
+            if not isinstance(state, torch.Tensor) or not isinstance(
+                sigma, torch.Tensor
+            ):
+                raise TypeError("The original sampler did not expose its noisy latent.")
+            values = sigma.detach().float().flatten()
+            if values.numel() == 0 or not bool(torch.isfinite(values).all()):
+                raise ValueError(
+                    "The original sampler reported an invalid noise level."
+                )
+            if not bool((values == values[0]).all()):
+                raise ValueError(
+                    "Noise reuse requires one source noise level per batch."
+                )
+            coordinate = float(values[0])
+            if coordinate > 0:
+                self._record(state, coordinate)
+        result = executor(*arguments, **keyword_arguments)
+        if not isinstance(result, torch.Tensor):
+            raise TypeError(
+                "The original sampler's model returned an invalid prediction."
+            )
         return result
 
+    def _record(self, state: torch.Tensor, coordinate: float) -> None:
+        """Prefer exact matches, then the closest real level with deterministic ties."""
+        selected: torch.Tensor | None = None
+        for requested in self.coordinates:
+            previous = self.states.get(requested)
+            rank = (abs(coordinate - requested), -coordinate)
+            if previous is not None and rank >= (
+                abs(previous.coordinate - requested),
+                -previous.coordinate,
+            ):
+                continue
+            if selected is None:
+                selected = state.detach().float().cpu().clone()
+                if not bool(torch.isfinite(selected).all()):
+                    raise ValueError(
+                        "The original sampler produced an invalid noisy latent."
+                    )
+            self.states[requested] = ObservedSamplingState(coordinate, selected)
+
     def attach(self, latent: dict[str, Any]) -> dict[str, Any]:
-        """Associate captured states with their matching external clean sampler
-        output.
-        """
+        """Surface capture failures with the original graph identities and algorithm."""
+        try:
+            return self._attach(latent)
+        except (TypeError, ValueError) as error:
+            raise type(error)(self._failure_message(error)) from error
+
+    def _failure_message(self, error: Exception) -> str:
+        """Identify the graph reach-through and selected algorithm in plain English."""
+        LOGGER.error(
+            "Source noise handoff failed",
+            extra={
+                "sampler": self.sampler_name,
+                "graph_context": self.graph_context,
+                "operation": "trajectory_capture",
+                "reason": str(error),
+            },
+        )
+        return (
+            f"{self.graph_context} Chosen source sampler: '{self.sampler_name}'. "
+            f"{error}"
+        ).strip()
+
+    def _attach(self, latent: dict[str, Any]) -> dict[str, Any]:
+        """Associate observations with their source output and parameterization."""
         samples = latent.get("samples")
         if not isinstance(samples, torch.Tensor):
-            raise TypeError(
-                "Source sampler output must contain a latent samples tensor."
-            )
+            raise TypeError("The original sampler output must contain a latent tensor.")
         actual = self.model.model.process_latent_in(samples).detach().float().cpu()
         if self.coordinates:
             if (
@@ -150,42 +208,44 @@ class TrajectoryCapture:
                 or set(self.states) != set(self.coordinates)
             ):
                 raise ValueError(
-                    "Source trajectory capture is incomplete; run the full "
-                    "connected workflow again."
+                    f"The original sampler '{self.sampler_name}' "
+                    "is not supported by noise reuse on this execution path: "
+                    "it finished without exposing the original noisy latent. "
+                    "Run the complete connected workflow again; if this repeats, "
+                    "that source node must expose ComfyUI's sampling boundaries."
                 )
             if not torch.allclose(actual, self.clean, atol=1e-5, rtol=1e-5):
                 raise ValueError(
-                    "Captured trajectory endpoint does not match the source "
-                    "sampler output."
+                    "Saved noise belongs to a different original sampler output."
                 )
             actual = self.clean
+        scaling = (
+            self.model.get_model_object("model_sampling") if self.coordinates else None
+        )
+        captures = tuple(
+            CapturedSamplingState(
+                requested,
+                observed.coordinate,
+                observed.state,
+                recover_residual(scaling, actual, observed.state, observed.coordinate),
+            )
+            for requested, observed in self.states.items()
+        )
         result = latent.copy()
         result[PROVENANCE_KEY] = SamplingProvenance(
             type(self.model.model.latent_format).__name__,
             actual,
-            tuple(
-                (coordinate, self.states[coordinate]) for coordinate in self.coordinates
-            ),
+            captures,
             self.schedule,
-            tuple(
-                (
-                    coordinate,
-                    recover_residual(
-                        self.model.get_model_object("model_sampling"),
-                        actual,
-                        self.states[coordinate],
-                        coordinate,
-                    ),
-                )
-                for coordinate in self.coordinates
-            ),
+            self.graph_context,
         )
         LOGGER.info(
             "Sampling provenance attached",
             extra={
                 "operation": "trajectory_capture",
                 "sampler": self.sampler_name,
-                "coordinates": self.coordinates,
+                "requested_coordinates": self.coordinates,
+                "actual_coordinates": tuple(c.actual_coordinate for c in captures),
                 "source_shape": tuple(actual.shape),
             },
         )

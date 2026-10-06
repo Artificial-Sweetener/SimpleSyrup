@@ -1,3 +1,7 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Prove receiver planning, strict image provenance and source cache dependencies."""
 
 from copy import deepcopy
@@ -163,3 +167,67 @@ def test_receiving_settings_are_live_source_cache_dependencies() -> None:
     assert request["options"] == ["reuse", 0]
     capture = prompt["source.trajectory_capture"]["inputs"]
     assert capture["requests"] == ["receive.noise_capture_request", 0]
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "SimpleSyrup.KSamplerAttentionCoupling",
+        "SimpleSyrup.KSamplerAttentionCouplingContextual",
+        "SimpleSyrup.KSamplerAttentionCouplingTiled",
+        "SimpleSyrup.KSamplerPromptByRegion",
+        "SimpleSyrup.KSamplerPromptByTiledRegion",
+        "ExternalCompatibleSampler",
+    ],
+)
+def test_sampling_contract_discovers_regional_and_external_sources(kind: str) -> None:
+    """Capture new sampler nodes naturally when they expose the native contract."""
+    prompt = graph()
+    prompt["source"]["class_type"] = kind
+    prompt["source"]["inputs"]["sampler_name"] = "er_sde"
+    prompt["source"]["_meta"] = {"title": "Original pajamas"}
+    prompt["receive"]["_meta"] = {"title": "Upscale pajamas"}
+    rewrite_noise_reuse_graph(prompt, {})
+    capture = prompt["source.trajectory_capture"]["inputs"]
+    assert capture["sampler_name"] == "er_sde"
+    assert "Original pajamas" in capture["graph_context"]
+    assert "Upscale pajamas" in capture["graph_context"]
+    assert kind in capture["graph_context"]
+
+
+@pytest.mark.parametrize("advanced", [False, True])
+def test_custom_sampling_capture_preserves_sampler_and_guider_consumers(
+    advanced: bool,
+) -> None:
+    """Clone only the source guider branch while observing any connected solver."""
+    prompt = graph()
+    source = prompt["source"]
+    source["class_type"] = "SamplerCustomAdvanced" if advanced else "SamplerCustom"
+    source["inputs"].pop("sampler_name")
+    source["inputs"].update(sampler=["select", 0], sigmas=["sigmas", 0])
+    prompt["select"] = {
+        "class_type": "KSamplerSelect",
+        "inputs": {"sampler_name": "dpmpp_2m"},
+    }
+    prompt["guidance"] = {
+        "class_type": "CFGGuider",
+        "inputs": {"model": ["loader", 0], "cfg": 4.0},
+    }
+    original_guider = deepcopy(prompt["guidance"])
+    if advanced:
+        source["inputs"].pop("model")
+        source["inputs"]["guider"] = ["guidance", 0]
+    rewrite_noise_reuse_graph(prompt, {})
+    assert prompt["guidance"] == original_guider
+    assert source["inputs"]["sampler"] == ["select", 0]
+    capture = prompt["source.trajectory_capture"]["inputs"]
+    assert capture["sampler_name"] == "dpmpp_2m"
+    assert capture["sampler"] == ["select", 0]
+    if advanced:
+        assert source["inputs"]["guider"] == ["source.trajectory_guider", 0]
+        assert prompt["source.trajectory_guider"]["inputs"]["model"] == [
+            "source.trajectory_capture",
+            0,
+        ]
+    else:
+        assert source["inputs"]["model"] == ["source.trajectory_capture", 0]

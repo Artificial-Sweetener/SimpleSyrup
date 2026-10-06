@@ -1,3 +1,6 @@
+# SimpleSyrup - workflow-focused ComfyUI extensions for image generation
+# Copyright (C) 2026  Artificial Sweetener and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """List checksum-pinned SesquiLSR artifacts in Comfy's standard latent model folder."""
 
 from __future__ import annotations

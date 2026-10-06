@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -22,6 +21,7 @@ from ..domain.inversion_solver import (
 )
 from ..domain.noise_inversion import InversionMethod, NoiseInversionOptions
 from ..shared.logging import get_logger
+from .native_sampling_target import validate_partial_sampling_target
 from .spatial_tensor_projection import resize_spatial_tensor
 from .tiled_sampling_validation import validate_tensor_shape
 
@@ -72,39 +72,6 @@ def _source_in_model_space(model: Any, latent: torch.Tensor) -> torch.Tensor:
     return source.detach().float().cpu()
 
 
-def validate_inversion_target(model: Any, sigmas: torch.Tensor) -> float:
-    """Reject unsupported scaling and singular targets before model execution."""
-    sampling_types = import_module("comfy.model_sampling")
-    sampling = model.get_model_object("model_sampling")
-    if not isinstance(
-        sampling, (sampling_types.CONST, sampling_types.EPS)
-    ) or isinstance(
-        sampling, (sampling_types.IMG_TO_IMG, sampling_types.IMG_TO_IMG_FLOW)
-    ):
-        raise ValueError(
-            "Noise inversion requires a flow or EPS-compatible image model."
-        )
-    if sigmas.ndim != 1 or len(sigmas) < 2 or not bool(torch.isfinite(sigmas).all()):
-        raise ValueError("Noise inversion requires a finite forward sampling schedule.")
-    target = float(sigmas[0])
-    if target <= INVERSION_START_SIGMA:
-        raise ValueError(
-            "Noise inversion requires a positive partial-denoise start sigma."
-        )
-    if isinstance(sampling, sampling_types.CONST) and target >= 0.9999:
-        raise ValueError(
-            "Flow noise inversion requires denoise below the full-noise endpoint."
-        )
-    if isinstance(sampling, sampling_types.EPS):
-        maximum = float(sampling.sigma_max)
-        if target > maximum or math.isclose(target, maximum, rel_tol=1e-5):
-            raise ValueError(
-                "Noise inversion requires partial denoise, below the model's "
-                "maximum sigma."
-            )
-    return target
-
-
 def invert_sampling_noise(
     *,
     model: Any,
@@ -133,7 +100,9 @@ def invert_sampling_noise(
         raise ValueError(
             "Noise inversion source must contain finite floating-point values."
         )
-    target = validate_inversion_target(model, forward_sigmas)
+    target = validate_partial_sampling_target(
+        model, forward_sigmas, operation="Noise inversion"
+    )
     coarse_target = target * options.coarse_target_fraction
     if coarse_target <= INVERSION_START_SIGMA:
         raise ValueError(
@@ -202,6 +171,7 @@ def invert_sampling_noise(
             noise=torch.zeros_like(stage_latent),
             cfg=cfg,
             sampler=comfy_samplers.KSAMPLER(invert),
+            sampler_name=options.method,
             sigmas=schedule,
             positive=positive,
             negative=negative,

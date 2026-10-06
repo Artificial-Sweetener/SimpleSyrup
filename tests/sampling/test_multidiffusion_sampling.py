@@ -538,19 +538,20 @@ def test_model_wrapper_rejects_unsupported_conditioning() -> None:
         )
 
 
-def test_sample_rejects_unipc_before_sampler_resolution(
+def test_unipc_reaches_the_native_sampler_resolution_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """UniPC sampler names fail before ComfyUI sampler lookup."""
+    """Admit UniPC through the same native boundary as other offered solvers."""
 
     def fail_resolve_sampler(_sampler_name: str) -> FakeSampler:
-        """Fail if sampler resolution is reached."""
+        """Mark the native resolver boundary without evaluating a toy model."""
 
-        raise AssertionError("UniPC rejection should happen before sampler resolution")
+        assert _sampler_name == "uni_pc"
+        raise ValueError("native resolver reached")
 
     monkeypatch.setattr(sampling_samplers, "resolve_sampler", fail_resolve_sampler)
 
-    with pytest.raises(ValueError, match="not compatible with UniPC"):
+    with pytest.raises(ValueError, match="native resolver reached"):
         multidiffusion_sampling.sample_multidiffusion(
             model=FakeModel(),
             seed=1,
