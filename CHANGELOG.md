@@ -1,3 +1,16 @@
+# [1.14.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.13.0...v1.14.0) (2026-10-11)
+
+
+### Bug Fixes
+
+* **sampling:** prepare captured noise for direct cube queues ([d4771e1](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/d4771e1f4767593aa2e679815d403c9366e63aa0))
+
+
+### Features
+
+* **latent:** add learned upscaling and captured noise reuse ([027efb8](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/027efb8eef05aba45fcab8d2bce5d4261689f926))
+* **sampling:** preserve native trajectories for CD noise reuse ([f89b436](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/f89b436a09199ae443f6847c996d04938e3348ce))
+
 # [1.13.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.12.0...v1.13.0) (2026-10-02)
 
 
