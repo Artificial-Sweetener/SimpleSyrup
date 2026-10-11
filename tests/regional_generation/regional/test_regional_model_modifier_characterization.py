@@ -17,7 +17,7 @@ import torch
 from comfy.ldm.cosmos.predict2 import Attention
 from comfy.model_patcher import ModelPatcher
 from comfy.patcher_extension import WrappersMP
-from comfy_extras.nodes_easycache import (  # type: ignore[import-not-found]
+from comfy_extras.nodes_easycache import (
     EasyCacheHolder,
     EasyCacheNode,
     LazyCacheHolder,

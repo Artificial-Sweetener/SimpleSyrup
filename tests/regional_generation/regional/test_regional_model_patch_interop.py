@@ -14,7 +14,7 @@ import pytest
 import torch
 from comfy.model_patcher import ModelPatcher
 from comfy.patcher_extension import WrappersMP
-from comfy_extras.nodes_easycache import (  # type: ignore[import-not-found]
+from comfy_extras.nodes_easycache import (
     EasyCacheNode,
     LazyCacheNode,
 )

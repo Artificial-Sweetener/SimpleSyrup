@@ -67,7 +67,7 @@ exclude = [
 ]
 
 [[tool.mypy.overrides]]
-module = ["comfy.*"]
+module = ["comfy.*", "comfy_extras.nodes_easycache"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
