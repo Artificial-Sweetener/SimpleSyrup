@@ -96,7 +96,7 @@ jobs:
           pip install -r "$GITHUB_WORKSPACE/../../requirements.txt"
 
       - name: Install Python dependencies
-        run: pip install -e . pytest pytest-xdist ruff mypy
+        run: pip install -e . pytest pytest-xdist ruff mypy triton
 
       - name: Verify Python formatting
         run: ruff format --check .
