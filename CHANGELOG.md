@@ -1,3 +1,10 @@
+## [1.14.1](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.14.0...v1.14.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **sampling:** prepare captured noise before native validation ([889962d](https://github.com/Artificial-Sweetener/SimpleSyrup/commit/889962d3545f6c6e45038ab9f8ee401308f919e9))
+
 # [1.14.0](https://github.com/Artificial-Sweetener/SimpleSyrup/compare/v1.13.0...v1.14.0) (2026-10-11)
 
 
