@@ -198,7 +198,7 @@ class SolverModel(PredictionModel):
     def predict(
         self, state: torch.Tensor, sigma: torch.Tensor, **kwargs: Any
     ) -> torch.Tensor:
-        """Run native post-CFG hooks to expose conditional and unconditional results."""
+        """Supply native post-CFG inputs so every sampler can select CFG branches."""
         denoised = torch.full_like(state, 0.2)
         for hook in kwargs.get("model_options", {}).get(
             "sampler_post_cfg_function", ()
@@ -208,6 +208,13 @@ class SolverModel(PredictionModel):
                     "denoised": denoised,
                     "uncond_denoised": denoised,
                     "cond_denoised": denoised,
+                    "cond": (),
+                    "uncond": (),
+                    "cond_scale": 1.0,
+                    "model": self,
+                    "sigma": sigma,
+                    "model_options": kwargs.get("model_options", {}),
+                    "input": state,
                 }
             )
         return denoised
