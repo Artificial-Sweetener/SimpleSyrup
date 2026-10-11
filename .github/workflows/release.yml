@@ -92,6 +92,7 @@ jobs:
           set -euo pipefail
           git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git "$RUNNER_TEMP/ComfyUI"
           rsync -a --exclude=".git" "$RUNNER_TEMP/ComfyUI/" "$GITHUB_WORKSPACE/../.."/
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
           pip install -r "$GITHUB_WORKSPACE/../../requirements.txt"
 
       - name: Install Python dependencies
