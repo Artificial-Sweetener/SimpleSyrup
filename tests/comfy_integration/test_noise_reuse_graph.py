@@ -4,11 +4,14 @@
 
 """Prove receiver planning, strict image provenance and source cache dependencies."""
 
+import sys
 from copy import deepcopy
+from types import ModuleType
 from typing import Any
 
 import pytest
 
+from simple_syrup.nodes_v3.ksampler import KSamplerV3
 from simple_syrup.runtime.noise_reuse_graph import (
     rewrite_noise_reuse_graph,
     source_lineage,
@@ -55,6 +58,27 @@ def graph() -> dict[str, Any]:
             },
         },
     }
+
+
+def test_cube_queue_capability_installs_capture_before_source_sampling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Share exact capture planning with direct Cube queues that omit prompt hooks."""
+    registry_module = ModuleType("nodes")
+    monkeypatch.setattr(registry_module, "NODE_CLASS_MAPPINGS", {}, raising=False)
+    monkeypatch.setitem(sys.modules, "nodes", registry_module)
+    prompt = graph()
+    assert KSamplerV3.SUGARCUBES_PROMPT_PREPARATION_API_VERSION == 1
+    KSamplerV3.prepare_sugarcubes_prompt(prompt)
+    assert prompt["source"]["inputs"]["model"] == ["source.trajectory_capture", 0]
+    assert prompt["decode"]["inputs"]["samples"] == ["source.sampling_provenance", 0]
+    assert (
+        prompt["source.trajectory_capture"]["class_type"]
+        == "SimpleSyrup.TrajectoryCaptureModel"
+    )
+    first = deepcopy(prompt)
+    KSamplerV3.prepare_sugarcubes_prompt(prompt)
+    assert prompt == first
 
 
 def test_image_bridge_resolves_original_latent_and_both_consumers_share_capture() -> (

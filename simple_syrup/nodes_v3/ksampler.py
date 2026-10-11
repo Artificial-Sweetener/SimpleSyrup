@@ -10,6 +10,9 @@ from typing import Any, ClassVar
 
 from ..domain.sampler_options import SamplerOptions
 from ..nodes import tooltips
+from ..services.noise_reuse_graph_preparation_service import (
+    NoiseReuseGraphPreparationService,
+)
 from ..services.sampler_options_sampling_service import SamplerOptionsSamplingService
 from .ksampler_schema import ksampler_inputs
 from .sampler_options_schema import COMFY_IO, OptionsNodeBase, options_input
@@ -21,6 +24,12 @@ class KSamplerV3(OptionsNodeBase):
     service_class: ClassVar[type[SamplerOptionsSamplingService]] = (
         SamplerOptionsSamplingService
     )
+    SUGARCUBES_PROMPT_PREPARATION_API_VERSION: ClassVar[int] = 1
+
+    @classmethod
+    def prepare_sugarcubes_prompt(cls, prompt: dict[str, dict[str, object]]) -> None:
+        """Install source capture dependencies before Cube queue validation."""
+        NoiseReuseGraphPreparationService().prepare(prompt)
 
     @classmethod
     def define_schema(cls) -> Any:
